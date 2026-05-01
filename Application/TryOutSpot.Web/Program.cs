@@ -36,6 +36,7 @@ builder.Services.AddIdentityCore<User>(options =>
     .AddSignInManager()
     .AddDefaultTokenProviders();
 builder.Services.AddScoped<IAccountEmailSender, LoggingAccountEmailSender>();
+builder.Services.AddScoped<IEntitlementService, EntitlementService>();
 builder.Services.AddAuthorization();
 
 var app = builder.Build();

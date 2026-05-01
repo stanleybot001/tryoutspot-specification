@@ -131,3 +131,49 @@ Success response: `200 OK`
 ```
 
 Failure response: `400 Bad Request`
+
+## Billing
+
+### `GET /api/billing/plans`
+
+Lists the public billing plan catalog and the feature codes included in each plan.
+
+Response:
+
+```json
+[
+  {
+    "code": "premium_player",
+    "name": "Premium Player",
+    "audience": "Player/Parent",
+    "description": "Paid player profile, discovery, messaging, and analytics features.",
+    "monthlyAmount": 9.99,
+    "annualAmount": 99,
+    "currency": "USD",
+    "trialDays": null,
+    "requiresStripeSubscription": true,
+    "includedFeatureCodes": [
+      "opportunities.browse",
+      "players.profiles.basic",
+      "opportunities.apply"
+    ]
+  }
+]
+```
+
+### `GET /api/billing/features`
+
+Lists all known feature codes used by entitlement checks.
+
+Response:
+
+```json
+[
+  {
+    "code": "opportunities.browse",
+    "name": "Browse opportunities",
+    "description": "Search and view public tryouts, tournaments, camps, and roster openings.",
+    "isPaidFeature": false
+  }
+]
+```
