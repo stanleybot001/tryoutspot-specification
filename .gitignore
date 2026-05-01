@@ -1,0 +1,17 @@
+# Build outputs
+bin/
+obj/
+
+# User/local tooling
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Local app data and secrets
+Application/TryOutSpot.Web/App_Data/
+appsettings.Local.json
+*.Development.local.json
+
+# Logs
+*.log
