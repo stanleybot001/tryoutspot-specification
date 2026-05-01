@@ -56,6 +56,8 @@ These instructions apply to all work in this repository.
 - Add or update build notes when setup decisions, commands, or architectural choices matter later.
 - Verify with `dotnet build` after project or code changes when feasible.
 - For database-related changes, document assumptions in `db/` or `Project Notes/`.
+- After each completed project item, commit the intended changes and push them to the active GitHub branch unless the user asks to hold the changes locally.
+- Before pushing, confirm secrets, logs, build outputs, and local app data are not staged.
 
 ## Initial Implementation Plan
 
