@@ -31,6 +31,32 @@ Store the credentials outside tracked source files:
 - `Authentication:Google:ClientSecret`
 - `Authentication:Google:CallbackPath` defaults to `/signin-google`
 
+## Google Cloud Client
+
+Project ID:
+
+- `tryoutspotcom`
+
+OAuth client ID:
+
+- `575439301138-7hu60kliqvdavo5hvvjcer7i8hvqalnc.apps.googleusercontent.com`
+
+Configured JavaScript origins:
+
+- `https://tryoutspot.com`
+- `https://www.tryoutspot.com`
+- `https://localhost:7079`
+- `http://localhost:5230`
+
+Configured redirect URIs:
+
+- `https://tryoutspot.com/signin-google`
+- `https://www.tryoutspot.com/signin-google`
+- `https://localhost:7079/signin-google`
+- `http://localhost:5230/signin-google`
+
+The client secret is stored only in ignored local/deployment configuration and must not be committed.
+
 ## API Behavior
 
 - Linked Google accounts receive the standard TryOutSpot JWT and refresh token response.
