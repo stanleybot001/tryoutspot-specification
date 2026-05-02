@@ -18,8 +18,11 @@ builder.Services.AddDataProtection()
         builder.Environment.ContentRootPath,
         "App_Data",
         "DataProtection-Keys")));
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("TryOutSpotDatabase")));
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddDbContext<AppDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("TryOutSpotDatabase")));
+}
 builder.Services.AddIdentityCore<User>(options =>
     {
         options.User.RequireUniqueEmail = true;
@@ -72,3 +75,5 @@ app.MapControllerRoute(
 
 
 app.Run();
+
+public partial class Program;
