@@ -22,6 +22,17 @@ public static class TryOutSpotRoles
         OrganizationAdmin
     ];
 
+    public static readonly string[] AllRoles =
+    [
+        Parent,
+        Player,
+        Coach,
+        TeamManager,
+        AcademyDirector,
+        OrganizationAdmin,
+        PlatformAdmin
+    ];
+
     public static readonly IdentityRole<Guid>[] SeedRoles =
     [
         CreateRole("11111111-1111-1111-1111-111111111111", Parent),
@@ -41,6 +52,17 @@ public static class TryOutSpotRoles
         }
 
         return PublicRegistrationRoles.FirstOrDefault(knownRole =>
+            string.Equals(knownRole, role.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static string? NormalizeRole(string? role)
+    {
+        if (string.IsNullOrWhiteSpace(role))
+        {
+            return null;
+        }
+
+        return AllRoles.FirstOrDefault(knownRole =>
             string.Equals(knownRole, role.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 

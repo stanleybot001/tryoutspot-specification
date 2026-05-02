@@ -301,6 +301,133 @@ Account endpoints use ASP.NET Core rate limiting and return `429 Too Many Reques
 
 Login also uses ASP.NET Core Identity lockout. Repeated failed login attempts temporarily lock the account and return `423 Locked`.
 
+## User Management
+
+User management endpoints require a bearer token for a user in the `PlatformAdmin` account type. State-changing user management actions use `POST`.
+
+### `GET /api/user-management/users`
+
+Lists users with optional filters.
+
+Query parameters:
+
+- `search`: optional email/name search
+- `accountType`: optional role filter such as `Parent`, `Coach`, or `PlatformAdmin`
+- `isActive`: optional `true` or `false`
+- `page`: defaults to `1`
+- `pageSize`: defaults to `25`, maximum `100`
+
+Success response: `200 OK`
+
+```json
+{
+  "users": [
+    {
+      "userId": "00000000-0000-0000-0000-000000000000",
+      "email": "coach.parent@example.com",
+      "firstName": "Taylor",
+      "lastName": "Morgan",
+      "accountTypes": ["Coach", "Parent"],
+      "isActive": true,
+      "emailConfirmed": true,
+      "phoneNumberConfirmed": false,
+      "createdAtUtc": "2026-05-01T20:00:00Z",
+      "updatedAtUtc": "2026-05-01T20:00:00Z"
+    }
+  ],
+  "page": 1,
+  "pageSize": 25,
+  "totalCount": 1,
+  "totalPages": 1
+}
+```
+
+### `GET /api/user-management/users/{userId}`
+
+Returns administrative account detail for one user.
+
+Success response: `200 OK`
+
+Failure responses:
+
+- `401 Unauthorized`
+- `403 Forbidden`
+- `404 Not Found`
+
+### `POST /api/user-management/users`
+
+Creates a managed user account. Account types are additive and can include admin-only roles.
+
+Request:
+
+```json
+{
+  "email": "coach.parent@example.com",
+  "password": "Tryout2026",
+  "firstName": "Taylor",
+  "lastName": "Morgan",
+  "phoneNumber": "555-555-1234",
+  "dateOfBirth": null,
+  "zipCode": "73102",
+  "city": "Oklahoma City",
+  "state": "OK",
+  "accountTypes": ["Parent", "Coach"],
+  "emailConfirmed": true,
+  "phoneNumberConfirmed": false
+}
+```
+
+Success response: `201 Created`
+
+### `POST /api/user-management/users/{userId}/profile`
+
+Updates editable user profile fields.
+
+### `POST /api/user-management/users/{userId}/account-types`
+
+Replaces a user's account type roles. The API prevents a platform administrator from removing their own `PlatformAdmin` role.
+
+Request:
+
+```json
+{
+  "accountTypes": ["Coach", "TeamManager"]
+}
+```
+
+### `POST /api/user-management/users/{userId}/verification`
+
+Sets email and phone verification flags.
+
+Request:
+
+```json
+{
+  "emailConfirmed": true,
+  "phoneNumberConfirmed": true
+}
+```
+
+### `POST /api/user-management/users/{userId}/lock`
+
+Locks a user account until it is manually unlocked. The API prevents a platform administrator from locking their own account.
+
+### `POST /api/user-management/users/{userId}/unlock`
+
+Unlocks a user account and clears failed access count.
+
+### `POST /api/user-management/users/{userId}/deactivate`
+
+Soft deactivates a user account, locks it, and refreshes the security stamp so existing bearer tokens stop working.
+
+### `POST /api/user-management/users/{userId}/reactivate`
+
+Reactivates a soft-deactivated account and clears lockout state.
+
+### `POST /api/user-management/users/{userId}/send-password-reset`
+
+Sends password reset instructions for an active account through the configured account email sender.
+
 ## Billing
 
 ### `GET /api/billing/plans`

@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
+using TryOutSpot.Web.Identity;
 using TryOutSpot.Web.Models.Account;
 using TryOutSpot.Web.Services;
 
@@ -72,6 +73,65 @@ public sealed class TryOutSpotWebApplicationFactory : WebApplicationFactory<Prog
         var user = await userManager.FindByEmailAsync(email);
 
         return user?.Id ?? throw new InvalidOperationException($"Test user {email} was not created.");
+    }
+
+    public async Task<User> CreateUserAsync(
+        string email,
+        IReadOnlyCollection<string> accountTypes,
+        bool emailConfirmed = true,
+        string password = "Tryout2026")
+    {
+        using var scope = Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+        var now = DateTime.UtcNow;
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            UserName = email,
+            Email = email,
+            EmailConfirmed = emailConfirmed,
+            FirstName = "Taylor",
+            LastName = "Morgan",
+            PhoneNumber = "555-555-1234",
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true,
+            LockoutEnabled = true
+        };
+
+        var createResult = await userManager.CreateAsync(user, password);
+        if (!createResult.Succeeded)
+        {
+            throw new InvalidOperationException(string.Join("; ", createResult.Errors.Select(error => error.Description)));
+        }
+
+        var roleResult = await userManager.AddToRolesAsync(user, accountTypes);
+        if (!roleResult.Succeeded)
+        {
+            throw new InvalidOperationException(string.Join("; ", roleResult.Errors.Select(error => error.Description)));
+        }
+
+        return user;
+    }
+
+    public async Task<AuthTokenResponse> LoginAsPlatformAdminAsync()
+    {
+        var email = $"admin-{Guid.NewGuid():N}@example.com";
+        await CreateUserAsync(email, [TryOutSpotRoles.PlatformAdmin]);
+
+        var client = CreateClient();
+        var response = await client.PostAsJsonAsync(
+            "/api/account/login",
+            new LoginRequest
+            {
+                Email = email,
+                Password = "Tryout2026"
+            });
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<AuthTokenResponse>()
+            ?? throw new InvalidOperationException("Platform admin login did not return tokens.");
     }
 
     public async Task ConfirmEmailAsync(string email)
