@@ -432,6 +432,12 @@ Sends password reset instructions for an active account through the configured a
 
 Social login uses ASP.NET Core external authentication plus ASP.NET Core Identity external logins. Google and Facebook handlers are wired when their credentials are configured. Apple is listed as a planned provider and remains disabled until Apple Developer credentials and token validation are configured.
 
+Google OAuth configuration:
+
+- Configure `Authentication:Google:ClientId` and `Authentication:Google:ClientSecret` in local secrets or deployment environment settings.
+- Add the deployed redirect URI to Google Cloud OAuth client settings: `https://<domain>/signin-google`.
+- For local HTTPS testing, add `https://localhost:<port>/signin-google`.
+
 ### `GET /api/social-login/providers`
 
 Lists supported social login providers and whether each provider is configured.
@@ -476,6 +482,26 @@ Completes the external provider callback.
 If the social login is already linked to an active account, the API returns an `AuthTokenResponse`.
 
 If the social login is new, the API returns `409 Conflict` with a short-lived `externalLoginToken`. The client can use that token to complete registration or link the social login to an authenticated account.
+
+New Google identities also include Google-provided profile details when available:
+
+```json
+{
+  "message": "Complete registration or link this social login to an existing account.",
+  "provider": "Google",
+  "email": "player@example.com",
+  "emailVerified": true,
+  "firstName": "Taylor",
+  "lastName": "Morgan",
+  "profileImageUrl": "https://lh3.googleusercontent.com/a/example",
+  "externalLoginToken": "short-lived-token",
+  "availableAccountTypes": [
+    { "name": "Parent" },
+    { "name": "Player" },
+    { "name": "Coach" }
+  ]
+}
+```
 
 ### `POST /api/social-login/register`
 

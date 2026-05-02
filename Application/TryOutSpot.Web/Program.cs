@@ -27,6 +27,7 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddOpenApi();
 builder.Services.Configure<JwtTokenOptions>(builder.Configuration.GetSection(JwtTokenOptions.SectionName));
 builder.Services.Configure<SocialLoginOptions>(builder.Configuration.GetSection(SocialLoginOptions.SectionName));
+builder.Services.Configure<GoogleAuthenticationOptions>(builder.Configuration.GetSection(GoogleAuthenticationOptions.SectionName));
 builder.Services.Configure<AccountEmailOptions>(builder.Configuration.GetSection(AccountEmailOptions.SectionName));
 builder.Services.Configure<ResendEmailOptions>(builder.Configuration.GetSection(ResendEmailOptions.SectionName));
 builder.Services.Configure<AccountSmsOptions>(builder.Configuration.GetSection(AccountSmsOptions.SectionName));
@@ -102,20 +103,28 @@ var authenticationBuilder = builder.Services.AddAuthentication(JwtBearerDefaults
         };
     });
 
-var googleAuthentication = builder.Configuration.GetSection("Authentication:Google");
-if (HasConfiguredValue(googleAuthentication["ClientId"]) && HasConfiguredValue(googleAuthentication["ClientSecret"]))
+var googleAuthentication = builder.Configuration.GetSection(GoogleAuthenticationOptions.SectionName).Get<GoogleAuthenticationOptions>()
+    ?? new GoogleAuthenticationOptions();
+if (googleAuthentication.IsConfigured)
 {
     authenticationBuilder.AddGoogle(TryOutSpotSocialLoginProviders.Google, options =>
     {
         options.SignInScheme = IdentityConstants.ExternalScheme;
-        options.ClientId = googleAuthentication["ClientId"]!;
-        options.ClientSecret = googleAuthentication["ClientSecret"]!;
-        options.CallbackPath = googleAuthentication["CallbackPath"] ?? "/signin-google";
+        options.ClientId = googleAuthentication.ClientId;
+        options.ClientSecret = googleAuthentication.ClientSecret;
+        options.CallbackPath = string.IsNullOrWhiteSpace(googleAuthentication.CallbackPath)
+            ? "/signin-google"
+            : googleAuthentication.CallbackPath;
         options.Events.OnCreatingTicket = context =>
         {
             if (context.User.TryGetProperty("email_verified", out var emailVerified))
             {
                 context.Identity?.AddClaim(new Claim("urn:google:email_verified", emailVerified.GetRawText().Trim('"')));
+            }
+
+            if (context.User.TryGetProperty("picture", out var picture))
+            {
+                context.Identity?.AddClaim(new Claim("urn:google:picture", picture.GetString() ?? string.Empty));
             }
 
             return Task.CompletedTask;

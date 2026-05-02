@@ -18,7 +18,8 @@ public sealed record ExternalLoginTicket(
     string Email,
     bool EmailVerified,
     string? FirstName,
-    string? LastName);
+    string? LastName,
+    string? ProfileImageUrl = null);
 
 public sealed class ExternalLoginTicketService : IExternalLoginTicketService
 {

@@ -41,10 +41,22 @@ Local development values belong in ignored `Application/TryOutSpot.Web/appsettin
 Google redirect URI:
 
 - Development default: `https://localhost:7079/signin-google`
+- Production default: `https://<production-domain>/signin-google`
 
 Facebook redirect URI:
 
 - Development default: `https://localhost:7079/signin-facebook`
+
+## Google Login Completion
+
+Google is the first provider considered production-ready in this codebase.
+
+- Google is considered available only when `Authentication:Google:ClientId` and `Authentication:Google:ClientSecret` are configured with non-placeholder values.
+- The configured callback path defaults to `/signin-google`, matching the ASP.NET Core Google handler default and the Google Cloud OAuth redirect URI.
+- The API captures Google's `email_verified` field and treats the new TryOutSpot email as confirmed only when Google reports the email as verified.
+- The API also captures Google's profile picture URL for future frontend profile use.
+- Existing email/password accounts are not linked automatically by matching email. Users must sign in and explicitly link Google from their authenticated account.
+- Facebook and Apple/iCloud remain planned follow-up providers.
 
 ## Security Notes
 

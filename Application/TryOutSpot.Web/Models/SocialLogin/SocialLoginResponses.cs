@@ -15,6 +15,7 @@ public sealed record SocialLoginRegistrationRequiredResponse(
     bool EmailVerified,
     string? FirstName,
     string? LastName,
+    string? ProfileImageUrl,
     string ExternalLoginToken,
     IReadOnlyCollection<AccountRoleResponse> AvailableAccountTypes);
 

@@ -2,12 +2,14 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using System.Security.Claims;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
 using TryOutSpot.Web.Models.Account;
 using TryOutSpot.Web.Models.SocialLogin;
+using TryOutSpot.Web.Security;
 using TryOutSpot.Web.Services;
 
 namespace TryOutSpot.Web.Controllers;
@@ -25,8 +27,11 @@ public sealed class SocialLoginApiController(
     UserManager<User> userManager,
     IAuthTokenService authTokenService,
     IAccountEmailSender accountEmailSender,
-    IExternalLoginTicketService externalLoginTicketService) : ControllerBase
+    IExternalLoginTicketService externalLoginTicketService,
+    IOptions<GoogleAuthenticationOptions> googleOptions) : ControllerBase
 {
+    private readonly GoogleAuthenticationOptions googleAuthentication = googleOptions.Value;
+
     /// <summary>
     /// Lists social login providers and whether each one is configured.
     /// </summary>
@@ -143,6 +148,7 @@ public sealed class SocialLoginApiController(
             ticket.EmailVerified,
             ticket.FirstName,
             ticket.LastName,
+            ticket.ProfileImageUrl,
             externalLoginToken,
             GetPublicAccountTypes()));
     }
@@ -199,6 +205,7 @@ public sealed class SocialLoginApiController(
             ZipCode = NormalizeOptional(request.ZipCode),
             City = NormalizeOptional(request.City),
             State = NormalizeState(request.State),
+            ProfileImageUrl = NormalizeOptional(ticket.ProfileImageUrl),
             CreatedAt = now,
             UpdatedAt = now,
             IsActive = true,
@@ -382,15 +389,15 @@ public sealed class SocialLoginApiController(
             email.Trim(),
             IsEmailVerified(provider, principal),
             principal.FindFirstValue(ClaimTypes.GivenName),
-            principal.FindFirstValue(ClaimTypes.Surname));
+            principal.FindFirstValue(ClaimTypes.Surname),
+            principal.FindFirstValue("urn:google:picture"));
     }
 
     private bool IsProviderConfigured(string provider)
     {
         return provider switch
         {
-            TryOutSpotSocialLoginProviders.Google => HasConfiguredValue(configuration["Authentication:Google:ClientId"])
-                && HasConfiguredValue(configuration["Authentication:Google:ClientSecret"]),
+            TryOutSpotSocialLoginProviders.Google => googleAuthentication.IsConfigured,
             TryOutSpotSocialLoginProviders.Facebook => HasConfiguredValue(configuration["Authentication:Facebook:AppId"])
                 && HasConfiguredValue(configuration["Authentication:Facebook:AppSecret"]),
             TryOutSpotSocialLoginProviders.Apple => false,
