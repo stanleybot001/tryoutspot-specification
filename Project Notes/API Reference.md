@@ -204,7 +204,7 @@ Success response: `200 OK`
 }
 ```
 
-Current implementation note: reset tokens are generated with ASP.NET Core Identity and sent through `LoggingAccountEmailSender`. Replace that sender with real email/SMS delivery before production.
+Delivery note: reset tokens are generated with ASP.NET Core Identity and sent through the configured account email sender. Development can use either logging delivery or Resend.
 
 ### `POST /api/account/reset-password`
 
@@ -273,7 +273,7 @@ Failure responses:
 - `400 Bad Request`
 - `401 Unauthorized`
 
-Current implementation note: phone verification codes are sent through `LoggingAccountSmsSender`. Replace that sender with real SMS delivery before production.
+Delivery note: phone verification codes are sent through the configured account SMS sender. Development can use either logging delivery or Twilio.
 
 ### `POST /api/account/verify-phone`
 

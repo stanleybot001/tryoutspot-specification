@@ -12,6 +12,11 @@ using TryOutSpot.Web.Security;
 using TryOutSpot.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+if (builder.Environment.IsDevelopment())
+{
+    builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+}
+
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
@@ -20,6 +25,10 @@ builder.Logging.AddDebug();
 builder.Services.AddControllersWithViews();
 builder.Services.AddOpenApi();
 builder.Services.Configure<JwtTokenOptions>(builder.Configuration.GetSection(JwtTokenOptions.SectionName));
+builder.Services.Configure<AccountEmailOptions>(builder.Configuration.GetSection(AccountEmailOptions.SectionName));
+builder.Services.Configure<ResendEmailOptions>(builder.Configuration.GetSection(ResendEmailOptions.SectionName));
+builder.Services.Configure<AccountSmsOptions>(builder.Configuration.GetSection(AccountSmsOptions.SectionName));
+builder.Services.Configure<TwilioSmsOptions>(builder.Configuration.GetSection(TwilioSmsOptions.SectionName));
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(
         builder.Environment.ContentRootPath,
@@ -97,8 +106,26 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0
             }));
 });
-builder.Services.AddScoped<IAccountEmailSender, LoggingAccountEmailSender>();
-builder.Services.AddScoped<IAccountSmsSender, LoggingAccountSmsSender>();
+var emailProvider = builder.Configuration.GetValue<string>($"{AccountEmailOptions.SectionName}:Provider");
+if (string.Equals(emailProvider, AccountCommunicationProviders.Resend, StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddHttpClient<IAccountEmailSender, ResendAccountEmailSender>();
+}
+else
+{
+    builder.Services.AddScoped<IAccountEmailSender, LoggingAccountEmailSender>();
+}
+
+var smsProvider = builder.Configuration.GetValue<string>($"{AccountSmsOptions.SectionName}:Provider");
+if (string.Equals(smsProvider, AccountCommunicationProviders.Twilio, StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddHttpClient<IAccountSmsSender, TwilioAccountSmsSender>();
+}
+else
+{
+    builder.Services.AddScoped<IAccountSmsSender, LoggingAccountSmsSender>();
+}
+
 builder.Services.AddScoped<IAuthTokenService, AuthTokenService>();
 builder.Services.AddScoped<IEntitlementService, EntitlementService>();
 builder.Services.AddAuthorization();
