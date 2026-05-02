@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <Content Remove="appsettings.Local.json" />
+    <Content Update="appsettings.Production.json" Condition="Exists('appsettings.Production.json')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

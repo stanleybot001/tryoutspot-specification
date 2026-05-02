@@ -13,6 +13,7 @@ Application/TryOutSpot.Web/.config/
 Application/TryOutSpot.Web/App_Data/
 Application/TryOutSpot.Web/Properties/PublishProfiles/
 appsettings.Local.json
+appsettings.Production.json
 *.Development.local.json
 
 # Logs
