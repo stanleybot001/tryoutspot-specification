@@ -18,16 +18,27 @@ The test environment is named `Testing`. `Program.cs` skips the normal PostgreSQ
 Account API:
 
 - Registration with multiple account types
+- Registration sends email confirmation token
 - Rejection of unsupported roles
 - Rejection of public `PlatformAdmin` registration
 - Duplicate email rejection
 - Weak password rejection
+- Login is blocked before email verification
+- Login succeeds after email verification
+- Authenticated `GET /api/account/me`
+- Refresh token rotation
+- Logout refresh-token revocation
+- Soft-deleted account invalidates existing bearer token
+- Resend email verification generic response
 - Forgot-password non-enumeration response
 - Valid reset token changes password
 - Invalid reset token is rejected
 - Valid delete request soft-deletes and locks the account
 - Wrong delete password leaves account active
 - Soft-deleted account cannot reset password
+- Phone verification send and confirm flow
+- Identity lockout after repeated failed login attempts
+- Account endpoint rate limiting returns `429`
 
 Entitlements:
 
@@ -44,3 +55,11 @@ dotnet test Application\TryOutSpot.Web.Tests\TryOutSpot.Web.Tests.csproj --no-re
 ```
 
 Result on 2026-05-01: 16 passed, 0 failed.
+
+After adding login, email verification, phone verification, lockout, and rate-limit tests:
+
+```powershell
+dotnet test Application\TryOutSpot.Web.Tests\TryOutSpot.Web.Tests.csproj --no-restore --verbosity minimal
+```
+
+Result on 2026-05-01 after bearer invalidation coverage: 25 passed, 0 failed.

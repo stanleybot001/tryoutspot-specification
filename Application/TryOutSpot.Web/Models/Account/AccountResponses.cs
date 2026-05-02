@@ -17,6 +17,31 @@ public sealed record UserAccountResponse(
     bool IsActive);
 
 /// <summary>
+/// Token pair returned after login or refresh.
+/// </summary>
+public sealed record AuthTokenResponse(
+    string TokenType,
+    string AccessToken,
+    DateTime AccessTokenExpiresAtUtc,
+    string RefreshToken,
+    DateTime RefreshTokenExpiresAtUtc,
+    UserAccountResponse User);
+
+/// <summary>
+/// Authenticated account profile and verification state.
+/// </summary>
+public sealed record CurrentUserResponse(
+    Guid UserId,
+    string Email,
+    string FirstName,
+    string LastName,
+    IReadOnlyCollection<string> AccountTypes,
+    bool IsActive,
+    bool EmailConfirmed,
+    string? PhoneNumber,
+    bool PhoneNumberConfirmed);
+
+/// <summary>
 /// Standard response for account lifecycle actions.
 /// </summary>
 public sealed record AccountActionResponse(string Message);

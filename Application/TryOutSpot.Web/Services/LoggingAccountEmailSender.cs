@@ -4,6 +4,16 @@ namespace TryOutSpot.Web.Services;
 
 public sealed class LoggingAccountEmailSender(ILogger<LoggingAccountEmailSender> logger) : IAccountEmailSender
 {
+    public Task SendEmailConfirmationTokenAsync(User user, string confirmationToken, CancellationToken cancellationToken)
+    {
+        logger.LogInformation(
+            "Email confirmation token generated for user {UserId}. Configure a real email sender before production. Token: {ConfirmationToken}",
+            user.Id,
+            confirmationToken);
+
+        return Task.CompletedTask;
+    }
+
     public Task SendPasswordResetTokenAsync(User user, string resetToken, CancellationToken cancellationToken)
     {
         logger.LogInformation(

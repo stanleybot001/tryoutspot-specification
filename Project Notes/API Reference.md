@@ -28,7 +28,7 @@ Response:
 
 ### `POST /api/account/register`
 
-Creates a new active user account using ASP.NET Core Identity. Account types are additive, so one user can register as multiple types.
+Creates a new active user account using ASP.NET Core Identity. Account types are additive, so one user can register as multiple types. Registration sends an email verification token through the configured account email sender.
 
 Request:
 
@@ -61,6 +61,128 @@ Success response: `201 Created`
 ```
 
 Validation response: `400 Bad Request`
+
+### `POST /api/account/login`
+
+Authenticates an active email-verified account and returns a bearer access token plus refresh token.
+
+Request:
+
+```json
+{
+  "email": "coach.parent@example.com",
+  "password": "Tryout2026"
+}
+```
+
+Success response: `200 OK`
+
+```json
+{
+  "tokenType": "Bearer",
+  "accessToken": "jwt-access-token",
+  "accessTokenExpiresAtUtc": "2026-05-01T20:15:00Z",
+  "refreshToken": "refresh-token",
+  "refreshTokenExpiresAtUtc": "2026-05-31T20:00:00Z",
+  "user": {
+    "userId": "00000000-0000-0000-0000-000000000000",
+    "email": "coach.parent@example.com",
+    "firstName": "Taylor",
+    "lastName": "Morgan",
+    "accountTypes": ["Parent", "Coach"],
+    "isActive": true
+  }
+}
+```
+
+Failure responses:
+
+- `400 Bad Request` when email verification is still required
+- `401 Unauthorized` for invalid credentials
+- `423 Locked` after repeated failed login attempts
+
+### `POST /api/account/refresh-token`
+
+Rotates a valid refresh token and returns a new bearer token pair.
+
+Request:
+
+```json
+{
+  "refreshToken": "refresh-token"
+}
+```
+
+Success response: `200 OK`
+
+Failure response: `401 Unauthorized`
+
+### `POST /api/account/logout`
+
+Revokes a refresh token. Existing bearer access tokens expire naturally.
+
+Request:
+
+```json
+{
+  "refreshToken": "refresh-token"
+}
+```
+
+Success response: `200 OK`
+
+### `GET /api/account/me`
+
+Returns the authenticated account and verification state. Requires `Authorization: Bearer <token>`.
+
+Success response: `200 OK`
+
+```json
+{
+  "userId": "00000000-0000-0000-0000-000000000000",
+  "email": "coach.parent@example.com",
+  "firstName": "Taylor",
+  "lastName": "Morgan",
+  "accountTypes": ["Parent", "Coach"],
+  "isActive": true,
+  "emailConfirmed": true,
+  "phoneNumber": "555-555-1234",
+  "phoneNumberConfirmed": false
+}
+```
+
+Failure response: `401 Unauthorized`
+
+### `POST /api/account/verify-email`
+
+Verifies an account email address using the email confirmation token.
+
+Request:
+
+```json
+{
+  "email": "coach.parent@example.com",
+  "token": "identity-email-confirmation-token"
+}
+```
+
+Success response: `200 OK`
+
+Failure response: `400 Bad Request`
+
+### `POST /api/account/resend-email-verification`
+
+Resends email verification instructions for an active unverified account. The response is generic so the endpoint does not reveal whether an email address exists.
+
+Request:
+
+```json
+{
+  "email": "coach.parent@example.com"
+}
+```
+
+Success response: `200 OK`
 
 ### `POST /api/account/forgot-password`
 
@@ -131,6 +253,53 @@ Success response: `200 OK`
 ```
 
 Failure response: `400 Bad Request`
+
+### `POST /api/account/send-phone-verification`
+
+Sends a phone verification code for the authenticated account. Requires `Authorization: Bearer <token>`.
+
+Request:
+
+```json
+{
+  "phoneNumber": "555-555-1234"
+}
+```
+
+Success response: `200 OK`
+
+Failure responses:
+
+- `400 Bad Request`
+- `401 Unauthorized`
+
+Current implementation note: phone verification codes are sent through `LoggingAccountSmsSender`. Replace that sender with real SMS delivery before production.
+
+### `POST /api/account/verify-phone`
+
+Verifies the authenticated account phone number using the delivered code. Requires `Authorization: Bearer <token>`.
+
+Request:
+
+```json
+{
+  "phoneNumber": "555-555-1234",
+  "code": "123456"
+}
+```
+
+Success response: `200 OK`
+
+Failure responses:
+
+- `400 Bad Request`
+- `401 Unauthorized`
+
+## Account Security
+
+Account endpoints use ASP.NET Core rate limiting and return `429 Too Many Requests` when the current account security policy is exceeded.
+
+Login also uses ASP.NET Core Identity lockout. Repeated failed login attempts temporarily lock the account and return `423 Locked`.
 
 ## Billing
 

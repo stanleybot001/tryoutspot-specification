@@ -99,8 +99,8 @@ public sealed class AccountApiTests
         Assert.Equal(existingBody, missingBody);
 
         var emailSender = factory.Services.GetRequiredService<TestAccountEmailSender>();
-        Assert.True(emailSender.TryGetToken("forgot@example.com", out _));
-        Assert.False(emailSender.TryGetToken("missing@example.com", out _));
+        Assert.True(emailSender.TryGetPasswordResetToken("forgot@example.com", out _));
+        Assert.False(emailSender.TryGetPasswordResetToken("missing@example.com", out _));
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public sealed class AccountApiTests
             new ForgotPasswordRequest { Email = "reset-valid@example.com" });
 
         var emailSender = factory.Services.GetRequiredService<TestAccountEmailSender>();
-        Assert.True(emailSender.TryGetToken("reset-valid@example.com", out var token));
+        Assert.True(emailSender.TryGetPasswordResetToken("reset-valid@example.com", out var token));
 
         var response = await client.PostAsJsonAsync(
             "/api/account/reset-password",
@@ -217,7 +217,7 @@ public sealed class AccountApiTests
             "/api/account/forgot-password",
             new ForgotPasswordRequest { Email = "deleted-reset@example.com" });
         var emailSender = factory.Services.GetRequiredService<TestAccountEmailSender>();
-        Assert.True(emailSender.TryGetToken("deleted-reset@example.com", out var token));
+        Assert.True(emailSender.TryGetPasswordResetToken("deleted-reset@example.com", out var token));
         await client.PostAsJsonAsync(
             "/api/account/delete-account",
             new DeleteAccountRequest

@@ -24,6 +24,7 @@ public sealed class TryOutSpotWebApplicationFactory : WebApplicationFactory<Prog
         {
             services.RemoveAll<DbContextOptions<AppDbContext>>();
             services.RemoveAll<IAccountEmailSender>();
+            services.RemoveAll<IAccountSmsSender>();
 
             services.AddDbContext<AppDbContext>(options =>
             {
@@ -34,6 +35,9 @@ public sealed class TryOutSpotWebApplicationFactory : WebApplicationFactory<Prog
             services.AddSingleton<TestAccountEmailSender>();
             services.AddScoped<IAccountEmailSender>(serviceProvider =>
                 serviceProvider.GetRequiredService<TestAccountEmailSender>());
+            services.AddSingleton<TestAccountSmsSender>();
+            services.AddScoped<IAccountSmsSender>(serviceProvider =>
+                serviceProvider.GetRequiredService<TestAccountSmsSender>());
 
             var serviceProvider = services.BuildServiceProvider();
             using var scope = serviceProvider.CreateScope();
@@ -68,5 +72,25 @@ public sealed class TryOutSpotWebApplicationFactory : WebApplicationFactory<Prog
         var user = await userManager.FindByEmailAsync(email);
 
         return user?.Id ?? throw new InvalidOperationException($"Test user {email} was not created.");
+    }
+
+    public async Task ConfirmEmailAsync(string email)
+    {
+        var emailSender = Services.GetRequiredService<TestAccountEmailSender>();
+        if (!emailSender.TryGetEmailConfirmationToken(email, out var token))
+        {
+            throw new InvalidOperationException($"No email confirmation token was captured for {email}.");
+        }
+
+        var client = CreateClient();
+        var response = await client.PostAsJsonAsync(
+            "/api/account/verify-email",
+            new VerifyEmailRequest
+            {
+                Email = email,
+                Token = token
+            });
+
+        response.EnsureSuccessStatusCode();
     }
 }
