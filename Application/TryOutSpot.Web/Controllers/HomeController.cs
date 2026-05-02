@@ -18,7 +18,14 @@ public class HomeController : Controller
         return View();
     }
 
+    [HttpGet("/privacy-policy")]
     public IActionResult Privacy()
+    {
+        return View();
+    }
+
+    [HttpGet("/terms-and-conditions")]
+    public IActionResult TermsAndConditions()
     {
         return View();
     }
