@@ -69,3 +69,11 @@ The client secret is stored only in ignored local/deployment configuration and m
 ## Follow-Up Providers
 
 Facebook and Apple/iCloud remain planned follow-up providers after Google is verified in production.
+
+## Troubleshooting Notes
+
+Server-side application logs are written with Serilog to:
+
+- `App_Data/Logs/tryoutspot-<date>.log`
+
+If Google redirects back to `/signin-google` and the user sees the generic TryOutSpot error page, use the displayed request ID to search the log file for the matching exception.
