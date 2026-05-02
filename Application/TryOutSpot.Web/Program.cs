@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
+using TryOutSpot.Web.Identity;
 using TryOutSpot.Web.Security;
 using TryOutSpot.Web.Services;
 
@@ -25,6 +26,7 @@ builder.Logging.AddDebug();
 builder.Services.AddControllersWithViews();
 builder.Services.AddOpenApi();
 builder.Services.Configure<JwtTokenOptions>(builder.Configuration.GetSection(JwtTokenOptions.SectionName));
+builder.Services.Configure<SocialLoginOptions>(builder.Configuration.GetSection(SocialLoginOptions.SectionName));
 builder.Services.Configure<AccountEmailOptions>(builder.Configuration.GetSection(AccountEmailOptions.SectionName));
 builder.Services.Configure<ResendEmailOptions>(builder.Configuration.GetSection(ResendEmailOptions.SectionName));
 builder.Services.Configure<AccountSmsOptions>(builder.Configuration.GetSection(AccountSmsOptions.SectionName));
@@ -57,7 +59,13 @@ builder.Services.AddIdentityCore<User>(options =>
     .AddSignInManager()
     .AddDefaultTokenProviders();
 var jwtOptions = builder.Configuration.GetSection(JwtTokenOptions.SectionName).Get<JwtTokenOptions>() ?? new JwtTokenOptions();
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+var authenticationBuilder = builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddCookie(IdentityConstants.ExternalScheme, options =>
+    {
+        options.Cookie.Name = "TryOutSpot.ExternalLogin";
+        options.ExpireTimeSpan = TimeSpan.FromMinutes(10);
+        options.SlidingExpiration = false;
+    })
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
@@ -93,6 +101,56 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             }
         };
     });
+
+var googleAuthentication = builder.Configuration.GetSection("Authentication:Google");
+if (HasConfiguredValue(googleAuthentication["ClientId"]) && HasConfiguredValue(googleAuthentication["ClientSecret"]))
+{
+    authenticationBuilder.AddGoogle(TryOutSpotSocialLoginProviders.Google, options =>
+    {
+        options.SignInScheme = IdentityConstants.ExternalScheme;
+        options.ClientId = googleAuthentication["ClientId"]!;
+        options.ClientSecret = googleAuthentication["ClientSecret"]!;
+        options.CallbackPath = googleAuthentication["CallbackPath"] ?? "/signin-google";
+        options.Events.OnCreatingTicket = context =>
+        {
+            if (context.User.TryGetProperty("email_verified", out var emailVerified))
+            {
+                context.Identity?.AddClaim(new Claim("urn:google:email_verified", emailVerified.GetRawText().Trim('"')));
+            }
+
+            return Task.CompletedTask;
+        };
+    });
+}
+
+var facebookAuthentication = builder.Configuration.GetSection("Authentication:Facebook");
+if (HasConfiguredValue(facebookAuthentication["AppId"]) && HasConfiguredValue(facebookAuthentication["AppSecret"]))
+{
+    authenticationBuilder.AddFacebook(TryOutSpotSocialLoginProviders.Facebook, options =>
+    {
+        options.SignInScheme = IdentityConstants.ExternalScheme;
+        options.AppId = facebookAuthentication["AppId"]!;
+        options.AppSecret = facebookAuthentication["AppSecret"]!;
+        options.CallbackPath = facebookAuthentication["CallbackPath"] ?? "/signin-facebook";
+        options.Fields.Add("first_name");
+        options.Fields.Add("last_name");
+        options.Events.OnCreatingTicket = context =>
+        {
+            if (context.User.TryGetProperty("first_name", out var firstName))
+            {
+                context.Identity?.AddClaim(new Claim(ClaimTypes.GivenName, firstName.GetString() ?? string.Empty));
+            }
+
+            if (context.User.TryGetProperty("last_name", out var lastName))
+            {
+                context.Identity?.AddClaim(new Claim(ClaimTypes.Surname, lastName.GetString() ?? string.Empty));
+            }
+
+            return Task.CompletedTask;
+        };
+    });
+}
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -127,6 +185,7 @@ else
 }
 
 builder.Services.AddScoped<IAuthTokenService, AuthTokenService>();
+builder.Services.AddSingleton<IExternalLoginTicketService, ExternalLoginTicketService>();
 builder.Services.AddScoped<IEntitlementService, EntitlementService>();
 builder.Services.AddAuthorization();
 
@@ -165,5 +224,12 @@ app.MapControllerRoute(
 
 
 app.Run();
+
+static bool HasConfiguredValue(string? value)
+{
+    return !string.IsNullOrWhiteSpace(value)
+        && !value.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)
+        && !value.StartsWith("PUT_", StringComparison.OrdinalIgnoreCase);
+}
 
 public partial class Program;

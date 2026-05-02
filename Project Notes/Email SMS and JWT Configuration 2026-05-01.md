@@ -30,6 +30,8 @@ Current local development settings use:
 - `Email:Provider = Resend`
 - `Sms:Provider = Twilio`
 
+Social login credentials can also be placed in the ignored local settings file when available.
+
 If live delivery should be disabled locally, set either provider back to `Logging`.
 
 ## Security Notes

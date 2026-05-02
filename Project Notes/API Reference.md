@@ -428,6 +428,107 @@ Reactivates a soft-deactivated account and clears lockout state.
 
 Sends password reset instructions for an active account through the configured account email sender.
 
+## Social Login
+
+Social login uses ASP.NET Core external authentication plus ASP.NET Core Identity external logins. Google and Facebook handlers are wired when their credentials are configured. Apple is listed as a planned provider and remains disabled until Apple Developer credentials and token validation are configured.
+
+### `GET /api/social-login/providers`
+
+Lists supported social login providers and whether each provider is configured.
+
+Success response: `200 OK`
+
+```json
+[
+  {
+    "provider": "Google",
+    "displayName": "Google",
+    "isConfigured": true,
+    "challengeUrl": "/api/social-login/challenge/Google"
+  },
+  {
+    "provider": "Facebook",
+    "displayName": "Facebook",
+    "isConfigured": false,
+    "challengeUrl": null
+  },
+  {
+    "provider": "Apple",
+    "displayName": "Apple",
+    "isConfigured": false,
+    "challengeUrl": null
+  }
+]
+```
+
+### `GET /api/social-login/challenge/{provider}`
+
+Starts an external login challenge for a configured provider. Supported provider values are `Google`, `Facebook`, and eventually `Apple`.
+
+Success response: `302 Found`
+
+Failure response: `400 Bad Request`
+
+### `GET /api/social-login/callback`
+
+Completes the external provider callback.
+
+If the social login is already linked to an active account, the API returns an `AuthTokenResponse`.
+
+If the social login is new, the API returns `409 Conflict` with a short-lived `externalLoginToken`. The client can use that token to complete registration or link the social login to an authenticated account.
+
+### `POST /api/social-login/register`
+
+Creates a new external-only account from an external login token.
+
+Request:
+
+```json
+{
+  "externalLoginToken": "short-lived-token",
+  "firstName": "Taylor",
+  "lastName": "Morgan",
+  "phoneNumber": "555-555-1234",
+  "dateOfBirth": null,
+  "zipCode": "73102",
+  "city": "Oklahoma City",
+  "state": "OK",
+  "accountTypes": ["Parent", "Coach"]
+}
+```
+
+Success response: `201 Created` with an `AuthTokenResponse`.
+
+Failure response: `400 Bad Request`
+
+### `GET /api/social-login/linked`
+
+Lists social logins linked to the authenticated account. Requires `Authorization: Bearer <token>`.
+
+### `POST /api/social-login/link`
+
+Links a social login to the authenticated account using an external login token.
+
+Request:
+
+```json
+{
+  "externalLoginToken": "short-lived-token"
+}
+```
+
+### `POST /api/social-login/unlink`
+
+Unlinks a social login from the authenticated account. The API prevents removing the only sign-in method from an external-only account.
+
+Request:
+
+```json
+{
+  "provider": "Google"
+}
+```
+
 ## Billing
 
 ### `GET /api/billing/plans`
