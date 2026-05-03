@@ -301,6 +301,104 @@ Account endpoints use ASP.NET Core rate limiting and return `429 Too Many Reques
 
 Login also uses ASP.NET Core Identity lockout. Repeated failed login attempts temporarily lock the account and return `423 Locked`.
 
+## Onboarding
+
+Onboarding keeps signup short. Initial registration should collect only identity, one or more account types, and enough name information to create the account. Player profiles, team setup, organization verification, and paid plan selection happen after the account exists.
+
+### `GET /api/onboarding/options`
+
+Returns account type choices and plan options for the lightweight signup UI.
+
+Optional query:
+
+- `accountTypes`: repeatable account type filter, for example `?accountTypes=Parent&accountTypes=Coach`
+
+Success response: `200 OK`
+
+```json
+{
+  "accountTypes": [
+    {
+      "name": "Parent",
+      "label": "Parent or guardian",
+      "description": "Find tryouts, manage child player profiles, and track registrations.",
+      "isCommonFirstChoice": true
+    }
+  ],
+  "plans": [
+    {
+      "code": "free_player_parent",
+      "name": "Free Player/Parent",
+      "audience": "Player/Parent",
+      "description": "Always-free access for players, parents, and guardians.",
+      "monthlyAmount": 0,
+      "annualAmount": null,
+      "currency": "USD",
+      "trialDays": null,
+      "requiresStripeSubscription": false,
+      "includedFeatureCodes": ["opportunities.browse"]
+    }
+  ],
+  "canSkipPlanSelection": true,
+  "recommendedFlow": "Create the account first, choose account type, then finish profiles or paid upgrades later."
+}
+```
+
+### `GET /api/onboarding/status`
+
+Returns the authenticated user's current onboarding state, free feature codes, recommended plans, and required/optional next steps. Requires `Authorization: Bearer <token>`.
+
+Success response: `200 OK`
+
+```json
+{
+  "user": {
+    "userId": "00000000-0000-0000-0000-000000000000",
+    "email": "coach.parent@example.com",
+    "firstName": "Taylor",
+    "lastName": "Morgan",
+    "accountTypes": ["Parent", "Coach"],
+    "isActive": true,
+    "emailConfirmed": true,
+    "phoneNumber": null,
+    "phoneNumberConfirmed": false
+  },
+  "steps": [
+    {
+      "code": "choose_account_types",
+      "title": "Choose account type",
+      "description": "Select how you plan to use TryOutSpot. You can choose more than one.",
+      "isRequired": true,
+      "isComplete": true,
+      "actionUrl": "/api/onboarding/account-types"
+    }
+  ],
+  "featureCodes": ["opportunities.browse"],
+  "recommendedPlans": [],
+  "canSkipPlanSelection": true,
+  "isComplete": true
+}
+```
+
+### `POST /api/onboarding/account-types`
+
+Replaces the authenticated user's public account type roles. This is intentionally available after signup so users can start quickly and adjust their role combination later.
+
+Request:
+
+```json
+{
+  "accountTypes": ["Parent", "Coach"]
+}
+```
+
+Success response: `200 OK` with the same shape as `GET /api/onboarding/status`.
+
+Failure responses:
+
+- `400 Bad Request` for unsupported account types
+- `401 Unauthorized`
+
 ## User Management
 
 User management endpoints require a bearer token for a user in the `PlatformAdmin` account type. State-changing user management actions use `POST`.
