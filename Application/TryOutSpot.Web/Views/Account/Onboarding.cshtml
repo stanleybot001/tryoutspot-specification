@@ -1,0 +1,132 @@
+@model OnboardingPageModel
+
+@{
+    ViewData["Title"] = "Account Setup";
+}
+
+<section class="account-page">
+    <div class="account-heading">
+        <p class="account-kicker">Account setup</p>
+        <h1>@Model.FirstName, finish the pieces that matter.</h1>
+        <p>TryOutSpot keeps signup light. These items help tailor the next screens for players, parents, coaches, and organization staff.</p>
+        <p class="required-note"><span class="required-marker">*</span> Required item</p>
+    </div>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    <section class="account-summary-strip">
+        <div>
+            <span>Email</span>
+            <strong>@Model.Email</strong>
+        </div>
+        <div>
+            <span>Email status</span>
+            <strong>@(Model.EmailConfirmed ? "Verified" : "Not verified")</strong>
+        </div>
+        <div>
+            <span>Phone</span>
+            <strong>@(string.IsNullOrWhiteSpace(Model.PhoneNumber) ? "Not added" : Model.PhoneNumber)</strong>
+        </div>
+    </section>
+
+    <div class="onboarding-layout">
+        <section class="form-section">
+            <h2>Setup checklist</h2>
+            <div class="step-list">
+                @foreach (var step in Model.Steps)
+                {
+                    <div class="step-row @(step.IsComplete ? "complete" : string.Empty)">
+                        <div>
+                            <strong>@step.Title</strong>
+                            <span>@step.Description</span>
+                        </div>
+                        <div class="step-status">
+                            @if (step.IsRequired)
+                            {
+                                <span class="required-pill">Required</span>
+                            }
+                            <span>@(step.IsComplete ? "Complete" : "Open")</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+
+        <section class="form-section">
+            <h2>Account type <span class="required-marker">*</span></h2>
+            <p class="section-help">A user can have more than one role. Select every role that fits your current work.</p>
+            <form asp-action="UpdateOnboardingAccountTypes" asp-controller="Account" method="post">
+                <div class="account-type-grid compact-grid">
+                    @foreach (var accountType in Model.AvailableAccountTypes)
+                    {
+                        <label class="account-type-option" for="onboarding-account-type-@accountType.Name">
+                            <input class="form-check-input" id="onboarding-account-type-@accountType.Name" name="accountTypes" type="checkbox" value="@accountType.Name" checked="@accountType.IsSelected" />
+                            <span>
+                                <strong>@accountType.Label</strong>
+                                <small>@accountType.Description</small>
+                            </span>
+                        </label>
+                    }
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Update account type</button>
+                </div>
+            </form>
+        </section>
+    </div>
+
+    <section class="form-section">
+        <h2>Recommended plan options</h2>
+        <p class="section-help">You can stay on a free path while we continue wiring Stripe checkout into the paid tiers.</p>
+        <div class="plan-list">
+            @foreach (var plan in Model.RecommendedPlans)
+            {
+                <div class="plan-row">
+                    <div>
+                        <strong>@plan.Name</strong>
+                        <span>@plan.Audience</span>
+                        <p>@plan.Description</p>
+                    </div>
+                    <div class="plan-price">
+                        <strong>@FormatMonthlyAmount(plan.MonthlyAmount)</strong>
+                        @if (plan.TrialDays is not null)
+                        {
+                            <span>@plan.TrialDays-day trial</span>
+                        }
+                        else if (!plan.RequiresStripeSubscription)
+                        {
+                            <span>No payment required</span>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </section>
+
+    @if (Model.FeatureCodes.Count > 0)
+    {
+        <section class="form-section">
+            <h2>Available features</h2>
+            <div class="feature-code-list">
+                @foreach (var featureCode in Model.FeatureCodes.OrderBy(code => code))
+                {
+                    <span>@featureCode</span>
+                }
+            </div>
+        </section>
+    }
+
+    <form asp-action="Logout" asp-controller="Account" method="post" class="logout-form">
+        <button type="submit" class="btn btn-outline-secondary">Sign out</button>
+    </form>
+</section>
+
+@functions {
+    private static string FormatMonthlyAmount(decimal monthlyAmount)
+    {
+        return monthlyAmount <= 0 ? "Free" : $"{monthlyAmount:C0}/mo";
+    }
+}

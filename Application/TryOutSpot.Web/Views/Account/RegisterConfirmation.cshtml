@@ -1,0 +1,20 @@
+@{
+    ViewData["Title"] = "Confirm Your Email";
+    var email = ViewData["Email"] as string;
+}
+
+<section class="account-page compact">
+    <div class="account-heading">
+        <p class="account-kicker">Almost done</p>
+        <h1>Verify your email address.</h1>
+        <p>@(TempData["StatusMessage"] ?? "We sent a verification link to your email address.")</p>
+        @if (!string.IsNullOrWhiteSpace(email))
+        {
+            <p class="account-meta">@email</p>
+        }
+    </div>
+
+    <div class="form-actions">
+        <a asp-action="Login" asp-controller="Account" class="btn btn-primary">Go to login</a>
+    </div>
+</section>

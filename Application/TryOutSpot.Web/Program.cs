@@ -75,6 +75,14 @@ var authenticationBuilder = builder.Services.AddAuthentication(JwtBearerDefaults
         options.ExpireTimeSpan = TimeSpan.FromMinutes(10);
         options.SlidingExpiration = false;
     })
+    .AddCookie(TryOutSpotAuthenticationSchemes.WebCookie, options =>
+    {
+        options.Cookie.Name = "TryOutSpot.Web";
+        options.LoginPath = "/account/login";
+        options.AccessDeniedPath = "/account/login";
+        options.ExpireTimeSpan = TimeSpan.FromDays(14);
+        options.SlidingExpiration = true;
+    })
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters

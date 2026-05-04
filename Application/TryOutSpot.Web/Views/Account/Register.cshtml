@@ -1,0 +1,120 @@
+@model RegisterPageModel
+
+@{
+    ViewData["Title"] = "Create Account";
+}
+
+<section class="account-page">
+    <div class="account-heading">
+        <p class="account-kicker">Create your TryOutSpot account</p>
+        <h1>Start with the basics.</h1>
+        <p>Choose one or more account types now. You can add more later if you coach, manage a team, or also use TryOutSpot as a parent or player.</p>
+        <p class="required-note"><span class="required-marker">*</span> Required field</p>
+    </div>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    <form asp-action="Register" asp-controller="Account" method="post" class="account-form">
+        <input asp-for="ReturnUrl" type="hidden" />
+        <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+        <section class="form-section">
+            <h2>Sign-in details</h2>
+            <div class="form-grid two-column">
+                <div class="form-field">
+                    <label asp-for="Email" class="form-label">Email address <span class="required-marker">*</span></label>
+                    <input asp-for="Email" class="form-control" autocomplete="email" />
+                    <span asp-validation-for="Email" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Password" class="form-label">Password <span class="required-marker">*</span></label>
+                    <input asp-for="Password" class="form-control" autocomplete="new-password" />
+                    <span asp-validation-for="Password" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="ConfirmPassword" class="form-label">Confirm password <span class="required-marker">*</span></label>
+                    <input asp-for="ConfirmPassword" class="form-control" autocomplete="new-password" />
+                    <span asp-validation-for="ConfirmPassword" class="text-danger"></span>
+                </div>
+            </div>
+        </section>
+
+        <section class="form-section">
+            <h2>Your name</h2>
+            <div class="form-grid two-column">
+                <div class="form-field">
+                    <label asp-for="FirstName" class="form-label">First name <span class="required-marker">*</span></label>
+                    <input asp-for="FirstName" class="form-control" autocomplete="given-name" />
+                    <span asp-validation-for="FirstName" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="LastName" class="form-label">Last name <span class="required-marker">*</span></label>
+                    <input asp-for="LastName" class="form-control" autocomplete="family-name" />
+                    <span asp-validation-for="LastName" class="text-danger"></span>
+                </div>
+            </div>
+        </section>
+
+        <section class="form-section">
+            <h2>Account type <span class="required-marker">*</span></h2>
+            <p class="section-help">Pick every role that fits. For example, a parent can also be a coach.</p>
+            <div class="account-type-grid">
+                @foreach (var accountType in Model.AvailableAccountTypes)
+                {
+                    <label class="account-type-option" for="account-type-@accountType.Name">
+                        <input class="form-check-input" id="account-type-@accountType.Name" name="AccountTypes" type="checkbox" value="@accountType.Name" checked="@accountType.IsSelected" />
+                        <span>
+                            <strong>@accountType.Label</strong>
+                            <small>@accountType.Description</small>
+                        </span>
+                    </label>
+                }
+            </div>
+            <span asp-validation-for="AccountTypes" class="text-danger"></span>
+        </section>
+
+        <section class="form-section">
+            <h2>Optional profile details</h2>
+            <p class="section-help">These help us prepare future player, parent, and team workflows without slowing down signup.</p>
+            <div class="form-grid three-column">
+                <div class="form-field">
+                    <label asp-for="PhoneNumber" class="form-label">Phone number</label>
+                    <input asp-for="PhoneNumber" class="form-control" autocomplete="tel" />
+                    <span asp-validation-for="PhoneNumber" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="DateOfBirth" class="form-label">Date of birth</label>
+                    <input asp-for="DateOfBirth" class="form-control" />
+                    <span asp-validation-for="DateOfBirth" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="ZipCode" class="form-label">ZIP code</label>
+                    <input asp-for="ZipCode" class="form-control" autocomplete="postal-code" />
+                    <span asp-validation-for="ZipCode" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="City" class="form-label">City</label>
+                    <input asp-for="City" class="form-control" autocomplete="address-level2" />
+                    <span asp-validation-for="City" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="State" class="form-label">State</label>
+                    <input asp-for="State" class="form-control" autocomplete="address-level1" maxlength="2" />
+                    <span asp-validation-for="State" class="text-danger"></span>
+                </div>
+            </div>
+        </section>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Create account</button>
+            <a asp-action="Login" asp-controller="Account" class="btn btn-link">I already have an account</a>
+        </div>
+    </form>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

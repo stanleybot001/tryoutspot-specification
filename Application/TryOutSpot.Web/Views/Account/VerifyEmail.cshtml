@@ -1,0 +1,17 @@
+@{
+    ViewData["Title"] = "Email Verification";
+    var verified = ViewData["Verified"] as bool? == true;
+    var message = ViewData["Message"] as string ?? "Email verification could not be completed.";
+}
+
+<section class="account-page compact">
+    <div class="account-heading">
+        <p class="account-kicker">Email verification</p>
+        <h1>@(verified ? "Your email is verified." : "Verification failed.")</h1>
+        <p>@message</p>
+    </div>
+
+    <div class="form-actions">
+        <a asp-action="Login" asp-controller="Account" class="btn btn-primary">Go to login</a>
+    </div>
+</section>

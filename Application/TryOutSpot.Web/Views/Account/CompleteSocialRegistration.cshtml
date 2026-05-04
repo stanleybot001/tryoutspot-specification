@@ -1,0 +1,135 @@
+@model SocialRegistrationPageModel
+
+@{
+    ViewData["Title"] = "Complete Social Registration";
+    var providerName = string.IsNullOrWhiteSpace(Model.Provider) ? "social login" : Model.Provider;
+    var linkReturnUrl = Url.Action("CompleteSocialRegistration", "Account", new
+    {
+        externalLoginToken = Model.ExternalLoginToken,
+        returnUrl = Model.ReturnUrl
+    });
+}
+
+<section class="account-page">
+    <div class="account-heading">
+        <p class="account-kicker">@providerName account found</p>
+        <h1>Finish creating your TryOutSpot account.</h1>
+        <p>We received your verified profile from @providerName. Choose how you plan to use TryOutSpot, then you can finish setup from your onboarding page.</p>
+        <p class="required-note"><span class="required-marker">*</span> Required field</p>
+    </div>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    <section class="social-profile-summary">
+        @if (!string.IsNullOrWhiteSpace(Model.ProfileImageUrl))
+        {
+            <img src="@Model.ProfileImageUrl" alt="" />
+        }
+        <div>
+            <strong>@Model.Email</strong>
+            <span>@(Model.EmailVerified ? "Email verified by provider" : "Email verification still required")</span>
+        </div>
+    </section>
+
+    @if (Model.ExistingEmailAccountFound)
+    {
+        <section class="account-notice">
+            <h2>Existing account found</h2>
+            <p>An account already exists with this email address. Sign in with that account first, then link this social login.</p>
+            @if (Model.CanLinkToSignedInAccount)
+            {
+                <form asp-action="LinkSocialLogin" asp-controller="Account" method="post">
+                    <input name="externalLoginToken" type="hidden" value="@Model.ExternalLoginToken" />
+                    <button type="submit" class="btn btn-primary">Link this login</button>
+                </form>
+            }
+            else
+            {
+                <a asp-action="Login" asp-controller="Account" asp-route-returnUrl="@linkReturnUrl" class="btn btn-primary">Sign in to link account</a>
+            }
+        </section>
+    }
+
+    <form asp-action="CompleteSocialRegistration" asp-controller="Account" method="post" class="account-form">
+        <input asp-for="ExternalLoginToken" type="hidden" />
+        <input asp-for="ReturnUrl" type="hidden" />
+        <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+        <section class="form-section">
+            <h2>Your name</h2>
+            <div class="form-grid two-column">
+                <div class="form-field">
+                    <label asp-for="FirstName" class="form-label">First name <span class="required-marker">*</span></label>
+                    <input asp-for="FirstName" class="form-control" autocomplete="given-name" />
+                    <span asp-validation-for="FirstName" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="LastName" class="form-label">Last name <span class="required-marker">*</span></label>
+                    <input asp-for="LastName" class="form-control" autocomplete="family-name" />
+                    <span asp-validation-for="LastName" class="text-danger"></span>
+                </div>
+            </div>
+        </section>
+
+        <section class="form-section">
+            <h2>Account type <span class="required-marker">*</span></h2>
+            <p class="section-help">Pick every role that applies. You can adjust this later.</p>
+            <div class="account-type-grid">
+                @foreach (var accountType in Model.AvailableAccountTypes)
+                {
+                    <label class="account-type-option" for="social-account-type-@accountType.Name">
+                        <input class="form-check-input" id="social-account-type-@accountType.Name" name="AccountTypes" type="checkbox" value="@accountType.Name" checked="@accountType.IsSelected" />
+                        <span>
+                            <strong>@accountType.Label</strong>
+                            <small>@accountType.Description</small>
+                        </span>
+                    </label>
+                }
+            </div>
+            <span asp-validation-for="AccountTypes" class="text-danger"></span>
+        </section>
+
+        <section class="form-section">
+            <h2>Optional profile details</h2>
+            <div class="form-grid three-column">
+                <div class="form-field">
+                    <label asp-for="PhoneNumber" class="form-label">Phone number</label>
+                    <input asp-for="PhoneNumber" class="form-control" autocomplete="tel" />
+                    <span asp-validation-for="PhoneNumber" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="DateOfBirth" class="form-label">Date of birth</label>
+                    <input asp-for="DateOfBirth" class="form-control" />
+                    <span asp-validation-for="DateOfBirth" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="ZipCode" class="form-label">ZIP code</label>
+                    <input asp-for="ZipCode" class="form-control" autocomplete="postal-code" />
+                    <span asp-validation-for="ZipCode" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="City" class="form-label">City</label>
+                    <input asp-for="City" class="form-control" autocomplete="address-level2" />
+                    <span asp-validation-for="City" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="State" class="form-label">State</label>
+                    <input asp-for="State" class="form-control" autocomplete="address-level1" maxlength="2" />
+                    <span asp-validation-for="State" class="text-danger"></span>
+                </div>
+            </div>
+        </section>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Finish signup</button>
+            <a asp-action="Login" asp-controller="Account" class="btn btn-link">Use a different account</a>
+        </div>
+    </form>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

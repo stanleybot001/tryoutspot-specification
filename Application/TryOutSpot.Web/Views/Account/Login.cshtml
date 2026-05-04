@@ -1,0 +1,69 @@
+@model LoginPageModel
+
+@{
+    ViewData["Title"] = "Login";
+}
+
+<section class="account-page compact">
+    <div class="account-heading">
+        <p class="account-kicker">Welcome back</p>
+        <h1>Sign in to TryOutSpot.</h1>
+        <p class="required-note"><span class="required-marker">*</span> Required field</p>
+    </div>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    <form asp-action="Login" asp-controller="Account" method="post" class="account-form">
+        <input asp-for="ReturnUrl" type="hidden" />
+        <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+        <section class="form-section">
+            <div class="form-grid">
+                <div class="form-field">
+                    <label asp-for="Email" class="form-label">Email address <span class="required-marker">*</span></label>
+                    <input asp-for="Email" class="form-control" autocomplete="email" />
+                    <span asp-validation-for="Email" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Password" class="form-label">Password <span class="required-marker">*</span></label>
+                    <input asp-for="Password" class="form-control" autocomplete="current-password" />
+                    <span asp-validation-for="Password" class="text-danger"></span>
+                </div>
+                <label class="form-check account-check">
+                    <input asp-for="RememberMe" class="form-check-input" />
+                    <span class="form-check-label">Keep me signed in</span>
+                </label>
+            </div>
+        </section>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Sign in</button>
+            <a asp-action="ForgotPassword" asp-controller="Account" class="btn btn-link">Forgot password?</a>
+        </div>
+    </form>
+
+    <div class="account-divider"><span>or</span></div>
+
+    <div class="social-login-actions">
+        @if (Model.GoogleIsConfigured)
+        {
+            <a class="btn btn-outline-dark" asp-action="ExternalLogin" asp-controller="Account" asp-route-provider="Google" asp-route-returnUrl="@Model.ReturnUrl">Continue with Google</a>
+        }
+        else
+        {
+            <p class="section-help">Google login is not configured for this environment.</p>
+        }
+    </div>
+
+    <p class="account-secondary-link">
+        New to TryOutSpot?
+        <a asp-action="Register" asp-controller="Account" asp-route-returnUrl="@Model.ReturnUrl">Create an account</a>
+    </p>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
