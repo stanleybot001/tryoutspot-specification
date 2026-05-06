@@ -373,7 +373,9 @@ public sealed class OnboardingApiController(
             user.IsActive,
             user.EmailConfirmed,
             user.PhoneNumber,
-            user.PhoneNumberConfirmed);
+            user.PhoneNumberConfirmed,
+            user.SmsConsentAccepted,
+            user.SmsConsentAcceptedAt);
     }
 
     private static BillingPlanResponse ToBillingPlanResponse(BillingPlanDefinition plan)

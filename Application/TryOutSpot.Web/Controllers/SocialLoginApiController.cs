@@ -174,6 +174,11 @@ public sealed class SocialLoginApiController(
         {
             return ValidationProblem(ModelState);
         }
+        ValidateSmsConsent(request.SmsConsentAccepted, request.PhoneNumber, nameof(request.PhoneNumber));
+        if (!ModelState.IsValid)
+        {
+            return ValidationProblem(ModelState);
+        }
 
         var existingLogin = await userManager.FindByLoginAsync(ticket.Provider, ticket.ProviderKey);
         if (existingLogin is not null)
@@ -211,6 +216,7 @@ public sealed class SocialLoginApiController(
             IsActive = true,
             LockoutEnabled = true
         };
+        ApplySmsConsent(user, request.SmsConsentAccepted, now, TryOutSpotSmsConsent.ApiSocialRegistrationSource);
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
@@ -469,6 +475,33 @@ public sealed class SocialLoginApiController(
         {
             ModelState.AddModelError(error.Code, error.Description);
         }
+    }
+
+    private void ValidateSmsConsent(bool smsConsentAccepted, string? phoneNumber, string modelStateKey)
+    {
+        if (smsConsentAccepted && string.IsNullOrWhiteSpace(phoneNumber))
+        {
+            ModelState.AddModelError(
+                modelStateKey,
+                "Enter a phone number to opt in to transactional SMS messages.");
+        }
+    }
+
+    private static void ApplySmsConsent(
+        User user,
+        bool smsConsentAccepted,
+        DateTime acceptedAtUtc,
+        string source)
+    {
+        if (!smsConsentAccepted)
+        {
+            return;
+        }
+
+        user.SmsConsentAccepted = true;
+        user.SmsConsentAcceptedAt = acceptedAtUtc;
+        user.SmsConsentText = TryOutSpotSmsConsent.CheckboxText;
+        user.SmsConsentSource = source;
     }
 
     private static string GetProviderDisplayName(string provider)

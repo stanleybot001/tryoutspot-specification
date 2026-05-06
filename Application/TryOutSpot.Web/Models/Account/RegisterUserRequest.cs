@@ -44,6 +44,11 @@ public sealed class RegisterUserRequest
     public string? PhoneNumber { get; set; }
 
     /// <summary>
+    /// Optional consent to receive transactional SMS messages from TryOutSpot.
+    /// </summary>
+    public bool SmsConsentAccepted { get; set; }
+
+    /// <summary>
     /// Optional date of birth for age-sensitive player workflows.
     /// </summary>
     public DateTime? DateOfBirth { get; set; }

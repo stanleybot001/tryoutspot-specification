@@ -28,6 +28,8 @@ public sealed class AccountPageTests
         Assert.Contains("name=\"LastName\"", html);
         Assert.Contains("name=\"AccountTypes\"", html);
         Assert.Contains("name=\"PhoneNumber\"", html);
+        Assert.Contains("name=\"SmsConsentAccepted\"", html);
+        Assert.Contains("I agree to receive transactional SMS messages", html);
         Assert.Contains("name=\"DateOfBirth\"", html);
         Assert.Contains("name=\"ZipCode\"", html);
         Assert.Contains("required-marker", html);
@@ -83,6 +85,7 @@ public sealed class AccountPageTests
                 new("AccountTypes", TryOutSpotRoles.Parent),
                 new("AccountTypes", TryOutSpotRoles.Coach),
                 new("PhoneNumber", "555-555-9191"),
+                new("SmsConsentAccepted", "true"),
                 new("DateOfBirth", "2010-05-01"),
                 new("ZipCode", "73102"),
                 new("City", "Oklahoma City"),
@@ -99,6 +102,10 @@ public sealed class AccountPageTests
         Assert.Equal("Morgan", user.FirstName);
         Assert.Equal("Taylor", user.LastName);
         Assert.Equal("555-555-9191", user.PhoneNumber);
+        Assert.True(user.SmsConsentAccepted);
+        Assert.NotNull(user.SmsConsentAcceptedAt);
+        Assert.Equal(TryOutSpotSmsConsent.CheckboxText, user.SmsConsentText);
+        Assert.Equal(TryOutSpotSmsConsent.AccountRegistrationSource, user.SmsConsentSource);
         Assert.Equal("73102", user.ZipCode);
         Assert.Equal("OK", user.State);
 

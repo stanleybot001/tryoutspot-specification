@@ -221,6 +221,30 @@ public sealed class AccountAuthenticationTests
     }
 
     [Fact]
+    public async Task SendPhoneVerification_WithoutSmsConsent_ReturnsBadRequest()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var client = factory.CreateClient();
+        var email = "phone-no-consent@example.com";
+        var phoneNumber = "555-555-9988";
+        await factory.RegisterUserAsync(email, ["Parent"], smsConsentAccepted: false);
+        await factory.ConfirmEmailAsync(email);
+        var loginTokens = await LoginAsync(client, email);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            loginTokens.TokenType,
+            loginTokens.AccessToken);
+
+        var sendResponse = await client.PostAsJsonAsync(
+            "/api/account/send-phone-verification",
+            new SendPhoneVerificationRequest { PhoneNumber = phoneNumber });
+
+        Assert.Equal(HttpStatusCode.BadRequest, sendResponse.StatusCode);
+        var response = await sendResponse.Content.ReadFromJsonAsync<AccountActionResponse>();
+        Assert.NotNull(response);
+        Assert.Contains("SMS consent is required", response.Message);
+    }
+
+    [Fact]
     public async Task RepeatedFailedLogins_LockAccount()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();

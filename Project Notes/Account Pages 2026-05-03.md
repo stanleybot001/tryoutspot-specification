@@ -43,12 +43,15 @@ The required signup fields are:
 Optional fields are included on the same page:
 
 - Phone number
+- Transactional SMS consent checkbox
 - Date of birth
 - ZIP code
 - City
 - State
 
 This keeps the first signup decision simple while still allowing users to provide useful profile details immediately.
+
+The SMS consent checkbox is optional and unchecked by default. If selected, the user must also enter a phone number. The exact consent text is stored with the user record for auditability.
 
 ## Account Type Direction
 
@@ -63,4 +66,5 @@ Added automated tests for:
 - Complete register form rendering
 - Login, forgot password, and reset password pages
 - Server-rendered registration creating users and roles
+- SMS consent audit capture during page registration
 - Cookie-backed onboarding access after login

@@ -48,7 +48,10 @@ public sealed class TryOutSpotWebApplicationFactory : WebApplicationFactory<Prog
         });
     }
 
-    public async Task<Guid> RegisterUserAsync(string email, IReadOnlyCollection<string> accountTypes)
+    public async Task<Guid> RegisterUserAsync(
+        string email,
+        IReadOnlyCollection<string> accountTypes,
+        bool smsConsentAccepted = true)
     {
         var client = CreateClient();
         var response = await client.PostAsJsonAsync(
@@ -60,6 +63,7 @@ public sealed class TryOutSpotWebApplicationFactory : WebApplicationFactory<Prog
                 FirstName = "Taylor",
                 LastName = "Morgan",
                 PhoneNumber = "555-555-1234",
+                SmsConsentAccepted = smsConsentAccepted,
                 ZipCode = "73102",
                 City = "Oklahoma City",
                 State = "OK",
@@ -93,6 +97,10 @@ public sealed class TryOutSpotWebApplicationFactory : WebApplicationFactory<Prog
             FirstName = "Taylor",
             LastName = "Morgan",
             PhoneNumber = "555-555-1234",
+            SmsConsentAccepted = true,
+            SmsConsentAcceptedAt = now,
+            SmsConsentText = TryOutSpotSmsConsent.CheckboxText,
+            SmsConsentSource = TryOutSpotSmsConsent.ApiAccountRegistrationSource,
             CreatedAt = now,
             UpdatedAt = now,
             IsActive = true,

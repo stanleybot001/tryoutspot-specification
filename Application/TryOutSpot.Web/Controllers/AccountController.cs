@@ -43,6 +43,7 @@ public sealed class AccountController(
         {
             ModelState.AddModelError(nameof(model.AccountTypes), "Choose at least one account type.");
         }
+        ValidateSmsConsent(model.SmsConsentAccepted, model.PhoneNumber, nameof(model.PhoneNumber));
 
         if (!ModelState.IsValid)
         {
@@ -68,6 +69,7 @@ public sealed class AccountController(
             IsActive = true,
             LockoutEnabled = true
         };
+        ApplySmsConsent(user, model.SmsConsentAccepted, now, TryOutSpotSmsConsent.AccountRegistrationSource);
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
@@ -410,6 +412,7 @@ public sealed class AccountController(
         {
             ModelState.AddModelError(nameof(model.AccountTypes), "Choose at least one account type.");
         }
+        ValidateSmsConsent(model.SmsConsentAccepted, model.PhoneNumber, nameof(model.PhoneNumber));
 
         if (await userManager.FindByLoginAsync(ticket.Provider, ticket.ProviderKey) is not null)
         {
@@ -446,6 +449,7 @@ public sealed class AccountController(
             IsActive = true,
             LockoutEnabled = true
         };
+        ApplySmsConsent(user, model.SmsConsentAccepted, now, TryOutSpotSmsConsent.SocialRegistrationSource);
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
@@ -926,6 +930,33 @@ public sealed class AccountController(
         {
             ModelState.AddModelError(error.Code, error.Description);
         }
+    }
+
+    private void ValidateSmsConsent(bool smsConsentAccepted, string? phoneNumber, string modelStateKey)
+    {
+        if (smsConsentAccepted && string.IsNullOrWhiteSpace(phoneNumber))
+        {
+            ModelState.AddModelError(
+                modelStateKey,
+                "Enter a phone number to opt in to transactional SMS messages.");
+        }
+    }
+
+    private static void ApplySmsConsent(
+        User user,
+        bool smsConsentAccepted,
+        DateTime acceptedAtUtc,
+        string source)
+    {
+        if (!smsConsentAccepted)
+        {
+            return;
+        }
+
+        user.SmsConsentAccepted = true;
+        user.SmsConsentAcceptedAt = acceptedAtUtc;
+        user.SmsConsentText = TryOutSpotSmsConsent.CheckboxText;
+        user.SmsConsentSource = source;
     }
 
     private static bool HasAnyRole(IReadOnlyCollection<string> roles, params string[] candidates)

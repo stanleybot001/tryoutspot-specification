@@ -14,7 +14,8 @@ public sealed record UserAccountResponse(
     string FirstName,
     string LastName,
     IReadOnlyCollection<string> AccountTypes,
-    bool IsActive);
+    bool IsActive,
+    bool SmsConsentAccepted);
 
 /// <summary>
 /// Token pair returned after login or refresh.
@@ -39,7 +40,9 @@ public sealed record CurrentUserResponse(
     bool IsActive,
     bool EmailConfirmed,
     string? PhoneNumber,
-    bool PhoneNumberConfirmed);
+    bool PhoneNumberConfirmed,
+    bool SmsConsentAccepted,
+    DateTime? SmsConsentAcceptedAt);
 
 /// <summary>
 /// Standard response for account lifecycle actions.

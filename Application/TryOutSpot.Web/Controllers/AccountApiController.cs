@@ -49,6 +49,11 @@ public sealed class AccountApiController(
         {
             return ValidationProblem(ModelState);
         }
+        ValidateSmsConsent(request.SmsConsentAccepted, request.PhoneNumber, nameof(request.PhoneNumber));
+        if (!ModelState.IsValid)
+        {
+            return ValidationProblem(ModelState);
+        }
 
         var now = DateTime.UtcNow;
         var email = request.Email.Trim();
@@ -69,6 +74,7 @@ public sealed class AccountApiController(
             IsActive = true,
             LockoutEnabled = true
         };
+        ApplySmsConsent(user, request.SmsConsentAccepted, now, TryOutSpotSmsConsent.ApiAccountRegistrationSource);
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
@@ -305,6 +311,11 @@ public sealed class AccountApiController(
         {
             return BadRequest(new AccountActionResponse("A phone number is required before verification."));
         }
+        if (!user.SmsConsentAccepted)
+        {
+            return BadRequest(new AccountActionResponse(
+                "SMS consent is required before sending phone verification messages."));
+        }
 
         var verificationCode = await userManager.GenerateChangePhoneNumberTokenAsync(user, phoneNumber);
         await accountSmsSender.SendPhoneVerificationCodeAsync(user, phoneNumber, verificationCode, cancellationToken);
@@ -489,7 +500,8 @@ public sealed class AccountApiController(
             user.FirstName,
             user.LastName,
             accountTypes,
-            user.IsActive);
+            user.IsActive,
+            user.SmsConsentAccepted);
     }
 
     private async Task<User?> GetCurrentUserAsync()
@@ -511,6 +523,35 @@ public sealed class AccountApiController(
             user.IsActive,
             user.EmailConfirmed,
             user.PhoneNumber,
-            user.PhoneNumberConfirmed);
+            user.PhoneNumberConfirmed,
+            user.SmsConsentAccepted,
+            user.SmsConsentAcceptedAt);
+    }
+
+    private void ValidateSmsConsent(bool smsConsentAccepted, string? phoneNumber, string modelStateKey)
+    {
+        if (smsConsentAccepted && string.IsNullOrWhiteSpace(phoneNumber))
+        {
+            ModelState.AddModelError(
+                modelStateKey,
+                "Enter a phone number to opt in to transactional SMS messages.");
+        }
+    }
+
+    private static void ApplySmsConsent(
+        User user,
+        bool smsConsentAccepted,
+        DateTime acceptedAtUtc,
+        string source)
+    {
+        if (!smsConsentAccepted)
+        {
+            return;
+        }
+
+        user.SmsConsentAccepted = true;
+        user.SmsConsentAcceptedAt = acceptedAtUtc;
+        user.SmsConsentText = TryOutSpotSmsConsent.CheckboxText;
+        user.SmsConsentSource = source;
     }
 }

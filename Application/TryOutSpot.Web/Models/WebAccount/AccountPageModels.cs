@@ -51,6 +51,9 @@ public sealed class RegisterPageModel
     [MaxLength(2)]
     public string? State { get; set; }
 
+    [Display(Name = "SMS consent")]
+    public bool SmsConsentAccepted { get; set; }
+
     public List<string> AccountTypes { get; set; } = [];
 
     public IReadOnlyCollection<AccountTypeSelectionItem> AvailableAccountTypes { get; set; } = [];
@@ -152,6 +155,9 @@ public sealed class SocialRegistrationPageModel
 
     [MaxLength(2)]
     public string? State { get; set; }
+
+    [Display(Name = "SMS consent")]
+    public bool SmsConsentAccepted { get; set; }
 
     public List<string> AccountTypes { get; set; } = [];
 

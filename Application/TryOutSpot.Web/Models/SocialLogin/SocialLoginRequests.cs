@@ -17,6 +17,8 @@ public sealed class SocialLoginRegisterRequest
     [MaxLength(20)]
     public string? PhoneNumber { get; set; }
 
+    public bool SmsConsentAccepted { get; set; }
+
     public DateTime? DateOfBirth { get; set; }
 
     [MaxLength(10)]

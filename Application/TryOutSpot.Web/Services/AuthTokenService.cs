@@ -179,7 +179,8 @@ public sealed class AuthTokenService(
             user.FirstName,
             user.LastName,
             roles,
-            user.IsActive);
+            user.IsActive,
+            user.SmsConsentAccepted);
     }
 
     private byte[] GetSigningKeyBytes()

@@ -338,6 +338,8 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.PhoneNumberConfirmed).HasColumnName("IsPhoneVerified");
             entity.Property(e => e.ProfileImageUrl).HasMaxLength(500);
             entity.Property(e => e.SecurityStamp).HasMaxLength(255);
+            entity.Property(e => e.SmsConsentSource).HasMaxLength(100);
+            entity.Property(e => e.SmsConsentText).HasMaxLength(1000);
             entity.Property(e => e.State).HasMaxLength(2);
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.UserName).HasMaxLength(255).IsRequired();

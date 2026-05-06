@@ -39,6 +39,7 @@ Request:
   "firstName": "Taylor",
   "lastName": "Morgan",
   "phoneNumber": "555-555-1234",
+  "smsConsentAccepted": true,
   "dateOfBirth": null,
   "zipCode": "73102",
   "city": "Oklahoma City",
@@ -56,7 +57,8 @@ Success response: `201 Created`
   "firstName": "Taylor",
   "lastName": "Morgan",
   "accountTypes": ["Parent", "Coach"],
-  "isActive": true
+  "isActive": true,
+  "smsConsentAccepted": true
 }
 ```
 
@@ -90,7 +92,8 @@ Success response: `200 OK`
     "firstName": "Taylor",
     "lastName": "Morgan",
     "accountTypes": ["Parent", "Coach"],
-    "isActive": true
+    "isActive": true,
+    "smsConsentAccepted": true
   }
 }
 ```
@@ -147,7 +150,9 @@ Success response: `200 OK`
   "isActive": true,
   "emailConfirmed": true,
   "phoneNumber": "555-555-1234",
-  "phoneNumberConfirmed": false
+  "phoneNumberConfirmed": false,
+  "smsConsentAccepted": true,
+  "smsConsentAcceptedAt": "2026-05-05T20:00:00Z"
 }
 ```
 
@@ -256,7 +261,7 @@ Failure response: `400 Bad Request`
 
 ### `POST /api/account/send-phone-verification`
 
-Sends a phone verification code for the authenticated account. Requires `Authorization: Bearer <token>`.
+Sends a phone verification code for the authenticated account. Requires `Authorization: Bearer <token>` and prior transactional SMS consent.
 
 Request:
 
@@ -273,7 +278,7 @@ Failure responses:
 - `400 Bad Request`
 - `401 Unauthorized`
 
-Delivery note: phone verification codes are sent through the configured account SMS sender. Development can use either logging delivery or Twilio.
+Delivery note: phone verification codes are sent through the configured account SMS sender. Development can use either logging delivery or Twilio. If `smsConsentAccepted` is false, the API returns `400 Bad Request` and does not send SMS.
 
 ### `POST /api/account/verify-phone`
 
@@ -361,7 +366,9 @@ Success response: `200 OK`
     "isActive": true,
     "emailConfirmed": true,
     "phoneNumber": null,
-    "phoneNumberConfirmed": false
+    "phoneNumberConfirmed": false,
+    "smsConsentAccepted": false,
+    "smsConsentAcceptedAt": null
   },
   "steps": [
     {
@@ -613,6 +620,7 @@ Request:
   "firstName": "Taylor",
   "lastName": "Morgan",
   "phoneNumber": "555-555-1234",
+  "smsConsentAccepted": true,
   "dateOfBirth": null,
   "zipCode": "73102",
   "city": "Oklahoma City",

@@ -20,6 +20,14 @@ public partial class User : IdentityUser<Guid>
 
     public string? NotificationPreferences { get; set; }
 
+    public bool SmsConsentAccepted { get; set; }
+
+    public DateTime? SmsConsentAcceptedAt { get; set; }
+
+    public string? SmsConsentText { get; set; }
+
+    public string? SmsConsentSource { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
