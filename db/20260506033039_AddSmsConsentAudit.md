@@ -22,3 +22,7 @@ The generated SQL script is:
 - `db/20260506033039_AddSmsConsentAudit.sql`
 
 Apply this migration before deploying code that expects these columns.
+
+## Applied
+
+Applied to `tryoutspot_prod` on 2026-05-06 with `dotnet ef database update`.
