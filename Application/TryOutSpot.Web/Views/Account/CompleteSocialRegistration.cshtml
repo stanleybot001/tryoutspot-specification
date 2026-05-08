@@ -125,6 +125,11 @@
                 <input asp-for="SmsConsentAccepted" class="form-check-input" />
                 <span>@TryOutSpotSmsConsent.CheckboxText</span>
             </label>
+            <p class="sms-consent-disclosure">
+                SMS consent is optional and is not required to create an account.
+                Review the <a href="/privacy-policy">Privacy Policy</a> and
+                <a href="/terms-and-conditions">Terms and Conditions</a>.
+            </p>
             <span asp-validation-for="SmsConsentAccepted" class="text-danger"></span>
         </section>
 

@@ -30,6 +30,8 @@ public sealed class AccountPageTests
         Assert.Contains("name=\"PhoneNumber\"", html);
         Assert.Contains("name=\"SmsConsentAccepted\"", html);
         Assert.Contains("I agree to receive transactional SMS messages", html);
+        Assert.Contains("/privacy-policy", html);
+        Assert.Contains("/terms-and-conditions", html);
         Assert.Contains("name=\"DateOfBirth\"", html);
         Assert.Contains("name=\"ZipCode\"", html);
         Assert.Contains("required-marker", html);

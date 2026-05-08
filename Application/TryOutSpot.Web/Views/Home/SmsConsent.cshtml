@@ -1,0 +1,48 @@
+@{
+    ViewData["Title"] = "SMS Consent";
+}
+
+<article class="legal-page">
+    <h1>TryOutSpot SMS Consent Flow</h1>
+    <p><strong>Effective date:</strong> May 8, 2026</p>
+
+    <p>
+        TryOutSpot sends transactional SMS messages only to users who provide a mobile phone number
+        and explicitly opt in to transactional SMS messages during account signup.
+    </p>
+
+    <h2>Public Opt-In Path</h2>
+    <p>
+        A user can opt in on the public account registration page at
+        <a href="/account/register">https://tryoutspot.com/account/register</a>.
+        The SMS consent checkbox is unchecked by default. SMS consent is optional and is not required
+        to create a TryOutSpot account.
+    </p>
+
+    <h2>Consent Checkbox Text</h2>
+    <div class="sms-consent-example">
+        <input type="checkbox" disabled />
+        <span>@TryOutSpotSmsConsent.CheckboxText</span>
+    </div>
+    <p>
+        The registration page also links directly to the
+        <a href="/privacy-policy">Privacy Policy</a> and
+        <a href="/terms-and-conditions">Terms and Conditions</a>.
+    </p>
+
+    <h2>Message Types</h2>
+    <p>
+        Messages may include phone verification codes, account security notices, password reset
+        notifications, tryout registration updates, and related account or service alerts.
+    </p>
+
+    <h2>Disclosures</h2>
+    <ul>
+        <li>Message frequency varies based on account activity and registrations.</li>
+        <li>Message and data rates may apply.</li>
+        <li>Reply STOP to opt out.</li>
+        <li>Reply HELP for help.</li>
+        <li>SMS consent is not a condition of purchasing goods or services.</li>
+        <li>Mobile information is not shared with third parties or affiliates for marketing or promotional purposes.</li>
+    </ul>
+</article>

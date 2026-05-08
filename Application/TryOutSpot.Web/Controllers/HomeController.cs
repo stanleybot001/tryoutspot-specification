@@ -30,6 +30,12 @@ public class HomeController : Controller
         return View();
     }
 
+    [HttpGet("/sms-consent")]
+    public IActionResult SmsConsent()
+    {
+        return View();
+    }
+
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public IActionResult Error()
     {
