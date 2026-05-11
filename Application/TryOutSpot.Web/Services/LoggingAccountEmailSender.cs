@@ -14,6 +14,21 @@ public sealed class LoggingAccountEmailSender(ILogger<LoggingAccountEmailSender>
         return Task.CompletedTask;
     }
 
+    public Task SendEmailChangeTokenAsync(
+        User user,
+        string newEmail,
+        string changeToken,
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation(
+            "Email change token generated for user {UserId} and new email {NewEmail}. Configure a real email sender before production. Token: {ChangeToken}",
+            user.Id,
+            newEmail,
+            changeToken);
+
+        return Task.CompletedTask;
+    }
+
     public Task SendPasswordResetTokenAsync(User user, string resetToken, CancellationToken cancellationToken)
     {
         logger.LogInformation(

@@ -280,6 +280,48 @@ body {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.account-summary-strip.settings-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.account-summary-strip small {
+  display: block;
+  color: #64748b;
+}
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.settings-wide {
+  grid-column: 1 / -1;
+}
+
+.stacked-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.tight-form {
+  margin-top: 1rem;
+}
+
+.readonly-field {
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  color: #334155;
+  min-height: 38px;
+  padding: 0.45rem 0.75rem;
+  background: #f8fafc;
+}
+
+.settings-feature-list {
+  margin-top: 1rem;
+}
+
 .onboarding-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
@@ -353,6 +395,8 @@ body {
   .form-grid.three-column,
   .account-type-grid,
   .account-summary-strip,
+  .account-summary-strip.settings-summary,
+  .settings-layout,
   .onboarding-layout,
   .step-row,
   .plan-row {

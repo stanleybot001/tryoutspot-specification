@@ -1,10 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
+using TryOutSpot.Web.Security;
 using TryOutSpot.Web.Models.Billing;
 using TryOutSpot.Web.Services;
 
@@ -104,6 +107,40 @@ public sealed class EntitlementServiceTests
         Assert.Contains(TryOutSpotFeatureCodes.UnlimitedOpportunityPostings, entitlements.FeatureCodes);
         Assert.Contains(TryOutSpotFeatureCodes.AdvancedPlayerSearch, entitlements.FeatureCodes);
         Assert.DoesNotContain(TryOutSpotFeatureCodes.BrowseOpportunities, entitlements.FeatureCodes);
+    }
+
+    [Fact]
+    public async Task FeatureAuthorizationPolicy_UsesCurrentEntitlements()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var userId = await factory.RegisterUserAsync("feature-policy@example.com", ["Parent"]);
+
+        using var scope = factory.Services.CreateScope();
+        var authorizationService = scope.ServiceProvider.GetRequiredService<IAuthorizationService>();
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.NameIdentifier, userId.ToString())],
+            "Test"));
+
+        var freeFeatureResult = await authorizationService.AuthorizeAsync(
+            principal,
+            null,
+            TryOutSpotAuthorizationPolicies.Feature(TryOutSpotFeatureCodes.BrowseOpportunities));
+        var paidFeatureBeforeSubscription = await authorizationService.AuthorizeAsync(
+            principal,
+            null,
+            TryOutSpotAuthorizationPolicies.Feature(TryOutSpotFeatureCodes.PriorityApplicationReview));
+
+        Assert.True(freeFeatureResult.Succeeded);
+        Assert.False(paidFeatureBeforeSubscription.Succeeded);
+
+        await AddSubscriptionAsync(factory, userId, TryOutSpotPlanCodes.PremiumPlayer, "active");
+
+        var paidFeatureAfterSubscription = await authorizationService.AuthorizeAsync(
+            principal,
+            null,
+            TryOutSpotAuthorizationPolicies.Feature(TryOutSpotFeatureCodes.PriorityApplicationReview));
+
+        Assert.True(paidFeatureAfterSubscription.Succeeded);
     }
 
     private static async Task AddSubscriptionAsync(

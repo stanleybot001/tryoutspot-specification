@@ -25,6 +25,21 @@ public sealed class ResendAccountEmailSender(
         return SendAsync(user, content, cancellationToken);
     }
 
+    public Task SendEmailChangeTokenAsync(
+        User user,
+        string newEmail,
+        string changeToken,
+        CancellationToken cancellationToken)
+    {
+        var content = AccountEmailContentBuilder.BuildEmailChange(
+            user,
+            newEmail,
+            changeToken,
+            emailOptions.Value);
+
+        return SendAsync(user, content, cancellationToken, newEmail);
+    }
+
     public Task SendPasswordResetTokenAsync(
         User user,
         string resetToken,
@@ -41,11 +56,14 @@ public sealed class ResendAccountEmailSender(
     private async Task SendAsync(
         User user,
         AccountEmailContent content,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? recipientOverride = null)
     {
         var options = emailOptions.Value;
         var resend = resendOptions.Value;
-        var recipient = user.Email;
+        var recipient = string.IsNullOrWhiteSpace(recipientOverride)
+            ? user.Email
+            : recipientOverride;
 
         if (string.IsNullOrWhiteSpace(recipient))
         {

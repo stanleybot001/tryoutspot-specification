@@ -1,0 +1,292 @@
+@model AccountSettingsPageModel
+
+@{
+    ViewData["Title"] = "Account Settings";
+}
+
+<section class="account-page">
+    <div class="account-heading">
+        <p class="account-kicker">Account settings</p>
+        <h1>Manage your access, profile, and notifications.</h1>
+        <p>These settings control how you sign in, how TryOutSpot identifies your account type, and which account messages you can receive.</p>
+        <p class="required-note"><span class="required-marker">*</span> Required field</p>
+    </div>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    <section class="account-summary-strip settings-summary">
+        <div>
+            <span>Email</span>
+            <strong>@Model.Email.CurrentEmail</strong>
+        </div>
+        <div>
+            <span>Email status</span>
+            <strong>@(Model.Email.EmailConfirmed ? "Verified" : "Not verified")</strong>
+        </div>
+        <div>
+            <span>Phone status</span>
+            <strong>@(Model.Phone.PhoneNumberConfirmed ? "Verified" : "Not verified")</strong>
+        </div>
+        <div>
+            <span>Membership</span>
+            <strong>@Model.CurrentPlanName</strong>
+            @if (!string.IsNullOrWhiteSpace(Model.CurrentPlanStatus))
+            {
+                <small>@Model.CurrentPlanStatus</small>
+            }
+        </div>
+    </section>
+
+    <div class="settings-layout">
+        <section class="form-section">
+            <h2>Profile</h2>
+            <form asp-action="UpdateProfile" asp-controller="Account" method="post" class="stacked-form">
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="Profile.FirstName" class="form-label">First name <span class="required-marker">*</span></label>
+                        <input asp-for="Profile.FirstName" class="form-control" autocomplete="given-name" />
+                        <span asp-validation-for="Profile.FirstName" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Profile.LastName" class="form-label">Last name <span class="required-marker">*</span></label>
+                        <input asp-for="Profile.LastName" class="form-control" autocomplete="family-name" />
+                        <span asp-validation-for="Profile.LastName" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Profile.DateOfBirth" class="form-label">Date of birth</label>
+                        <input asp-for="Profile.DateOfBirth" class="form-control" />
+                        <span asp-validation-for="Profile.DateOfBirth" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Profile.ZipCode" class="form-label">ZIP code</label>
+                        <input asp-for="Profile.ZipCode" class="form-control" autocomplete="postal-code" />
+                        <span asp-validation-for="Profile.ZipCode" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Profile.City" class="form-label">City</label>
+                        <input asp-for="Profile.City" class="form-control" autocomplete="address-level2" />
+                        <span asp-validation-for="Profile.City" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Profile.State" class="form-label">State</label>
+                        <input asp-for="Profile.State" class="form-control" autocomplete="address-level1" maxlength="2" />
+                        <span asp-validation-for="Profile.State" class="text-danger"></span>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save profile</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="form-section">
+            <h2>Email</h2>
+            <p class="section-help">Changing email requires confirmation from the new address.</p>
+            <form asp-action="RequestEmailChange" asp-controller="Account" method="post" class="stacked-form">
+                <input asp-for="Email.CurrentEmail" type="hidden" />
+                <input asp-for="Email.EmailConfirmed" type="hidden" />
+                <input asp-for="Email.HasLocalPassword" type="hidden" />
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="Email.NewEmail" class="form-label">New email address <span class="required-marker">*</span></label>
+                        <input asp-for="Email.NewEmail" class="form-control" autocomplete="email" />
+                        <span asp-validation-for="Email.NewEmail" class="text-danger"></span>
+                    </div>
+                    @if (Model.Email.HasLocalPassword)
+                    {
+                        <div class="form-field">
+                            <label asp-for="Email.CurrentPassword" class="form-label">Current password <span class="required-marker">*</span></label>
+                            <input asp-for="Email.CurrentPassword" class="form-control" autocomplete="current-password" />
+                            <span asp-validation-for="Email.CurrentPassword" class="text-danger"></span>
+                        </div>
+                    }
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Send confirmation</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="form-section">
+            <h2>Phone</h2>
+            <p class="section-help">Phone verification uses transactional SMS and requires SMS consent.</p>
+            <form asp-action="UpdatePhone" asp-controller="Account" method="post" class="stacked-form">
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="Phone.PhoneNumber" class="form-label">Phone number</label>
+                        <input asp-for="Phone.PhoneNumber" class="form-control" autocomplete="tel" />
+                        <span asp-validation-for="Phone.PhoneNumber" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Status</label>
+                        <div class="readonly-field">@(Model.Phone.PhoneNumberConfirmed ? "Verified" : "Not verified")</div>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save phone</button>
+                    <button type="submit" class="btn btn-outline-primary" formaction="/account/settings/send-phone-code">Send code</button>
+                </div>
+            </form>
+
+            <form asp-action="VerifyPhone" asp-controller="Account" method="post" class="stacked-form tight-form">
+                <input asp-for="Phone.PhoneNumber" type="hidden" />
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="Phone.VerificationCode" class="form-label">Verification code</label>
+                        <input asp-for="Phone.VerificationCode" class="form-control" autocomplete="one-time-code" />
+                        <span asp-validation-for="Phone.VerificationCode" class="text-danger"></span>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Verify phone</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="form-section">
+            <h2>Password</h2>
+            <p class="section-help">
+                @(Model.Password.HasLocalPassword
+                    ? "Update the password used with email sign-in."
+                    : "Add a password so this account can also sign in with email.")
+            </p>
+            <form asp-action="UpdatePassword" asp-controller="Account" method="post" class="stacked-form">
+                <input asp-for="Password.HasLocalPassword" type="hidden" />
+                <div class="form-grid two-column">
+                    @if (Model.Password.HasLocalPassword)
+                    {
+                        <div class="form-field">
+                            <label asp-for="Password.CurrentPassword" class="form-label">Current password <span class="required-marker">*</span></label>
+                            <input asp-for="Password.CurrentPassword" class="form-control" autocomplete="current-password" />
+                            <span asp-validation-for="Password.CurrentPassword" class="text-danger"></span>
+                        </div>
+                    }
+                    <div class="form-field">
+                        <label asp-for="Password.NewPassword" class="form-label">New password <span class="required-marker">*</span></label>
+                        <input asp-for="Password.NewPassword" class="form-control" autocomplete="new-password" />
+                        <span asp-validation-for="Password.NewPassword" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Password.ConfirmNewPassword" class="form-label">Confirm new password <span class="required-marker">*</span></label>
+                        <input asp-for="Password.ConfirmNewPassword" class="form-control" autocomplete="new-password" />
+                        <span asp-validation-for="Password.ConfirmNewPassword" class="text-danger"></span>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">@(Model.Password.HasLocalPassword ? "Update password" : "Add password")</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="form-section settings-wide">
+            <h2>Account types <span class="required-marker">*</span></h2>
+            <p class="section-help">Select every role that fits. Paid features will build on these roles and your membership tier.</p>
+            <form asp-action="UpdateAccountTypes" asp-controller="Account" method="post" class="stacked-form">
+                <div class="account-type-grid">
+                    @foreach (var accountType in Model.AccountTypes.AvailableAccountTypes)
+                    {
+                        <label class="account-type-option" for="settings-account-type-@accountType.Name">
+                            <input class="form-check-input" id="settings-account-type-@accountType.Name" name="accountTypes" type="checkbox" value="@accountType.Name" checked="@accountType.IsSelected" />
+                            <span>
+                                <strong>@accountType.Label</strong>
+                                <small>@accountType.Description</small>
+                            </span>
+                        </label>
+                    }
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save account types</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="form-section settings-wide">
+            <h2>SMS consent</h2>
+            <p class="section-help">SMS consent is optional and is not required to use TryOutSpot. It allows transactional messages such as verification codes, security notices, password reset notices, and tryout registration updates.</p>
+            <form asp-action="UpdateSmsConsent" asp-controller="Account" method="post" class="stacked-form">
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="SmsConsent.PhoneNumber" class="form-label">Phone number</label>
+                        <input asp-for="SmsConsent.PhoneNumber" class="form-control" autocomplete="tel" />
+                        <span asp-validation-for="SmsConsent.PhoneNumber" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Current SMS status</label>
+                        <div class="readonly-field">@(Model.SmsConsent.SmsConsentAccepted ? "Opted in" : "Not opted in")</div>
+                        @if (Model.SmsConsent.SmsConsentAcceptedAt is not null)
+                        {
+                            <small class="account-meta">Accepted @Model.SmsConsent.SmsConsentAcceptedAt.Value.ToLocalTime().ToString("g")</small>
+                        }
+                    </div>
+                </div>
+                <label class="sms-consent-option" for="SmsConsent_SmsConsentAccepted">
+                    <input asp-for="SmsConsent.SmsConsentAccepted" class="form-check-input" />
+                    <span>@TryOutSpotSmsConsent.CheckboxText</span>
+                </label>
+                <p class="sms-consent-disclosure">
+                    Review the <a href="/privacy-policy">Privacy Policy</a>,
+                    <a href="/terms-and-conditions">Terms and Conditions</a>, and
+                    <a href="/sms-consent">SMS Consent</a> details.
+                </p>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save SMS consent</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="form-section settings-wide">
+            <h2>Membership access</h2>
+            <p class="section-help">Stripe checkout and webhooks are the next project item. These plan and feature codes are already what authorization checks will use.</p>
+            <div class="plan-list">
+                @foreach (var plan in Model.RecommendedPlans)
+                {
+                    <div class="plan-row">
+                        <div>
+                            <strong>@plan.Name</strong>
+                            <span>@plan.Audience</span>
+                            <p>@plan.Description</p>
+                        </div>
+                        <div class="plan-price">
+                            <strong>@FormatMonthlyAmount(plan.MonthlyAmount)</strong>
+                            @if (plan.TrialDays is not null)
+                            {
+                                <span>@plan.TrialDays-day trial</span>
+                            }
+                            else if (!plan.RequiresStripeSubscription)
+                            {
+                                <span>No payment required</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+            @if (Model.FeatureCodes.Count > 0)
+            {
+                <div class="feature-code-list settings-feature-list">
+                    @foreach (var featureCode in Model.FeatureCodes.OrderBy(code => code))
+                    {
+                        <span>@featureCode</span>
+                    }
+                </div>
+            }
+        </section>
+    </div>
+
+    <form asp-action="Logout" asp-controller="Account" method="post" class="logout-form">
+        <button type="submit" class="btn btn-outline-secondary">Sign out</button>
+    </form>
+</section>
+
+@functions {
+    private static string FormatMonthlyAmount(decimal monthlyAmount)
+    {
+        return monthlyAmount <= 0 ? "Free" : $"{monthlyAmount:C0}/mo";
+    }
+}
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -212,7 +213,23 @@ else
 builder.Services.AddScoped<IAuthTokenService, AuthTokenService>();
 builder.Services.AddSingleton<IExternalLoginTicketService, ExternalLoginTicketService>();
 builder.Services.AddScoped<IEntitlementService, EntitlementService>();
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(
+        TryOutSpotAuthorizationPolicies.ActiveUser,
+        TryOutSpotAuthorizationPolicyProvider.BuildAuthenticatedPolicy()
+            .AddRequirements(new ActiveUserRequirement())
+            .Build());
+    options.AddPolicy(
+        TryOutSpotAuthorizationPolicies.ConfirmedEmail,
+        TryOutSpotAuthorizationPolicyProvider.BuildAuthenticatedPolicy()
+            .AddRequirements(new ConfirmedEmailRequirement())
+            .Build());
+});
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, TryOutSpotAuthorizationPolicyProvider>();
+builder.Services.AddScoped<IAuthorizationHandler, ActiveUserAuthorizationHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, ConfirmedEmailAuthorizationHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, FeatureAccessAuthorizationHandler>();
 
 var app = builder.Build();
 

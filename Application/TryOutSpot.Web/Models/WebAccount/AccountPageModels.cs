@@ -195,6 +195,131 @@ public sealed class OnboardingPageModel
     public IReadOnlyCollection<string> FeatureCodes { get; set; } = [];
 }
 
+public sealed class AccountSettingsPageModel
+{
+    public ProfileSettingsPageModel Profile { get; set; } = new();
+
+    public EmailSettingsPageModel Email { get; set; } = new();
+
+    public PhoneSettingsPageModel Phone { get; set; } = new();
+
+    public PasswordSettingsPageModel Password { get; set; } = new();
+
+    public AccountTypeSettingsPageModel AccountTypes { get; set; } = new();
+
+    public SmsConsentSettingsPageModel SmsConsent { get; set; } = new();
+
+    public IReadOnlyCollection<BillingPlanResponse> RecommendedPlans { get; set; } = [];
+
+    public string? CurrentPlanName { get; set; }
+
+    public string? CurrentPlanStatus { get; set; }
+
+    public IReadOnlyCollection<string> FeatureCodes { get; set; } = [];
+}
+
+public sealed class ProfileSettingsPageModel
+{
+    [Required]
+    [MaxLength(100)]
+    [Display(Name = "First name")]
+    public string FirstName { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(100)]
+    [Display(Name = "Last name")]
+    public string LastName { get; set; } = string.Empty;
+
+    [DataType(DataType.Date)]
+    [Display(Name = "Date of birth")]
+    public DateTime? DateOfBirth { get; set; }
+
+    [MaxLength(10)]
+    [Display(Name = "ZIP code")]
+    public string? ZipCode { get; set; }
+
+    [MaxLength(100)]
+    public string? City { get; set; }
+
+    [MaxLength(2)]
+    public string? State { get; set; }
+}
+
+public sealed class EmailSettingsPageModel
+{
+    [Display(Name = "Current email")]
+    public string CurrentEmail { get; set; } = string.Empty;
+
+    public bool EmailConfirmed { get; set; }
+
+    public bool HasLocalPassword { get; set; }
+
+    [Required]
+    [EmailAddress]
+    [MaxLength(255)]
+    [Display(Name = "New email address")]
+    public string NewEmail { get; set; } = string.Empty;
+
+    [DataType(DataType.Password)]
+    [Display(Name = "Current password")]
+    public string? CurrentPassword { get; set; }
+}
+
+public sealed class PhoneSettingsPageModel
+{
+    [Phone]
+    [MaxLength(20)]
+    [Display(Name = "Phone number")]
+    public string? PhoneNumber { get; set; }
+
+    public bool PhoneNumberConfirmed { get; set; }
+
+    [MaxLength(20)]
+    [Display(Name = "Verification code")]
+    public string? VerificationCode { get; set; }
+}
+
+public sealed class PasswordSettingsPageModel
+{
+    public bool HasLocalPassword { get; set; }
+
+    [DataType(DataType.Password)]
+    [Display(Name = "Current password")]
+    public string? CurrentPassword { get; set; }
+
+    [Required]
+    [MinLength(8)]
+    [DataType(DataType.Password)]
+    [Display(Name = "New password")]
+    public string NewPassword { get; set; } = string.Empty;
+
+    [Required]
+    [Compare(nameof(NewPassword))]
+    [DataType(DataType.Password)]
+    [Display(Name = "Confirm new password")]
+    public string ConfirmNewPassword { get; set; } = string.Empty;
+}
+
+public sealed class AccountTypeSettingsPageModel
+{
+    public List<string> AccountTypes { get; set; } = [];
+
+    public IReadOnlyCollection<AccountTypeSelectionItem> AvailableAccountTypes { get; set; } = [];
+}
+
+public sealed class SmsConsentSettingsPageModel
+{
+    [Display(Name = "SMS consent")]
+    public bool SmsConsentAccepted { get; set; }
+
+    public DateTime? SmsConsentAcceptedAt { get; set; }
+
+    [Phone]
+    [MaxLength(20)]
+    [Display(Name = "Phone number")]
+    public string? PhoneNumber { get; set; }
+}
+
 public sealed record AccountTypeSelectionItem(
     string Name,
     string Label,

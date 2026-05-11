@@ -12,4 +12,8 @@ public static class TryOutSpotSmsConsent
     public const string ApiAccountRegistrationSource = "api_account_registration";
 
     public const string ApiSocialRegistrationSource = "api_social_registration";
+
+    public const string AccountSettingsSource = "account_settings";
+
+    public const string AccountSettingsOptOutSource = "account_settings_opt_out";
 }

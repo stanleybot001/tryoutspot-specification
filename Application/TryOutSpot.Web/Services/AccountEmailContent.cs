@@ -53,6 +53,41 @@ public static class AccountEmailContentBuilder
         return new AccountEmailContent(subject, text, html);
     }
 
+    public static AccountEmailContent BuildEmailChange(
+        User user,
+        string newEmail,
+        string changeToken,
+        AccountEmailOptions options)
+    {
+        var actionUrl = BuildActionUrl(
+            options,
+            "/account/confirm-email-change",
+            new Dictionary<string, string?>
+            {
+                ["userId"] = user.Id.ToString(),
+                ["email"] = newEmail,
+                ["token"] = changeToken
+            });
+        var displayName = GetDisplayName(user);
+        var subject = "Confirm your TryOutSpot email change";
+        var text = actionUrl is null
+            ? $"Hi {displayName}, use this token to confirm your TryOutSpot email change to {newEmail}: {changeToken}"
+            : $"Hi {displayName}, confirm your TryOutSpot email change here: {actionUrl}";
+
+        var htmlAction = actionUrl is null
+            ? $"<p>Use this email change token:</p><p><strong>{WebUtility.HtmlEncode(changeToken)}</strong></p>"
+            : $"<p><a href=\"{WebUtility.HtmlEncode(actionUrl)}\">Confirm email change</a></p>";
+
+        var html = $"""
+            <p>Hi {WebUtility.HtmlEncode(displayName)},</p>
+            <p>We received a request to use {WebUtility.HtmlEncode(newEmail)} for your TryOutSpot account.</p>
+            {htmlAction}
+            <p>If you did not request this change, you can ignore this email.</p>
+            """;
+
+        return new AccountEmailContent(subject, text, html);
+    }
+
     private static string GetDisplayName(User user)
     {
         var fullName = $"{user.FirstName} {user.LastName}".Trim();
@@ -65,12 +100,41 @@ public static class AccountEmailContentBuilder
         string? email,
         string token)
     {
-        if (string.IsNullOrWhiteSpace(options.FrontendBaseUrl) || string.IsNullOrWhiteSpace(email))
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return null;
+        }
+
+        return BuildActionUrl(
+            options,
+            path,
+            new Dictionary<string, string?>
+            {
+                ["email"] = email,
+                ["token"] = token
+            });
+    }
+
+    private static string? BuildActionUrl(
+        AccountEmailOptions options,
+        string path,
+        IReadOnlyDictionary<string, string?> queryParameters)
+    {
+        if (string.IsNullOrWhiteSpace(options.FrontendBaseUrl))
         {
             return null;
         }
 
         var baseUrl = options.FrontendBaseUrl.TrimEnd('/');
-        return $"{baseUrl}{path}?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
+        var queryString = string.Join(
+            "&",
+            queryParameters
+                .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Value))
+                .Select(parameter =>
+                    $"{Uri.EscapeDataString(parameter.Key)}={Uri.EscapeDataString(parameter.Value!)}"));
+
+        return string.IsNullOrWhiteSpace(queryString)
+            ? $"{baseUrl}{path}"
+            : $"{baseUrl}{path}?{queryString}";
     }
 }

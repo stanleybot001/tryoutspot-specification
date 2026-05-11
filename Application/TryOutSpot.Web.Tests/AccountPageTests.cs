@@ -153,6 +153,179 @@ public sealed class AccountPageTests
         Assert.Contains("Recommended plan options", html);
     }
 
+    [Fact]
+    public async Task Settings_RequiresWebCookieAndRendersAccountManagementForms()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        await factory.CreateUserAsync("settings-page@example.com", [TryOutSpotRoles.Parent, TryOutSpotRoles.Coach]);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var anonymousResponse = await client.GetAsync("/account/settings");
+        Assert.Equal(HttpStatusCode.Redirect, anonymousResponse.StatusCode);
+        Assert.Contains("/account/login", anonymousResponse.Headers.Location?.ToString());
+
+        await LoginWebUserAsync(client, "settings-page@example.com");
+
+        var response = await client.GetAsync("/account/settings");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Account settings", html);
+        Assert.Contains("name=\"Profile.FirstName\"", html);
+        Assert.Contains("name=\"Email.NewEmail\"", html);
+        Assert.Contains("name=\"Phone.PhoneNumber\"", html);
+        Assert.Contains("name=\"Password.NewPassword\"", html);
+        Assert.Contains("name=\"accountTypes\"", html);
+        Assert.Contains("name=\"SmsConsent.SmsConsentAccepted\"", html);
+        Assert.Contains("Membership access", html);
+    }
+
+    [Fact]
+    public async Task SettingsPost_ProfileAccountTypesAndSmsConsent_UpdateCurrentUser()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("settings-update@example.com", [TryOutSpotRoles.Parent]);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, "settings-update@example.com");
+
+        var profileToken = await GetAntiForgeryTokenAsync(client, "/account/settings");
+        var profileResponse = await client.PostAsync(
+            "/account/settings/profile",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", profileToken),
+                new("Profile.FirstName", "Jordan"),
+                new("Profile.LastName", "Casey"),
+                new("Profile.DateOfBirth", "2011-04-03"),
+                new("Profile.ZipCode", "66213"),
+                new("Profile.City", "Overland Park"),
+                new("Profile.State", "ks")
+            ]));
+        Assert.Equal(HttpStatusCode.Redirect, profileResponse.StatusCode);
+
+        var accountTypesToken = await GetAntiForgeryTokenAsync(client, "/account/settings");
+        var accountTypesResponse = await client.PostAsync(
+            "/account/settings/account-types",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", accountTypesToken),
+                new("accountTypes", TryOutSpotRoles.Player),
+                new("accountTypes", TryOutSpotRoles.Coach)
+            ]));
+        Assert.Equal(HttpStatusCode.Redirect, accountTypesResponse.StatusCode);
+
+        var smsToken = await GetAntiForgeryTokenAsync(client, "/account/settings");
+        var smsResponse = await client.PostAsync(
+            "/account/settings/sms-consent",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", smsToken),
+                new("SmsConsent.PhoneNumber", "620-555-1212"),
+                new("SmsConsent.SmsConsentAccepted", "true")
+            ]));
+        Assert.Equal(HttpStatusCode.Redirect, smsResponse.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+        var updatedUser = await userManager.FindByIdAsync(user.Id.ToString());
+        Assert.NotNull(updatedUser);
+        Assert.Equal("Jordan", updatedUser.FirstName);
+        Assert.Equal("Casey", updatedUser.LastName);
+        Assert.Equal("66213", updatedUser.ZipCode);
+        Assert.Equal("KS", updatedUser.State);
+        Assert.Equal("620-555-1212", updatedUser.PhoneNumber);
+        Assert.True(updatedUser.SmsConsentAccepted);
+        Assert.Equal(TryOutSpotSmsConsent.AccountSettingsSource, updatedUser.SmsConsentSource);
+
+        var roles = await userManager.GetRolesAsync(updatedUser);
+        Assert.DoesNotContain(TryOutSpotRoles.Parent, roles);
+        Assert.Contains(TryOutSpotRoles.Player, roles);
+        Assert.Contains(TryOutSpotRoles.Coach, roles);
+    }
+
+    [Fact]
+    public async Task SettingsPost_EmailPhoneAndPasswordFlows_UpdateCurrentUser()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("settings-security@example.com", [TryOutSpotRoles.Parent]);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, "settings-security@example.com");
+
+        var newEmail = $"settings-security-{Guid.NewGuid():N}@example.com";
+        var emailToken = await GetAntiForgeryTokenAsync(client, "/account/settings");
+        var emailResponse = await client.PostAsync(
+            "/account/settings/email",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", emailToken),
+                new("Email.NewEmail", newEmail),
+                new("Email.CurrentPassword", "Tryout2026")
+            ]));
+        Assert.Equal(HttpStatusCode.Redirect, emailResponse.StatusCode);
+
+        var emailSender = factory.Services.GetRequiredService<TestAccountEmailSender>();
+        Assert.True(emailSender.TryGetEmailChangeToken(newEmail, out var changeEmailToken));
+
+        var confirmResponse = await client.GetAsync(
+            $"/account/confirm-email-change?userId={user.Id}&email={Uri.EscapeDataString(newEmail)}&token={Uri.EscapeDataString(changeEmailToken)}");
+        Assert.Equal(HttpStatusCode.Redirect, confirmResponse.StatusCode);
+
+        var sendPhoneToken = await GetAntiForgeryTokenAsync(client, "/account/settings");
+        var sendPhoneResponse = await client.PostAsync(
+            "/account/settings/send-phone-code",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", sendPhoneToken),
+                new("Phone.PhoneNumber", "620-555-3434")
+            ]));
+        Assert.Equal(HttpStatusCode.Redirect, sendPhoneResponse.StatusCode);
+
+        var smsSender = factory.Services.GetRequiredService<TestAccountSmsSender>();
+        Assert.True(smsSender.TryGetCode("620-555-3434", out var phoneCode));
+
+        var verifyPhoneToken = await GetAntiForgeryTokenAsync(client, "/account/settings");
+        var verifyPhoneResponse = await client.PostAsync(
+            "/account/settings/verify-phone",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", verifyPhoneToken),
+                new("Phone.PhoneNumber", "620-555-3434"),
+                new("Phone.VerificationCode", phoneCode)
+            ]));
+        Assert.Equal(HttpStatusCode.Redirect, verifyPhoneResponse.StatusCode);
+
+        var passwordToken = await GetAntiForgeryTokenAsync(client, "/account/settings");
+        var passwordResponse = await client.PostAsync(
+            "/account/settings/password",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", passwordToken),
+                new("Password.CurrentPassword", "Tryout2026"),
+                new("Password.NewPassword", "Tryout2027"),
+                new("Password.ConfirmNewPassword", "Tryout2027")
+            ]));
+        Assert.Equal(HttpStatusCode.Redirect, passwordResponse.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+        var updatedUser = await userManager.FindByIdAsync(user.Id.ToString());
+        Assert.NotNull(updatedUser);
+        Assert.Equal(newEmail, updatedUser.Email);
+        Assert.True(updatedUser.EmailConfirmed);
+        Assert.Equal("620-555-3434", updatedUser.PhoneNumber);
+        Assert.True(updatedUser.PhoneNumberConfirmed);
+        Assert.True(await userManager.CheckPasswordAsync(updatedUser, "Tryout2027"));
+    }
+
     private static async Task<string> GetAntiForgeryTokenAsync(HttpClient client, string path)
     {
         var response = await client.GetAsync(path);
@@ -166,5 +339,21 @@ public sealed class AccountPageTests
         return match.Success
             ? match.Groups[1].Value
             : throw new InvalidOperationException($"No anti-forgery token was found on {path}.");
+    }
+
+    private static async Task LoginWebUserAsync(HttpClient client, string email)
+    {
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/login");
+        var loginResponse = await client.PostAsync(
+            "/account/login",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("Email", email),
+                new("Password", "Tryout2026"),
+                new("RememberMe", "true")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, loginResponse.StatusCode);
     }
 }
