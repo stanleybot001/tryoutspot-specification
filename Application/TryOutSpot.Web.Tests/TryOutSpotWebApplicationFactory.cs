@@ -17,6 +17,12 @@ namespace TryOutSpot.Web.Tests;
 public sealed class TryOutSpotWebApplicationFactory : WebApplicationFactory<Program>
 {
     private readonly string databaseName = $"TryOutSpotTests-{Guid.NewGuid()}";
+    private readonly Action<IServiceCollection>? configureTestServices;
+
+    public TryOutSpotWebApplicationFactory(Action<IServiceCollection>? configureTestServices = null)
+    {
+        this.configureTestServices = configureTestServices;
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -39,6 +45,8 @@ public sealed class TryOutSpotWebApplicationFactory : WebApplicationFactory<Prog
             services.AddSingleton<TestAccountSmsSender>();
             services.AddScoped<IAccountSmsSender>(serviceProvider =>
                 serviceProvider.GetRequiredService<TestAccountSmsSender>());
+
+            configureTestServices?.Invoke(services);
 
             var serviceProvider = services.BuildServiceProvider();
             using var scope = serviceProvider.CreateScope();

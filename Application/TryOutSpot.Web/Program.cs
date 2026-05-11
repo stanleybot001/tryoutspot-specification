@@ -8,6 +8,7 @@ using Serilog;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
+using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
@@ -41,6 +42,7 @@ builder.Services.Configure<AccountEmailOptions>(builder.Configuration.GetSection
 builder.Services.Configure<ResendEmailOptions>(builder.Configuration.GetSection(ResendEmailOptions.SectionName));
 builder.Services.Configure<AccountSmsOptions>(builder.Configuration.GetSection(AccountSmsOptions.SectionName));
 builder.Services.Configure<TwilioSmsOptions>(builder.Configuration.GetSection(TwilioSmsOptions.SectionName));
+builder.Services.Configure<StripeBillingOptions>(builder.Configuration.GetSection(StripeBillingOptions.SectionName));
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(
         builder.Environment.ContentRootPath,
@@ -213,6 +215,8 @@ else
 builder.Services.AddScoped<IAuthTokenService, AuthTokenService>();
 builder.Services.AddSingleton<IExternalLoginTicketService, ExternalLoginTicketService>();
 builder.Services.AddScoped<IEntitlementService, EntitlementService>();
+builder.Services.AddScoped<IStripeBillingService, StripeBillingService>();
+builder.Services.AddScoped<IStripeSubscriptionSyncService, StripeSubscriptionSyncService>();
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(

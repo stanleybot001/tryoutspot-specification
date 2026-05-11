@@ -685,6 +685,20 @@ Response:
       "opportunities.browse",
       "players.profiles.basic",
       "opportunities.apply"
+    ],
+    "prices": [
+      {
+        "billingInterval": "month",
+        "amount": 9.99,
+        "currency": "USD",
+        "isCheckoutConfigured": true
+      },
+      {
+        "billingInterval": "year",
+        "amount": 99,
+        "currency": "USD",
+        "isCheckoutConfigured": true
+      }
     ]
   }
 ]
@@ -706,3 +720,72 @@ Response:
   }
 ]
 ```
+
+### `GET /api/billing/me`
+
+Returns the authenticated user's local billing status. Requires verified email.
+
+Success response: `200 OK`
+
+```json
+{
+  "planCode": "premium_player",
+  "planName": "Premium Player",
+  "status": "active",
+  "hasActiveEntitlement": true,
+  "billingInterval": "month",
+  "amount": 9.99,
+  "currency": "USD",
+  "currentPeriodEnd": "2026-06-11T22:00:00Z",
+  "cancelAtPeriodEnd": false
+}
+```
+
+### `POST /api/billing/checkout-session`
+
+Creates a Stripe Checkout session for a paid subscription plan. This starts checkout only; paid access is granted after Stripe webhook events update the local subscription.
+
+Request:
+
+```json
+{
+  "planCode": "premium_player",
+  "billingInterval": "month"
+}
+```
+
+Success response: `200 OK`
+
+```json
+{
+  "sessionId": "cs_test_123",
+  "url": "https://checkout.stripe.com/c/pay/cs_test_123",
+  "planCode": "premium_player",
+  "billingInterval": "month"
+}
+```
+
+### `POST /api/billing/customer-portal-session`
+
+Creates a Stripe-hosted billing portal session for the authenticated user's Stripe customer. Use this for card updates, cancellation, and plan changes once the Stripe portal is configured.
+
+Success response: `200 OK`
+
+```json
+{
+  "url": "https://billing.stripe.com/p/session/test_123"
+}
+```
+
+### `POST /api/billing/stripe/webhook`
+
+Receives Stripe webhook events. Configure this URL in Stripe as:
+
+`https://tryoutspot.com/api/billing/stripe/webhook`
+
+Handled events:
+
+- `checkout.session.completed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`

@@ -17,6 +17,8 @@ public partial class Subscription
 
     public string? StripeSubscriptionId { get; set; }
 
+    public string? StripePriceId { get; set; }
+
     public DateTime? CurrentPeriodStart { get; set; }
 
     public DateTime? CurrentPeriodEnd { get; set; }

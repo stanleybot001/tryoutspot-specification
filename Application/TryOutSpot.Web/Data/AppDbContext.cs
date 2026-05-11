@@ -261,6 +261,8 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
         modelBuilder.Entity<Subscription>(entity =>
         {
             entity.HasIndex(e => e.UserId, "IX_Subscriptions_UserId").IsUnique();
+            entity.HasIndex(e => e.StripeCustomerId, "IX_Subscriptions_StripeCustomerId");
+            entity.HasIndex(e => e.StripeSubscriptionId, "IX_Subscriptions_StripeSubscriptionId");
 
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.BillingInterval).HasMaxLength(20);
@@ -270,6 +272,7 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.PlanType).HasMaxLength(50);
             entity.Property(e => e.Status).HasMaxLength(50);
             entity.Property(e => e.StripeCustomerId).HasMaxLength(255);
+            entity.Property(e => e.StripePriceId).HasMaxLength(255);
             entity.Property(e => e.StripeSubscriptionId).HasMaxLength(255);
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
