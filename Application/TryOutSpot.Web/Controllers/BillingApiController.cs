@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -24,6 +25,7 @@ namespace TryOutSpot.Web.Controllers;
 [Route("api/billing")]
 public sealed class BillingApiController(
     AppDbContext dbContext,
+    UserManager<User> userManager,
     IStripeBillingService stripeBillingService,
     IStripeSubscriptionSyncService stripeSubscriptionSyncService,
     IOptions<StripeBillingOptions> stripeOptions,
@@ -153,6 +155,15 @@ public sealed class BillingApiController(
         if (!plan.RequiresStripeSubscription)
         {
             ModelState.AddModelError(nameof(request.PlanCode), "This plan does not require Stripe checkout.");
+            return ValidationProblem(ModelState);
+        }
+
+        var accountTypes = await userManager.GetRolesAsync(user);
+        if (!TryOutSpotBillingCatalog.IsPlanEligibleForAccountTypes(plan.Code, accountTypes))
+        {
+            ModelState.AddModelError(
+                nameof(request.PlanCode),
+                "This plan is not available for the selected account types.");
             return ValidationProblem(ModelState);
         }
 

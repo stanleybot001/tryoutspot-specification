@@ -16,6 +16,7 @@
 - Added `POST /api/billing/stripe/webhook`.
 - Added `GET /api/billing/me`.
 - Updated the billing catalog response with configured monthly/annual price options.
+- Centralized additive plan eligibility so checkout, onboarding, and account pages all use the same role-to-plan rules.
 
 ## Subscription Flow
 
@@ -61,6 +62,7 @@
 ## Notes
 
 - Future subscription levels can be added by extending `TryOutSpotBillingCatalog` and adding matching Stripe Price IDs under `Stripe:Plans`.
+- Plan eligibility is additive. Mixed-role users can select any plan eligible for one of their public account types, while single-role users are blocked from unrelated plans at checkout.
 - State-changing billing endpoints use `POST`; no `PUT`, `PATCH`, or `DELETE` endpoints were introduced.
 - Webhooks are the authority for granting/removing paid access. The success redirect alone does not unlock features.
 
@@ -68,5 +70,7 @@
 
 - Billing catalog includes configured price options.
 - Checkout session creation records a pending local subscription without granting paid entitlements.
+- Checkout rejects single-role users who request unrelated plans.
+- Checkout allows mixed-role users such as `Parent + Coach`, `Player + Coach`, and `AcademyDirector` to request the union of eligible plans.
 - Stripe-style subscription sync grants paid features on `active` and removes them on `canceled`.
-- Full test suite passed: `59` tests.
+- Full test suite passed: `64` tests.

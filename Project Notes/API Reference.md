@@ -745,6 +745,8 @@ Success response: `200 OK`
 
 Creates a Stripe Checkout session for a paid subscription plan. This starts checkout only; paid access is granted after Stripe webhook events update the local subscription.
 
+The requested plan must be eligible for at least one of the user's public account types. Eligibility is additive, so a mixed `Parent + Coach` or `Player + Coach` user can request either player/parent plans or team plans.
+
 Request:
 
 ```json

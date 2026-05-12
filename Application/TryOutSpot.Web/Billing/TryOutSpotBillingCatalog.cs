@@ -305,6 +305,56 @@ public static class TryOutSpotBillingCatalog
         return features.ToArray();
     }
 
+    public static IReadOnlyCollection<string> GetEligiblePlanCodesForAccountTypes(
+        IEnumerable<string> accountTypes,
+        bool includePlayerParentDefaultsWhenNoAccountTypes = false)
+    {
+        var roles = accountTypes
+            .Select(TryOutSpotRoles.NormalizePublicRegistrationRole)
+            .Where(role => role is not null)
+            .Cast<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var planCodes = new List<string>();
+        if (roles.Count == 0 && includePlayerParentDefaultsWhenNoAccountTypes)
+        {
+            planCodes.Add(TryOutSpotPlanCodes.FreePlayerParent);
+            planCodes.Add(TryOutSpotPlanCodes.PremiumPlayer);
+        }
+
+        if (roles.Contains(TryOutSpotRoles.Parent) || roles.Contains(TryOutSpotRoles.Player))
+        {
+            planCodes.Add(TryOutSpotPlanCodes.FreePlayerParent);
+            planCodes.Add(TryOutSpotPlanCodes.PremiumPlayer);
+        }
+
+        if (roles.Contains(TryOutSpotRoles.Coach)
+            || roles.Contains(TryOutSpotRoles.TeamManager)
+            || roles.Contains(TryOutSpotRoles.AcademyDirector))
+        {
+            planCodes.Add(TryOutSpotPlanCodes.TeamBasic);
+            planCodes.Add(TryOutSpotPlanCodes.TeamProfessional);
+        }
+
+        if (roles.Contains(TryOutSpotRoles.OrganizationAdmin)
+            || roles.Contains(TryOutSpotRoles.AcademyDirector))
+        {
+            planCodes.Add(TryOutSpotPlanCodes.EnterpriseOrganization);
+        }
+
+        return planCodes
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    public static bool IsPlanEligibleForAccountTypes(string planCode, IEnumerable<string> accountTypes)
+    {
+        var normalizedPlanCode = NormalizePlanCode(planCode);
+        return normalizedPlanCode is not null
+            && GetEligiblePlanCodesForAccountTypes(accountTypes)
+                .Contains(normalizedPlanCode, StringComparer.Ordinal);
+    }
+
     public static bool IsEntitlingSubscriptionStatus(string? status)
     {
         return string.Equals(status, "active", StringComparison.OrdinalIgnoreCase)

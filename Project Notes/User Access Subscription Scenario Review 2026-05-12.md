@@ -65,17 +65,26 @@ The six public account types produce 63 possible non-empty combinations. Current
 1. User must be authenticated and email-confirmed for checkout.
 2. `POST /api/billing/checkout-session` validates plan code and billing interval.
 3. Free plan is rejected for Stripe checkout because it does not require Stripe.
-4. Annual interval is rejected for `team_basic`.
-5. Stripe price ID must be configured for the selected plan and interval.
-6. Checkout creates or reuses a Stripe customer.
-7. Local subscription is recorded as `checkout_started`, but no paid features are granted yet.
-8. Stripe webhook sync changes the local subscription to `active` or `trialing`.
-9. Entitlement service begins granting plan features.
-10. Stripe cancellation or non-entitling status removes paid features.
+4. The requested paid plan must be eligible for at least one of the user's public account types.
+5. Annual interval is rejected for `team_basic`.
+6. Stripe price ID must be configured for the selected plan and interval.
+7. Checkout creates or reuses a Stripe customer.
+8. Local subscription is recorded as `checkout_started`, but no paid features are granted yet.
+9. Stripe webhook sync changes the local subscription to `active` or `trialing`.
+10. Entitlement service begins granting plan features.
+11. Stripe cancellation or non-entitling status removes paid features.
+
+## Plan Eligibility Decision
+
+- Plan eligibility is additive. A mixed-role user sees and can request the union of plans for all of their account types.
+- `Parent` or `Player` can use `free_player_parent` and `premium_player`.
+- `Coach`, `TeamManager`, or `AcademyDirector` can use `team_basic` and `team_professional`.
+- `OrganizationAdmin` or `AcademyDirector` can use `enterprise_organization`.
+- A `Parent + Coach` user can choose a player/parent plan or a team plan.
+- A `Player + Coach` user can choose a player plan or a team plan.
 
 ## Current Gaps To Decide
 
-- Checkout is not role-restricted. Any confirmed user can request any paid plan code through the API, even if onboarding would not recommend that plan for their role mix.
 - The database supports one subscription row per user. A combined `Parent + Coach` user cannot hold separate Premium Player and Professional Team subscriptions at the same time.
 - Changing account types does not check whether the existing subscription still matches the new role mix.
 - `OrganizationAdmin` alone is recommended only Enterprise; that matches current code, but we should confirm whether organization admins should also see Team Basic/Professional.
@@ -85,7 +94,8 @@ The six public account types produce 63 possible non-empty combinations. Current
 
 - Checkout rejects unsupported billing interval for `team_basic` annual.
 - Checkout rejects free plan.
-- Checkout either permits or rejects role/plan mismatch after we decide the intended behavior.
+- Checkout rejects role/plan mismatches for single-role users.
+- Checkout permits mixed-role users to request any plan eligible for one of their roles.
 - Entitlements for all five plan codes and non-entitling statuses.
 - Role changes preserve platform admin role and update public roles only.
 - Mixed-role user behavior for `Parent + Coach`, `Player + Coach`, and `AcademyDirector + Parent`.

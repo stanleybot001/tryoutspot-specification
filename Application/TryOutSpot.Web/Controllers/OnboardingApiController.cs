@@ -263,35 +263,9 @@ public sealed class OnboardingApiController(
 
     private static IReadOnlyCollection<BillingPlanResponse> GetPlansForAccountTypes(IEnumerable<string> accountTypes)
     {
-        var roles = accountTypes
-            .Select(TryOutSpotRoles.NormalizePublicRegistrationRole)
-            .Where(role => role is not null)
-            .Cast<string>()
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        var planCodes = new List<string>();
-        if (roles.Count == 0 || roles.Contains(TryOutSpotRoles.Parent) || roles.Contains(TryOutSpotRoles.Player))
-        {
-            planCodes.Add(TryOutSpotPlanCodes.FreePlayerParent);
-            planCodes.Add(TryOutSpotPlanCodes.PremiumPlayer);
-        }
-
-        if (roles.Contains(TryOutSpotRoles.Coach)
-            || roles.Contains(TryOutSpotRoles.TeamManager)
-            || roles.Contains(TryOutSpotRoles.AcademyDirector))
-        {
-            planCodes.Add(TryOutSpotPlanCodes.TeamBasic);
-            planCodes.Add(TryOutSpotPlanCodes.TeamProfessional);
-        }
-
-        if (roles.Contains(TryOutSpotRoles.OrganizationAdmin)
-            || roles.Contains(TryOutSpotRoles.AcademyDirector))
-        {
-            planCodes.Add(TryOutSpotPlanCodes.EnterpriseOrganization);
-        }
-
-        return planCodes
-            .Distinct(StringComparer.Ordinal)
+        return TryOutSpotBillingCatalog.GetEligiblePlanCodesForAccountTypes(
+                accountTypes,
+                includePlayerParentDefaultsWhenNoAccountTypes: true)
             .Select(TryOutSpotBillingCatalog.GetPlan)
             .Where(plan => plan is not null)
             .Cast<BillingPlanDefinition>()

@@ -75,6 +75,75 @@ public sealed class BillingApiTests
         Assert.DoesNotContain(TryOutSpotFeatureCodes.PriorityApplicationReview, entitlements.FeatureCodes);
     }
 
+    [Theory]
+    [InlineData(TryOutSpotRoles.Parent, TryOutSpotPlanCodes.TeamBasic)]
+    [InlineData(TryOutSpotRoles.Coach, TryOutSpotPlanCodes.PremiumPlayer)]
+    public async Task CreateCheckoutSession_WithPlanOutsideAccountType_ReturnsBadRequest(
+        string accountType,
+        string planCode)
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var normalizedRole = accountType.ToLowerInvariant();
+        var normalizedPlan = planCode.Replace("_", "-", StringComparison.Ordinal);
+        var user = await factory.CreateUserAsync(
+            $"checkout-mismatch-{normalizedRole}-{normalizedPlan}@example.com",
+            [accountType]);
+        var client = await CreateAuthorizedClientAsync(factory, user.Email!);
+
+        var response = await client.PostAsJsonAsync(
+            "/api/billing/checkout-session",
+            new CreateCheckoutSessionRequest(planCode, BillingIntervalCodes.Month));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(TryOutSpotRoles.Parent)]
+    [InlineData(TryOutSpotRoles.Player)]
+    public async Task CreateCheckoutSession_WithPlayerOrParentAndCoach_AllowsPlayerAndTeamPlans(string playerSideRole)
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var normalizedRole = playerSideRole.ToLowerInvariant();
+        var user = await factory.CreateUserAsync(
+            $"checkout-mixed-{normalizedRole}-coach@example.com",
+            [playerSideRole, TryOutSpotRoles.Coach]);
+        var client = await CreateAuthorizedClientAsync(factory, user.Email!);
+
+        var premiumResponse = await client.PostAsJsonAsync(
+            "/api/billing/checkout-session",
+            new CreateCheckoutSessionRequest(TryOutSpotPlanCodes.PremiumPlayer, BillingIntervalCodes.Month));
+
+        Assert.Equal(HttpStatusCode.OK, premiumResponse.StatusCode);
+
+        var teamResponse = await client.PostAsJsonAsync(
+            "/api/billing/checkout-session",
+            new CreateCheckoutSessionRequest(TryOutSpotPlanCodes.TeamProfessional, BillingIntervalCodes.Month));
+
+        Assert.Equal(HttpStatusCode.OK, teamResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateCheckoutSession_WithAcademyDirector_AllowsTeamAndEnterprisePlans()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync(
+            "checkout-academy-director@example.com",
+            [TryOutSpotRoles.AcademyDirector]);
+        var client = await CreateAuthorizedClientAsync(factory, user.Email!);
+
+        var teamResponse = await client.PostAsJsonAsync(
+            "/api/billing/checkout-session",
+            new CreateCheckoutSessionRequest(TryOutSpotPlanCodes.TeamProfessional, BillingIntervalCodes.Month));
+
+        Assert.Equal(HttpStatusCode.OK, teamResponse.StatusCode);
+
+        var enterpriseResponse = await client.PostAsJsonAsync(
+            "/api/billing/checkout-session",
+            new CreateCheckoutSessionRequest(TryOutSpotPlanCodes.EnterpriseOrganization, BillingIntervalCodes.Month));
+
+        Assert.Equal(HttpStatusCode.OK, enterpriseResponse.StatusCode);
+    }
+
     [Fact]
     public async Task StripeSubscriptionSync_ActiveThenCanceledSubscriptionUpdatesEntitlements()
     {
