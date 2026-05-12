@@ -110,6 +110,40 @@ public sealed class EntitlementServiceTests
     }
 
     [Fact]
+    public async Task ActiveMultipleSubscriptions_CombinePlayerAndTeamFeatures()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var userId = await factory.RegisterUserAsync("multi-sub-parent-coach@example.com", ["Parent", "Coach"]);
+        await AddSubscriptionAsync(
+            factory,
+            userId,
+            TryOutSpotPlanCodes.PremiumPlayer,
+            "active",
+            TryOutSpotSubscriptionScopeTypes.Player,
+            Guid.NewGuid());
+        await AddSubscriptionAsync(
+            factory,
+            userId,
+            TryOutSpotPlanCodes.TeamProfessional,
+            "active",
+            TryOutSpotSubscriptionScopeTypes.Team,
+            Guid.NewGuid());
+
+        using var scope = factory.Services.CreateScope();
+        var entitlementService = scope.ServiceProvider.GetRequiredService<IEntitlementService>();
+
+        var entitlements = await entitlementService.GetEntitlementsAsync(userId, CancellationToken.None);
+
+        Assert.NotNull(entitlements);
+        Assert.Contains(TryOutSpotPlanCodes.PremiumPlayer, entitlements.ActivePlanCodes);
+        Assert.Contains(TryOutSpotPlanCodes.TeamProfessional, entitlements.ActivePlanCodes);
+        Assert.Contains(TryOutSpotFeatureCodes.BrowseOpportunities, entitlements.FeatureCodes);
+        Assert.Contains(TryOutSpotFeatureCodes.PriorityApplicationReview, entitlements.FeatureCodes);
+        Assert.Contains(TryOutSpotFeatureCodes.UnlimitedOpportunityPostings, entitlements.FeatureCodes);
+        Assert.Contains(TryOutSpotFeatureCodes.AdvancedPlayerSearch, entitlements.FeatureCodes);
+    }
+
+    [Fact]
     public async Task FeatureAuthorizationPolicy_UsesCurrentEntitlements()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -147,7 +181,9 @@ public sealed class EntitlementServiceTests
         TryOutSpotWebApplicationFactory factory,
         Guid userId,
         string planType,
-        string status)
+        string status,
+        string scopeType = TryOutSpotSubscriptionScopeTypes.Account,
+        Guid? scopeId = null)
     {
         using var scope = factory.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -159,6 +195,8 @@ public sealed class EntitlementServiceTests
             UserId = userId,
             PlanType = planType,
             Status = status,
+            ScopeType = scopeType,
+            ScopeId = scopeId,
             StripeCustomerId = $"cus_{Guid.NewGuid():N}",
             StripeSubscriptionId = $"sub_{Guid.NewGuid():N}",
             CurrentPeriodStart = now,

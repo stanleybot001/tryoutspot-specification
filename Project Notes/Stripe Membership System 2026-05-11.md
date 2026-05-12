@@ -17,6 +17,11 @@
 - Added `GET /api/billing/me`.
 - Updated the billing catalog response with configured monthly/annual price options.
 - Centralized additive plan eligibility so checkout, onboarding, and account pages all use the same role-to-plan rules.
+- Added multiple subscriptions per user with optional subscription scopes:
+  - `account`
+  - `player`
+  - `team`
+  - `organization`
 
 ## Subscription Flow
 
@@ -24,8 +29,8 @@
 2. App creates a Stripe Checkout session using the configured Stripe Price ID.
 3. App records `checkout_started` locally without granting paid features.
 4. Stripe sends `checkout.session.completed`.
-5. App retrieves the Stripe subscription and syncs it into `Subscription`.
-6. `IEntitlementService` grants paid features only when local subscription status is `active` or `trialing`.
+5. App retrieves the Stripe subscription and syncs it into the matching local `Subscription` row by Stripe subscription id or by user, plan, and scope.
+6. `IEntitlementService` grants the union of paid features from every local subscription with status `active` or `trialing`.
 7. Stripe subscription update/delete webhooks keep local status current for cancellation, failed payments, trialing, and active renewals.
 
 ## Stripe Dashboard Setup Needed
@@ -63,6 +68,8 @@
 
 - Future subscription levels can be added by extending `TryOutSpotBillingCatalog` and adding matching Stripe Price IDs under `Stripe:Plans`.
 - Plan eligibility is additive. Mixed-role users can select any plan eligible for one of their public account types, while single-role users are blocked from unrelated plans at checkout.
+- A user can now hold multiple active subscriptions, such as one `premium_player` subscription scoped to a child player profile and one `team_professional` subscription scoped to a team.
+- The app reuses one Stripe customer id across a user's subscriptions when available.
 - State-changing billing endpoints use `POST`; no `PUT`, `PATCH`, or `DELETE` endpoints were introduced.
 - Webhooks are the authority for granting/removing paid access. The success redirect alone does not unlock features.
 
@@ -72,5 +79,8 @@
 - Checkout session creation records a pending local subscription without granting paid entitlements.
 - Checkout rejects single-role users who request unrelated plans.
 - Checkout allows mixed-role users such as `Parent + Coach`, `Player + Coach`, and `AcademyDirector` to request the union of eligible plans.
+- Checkout allows multiple subscriptions for the same plan when the subscription scopes differ.
+- Checkout rejects duplicate active subscriptions for the same plan and scope.
+- Active multiple subscriptions combine player and team entitlement features.
 - Stripe-style subscription sync grants paid features on `active` and removes them on `canceled`.
-- Full test suite passed: `64` tests.
+- Full test suite passed: `67` tests.

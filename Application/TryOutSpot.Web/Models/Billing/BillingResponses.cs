@@ -48,14 +48,36 @@ public sealed record CurrentBillingResponse(
     decimal? Amount,
     string? Currency,
     DateTime? CurrentPeriodEnd,
-    bool CancelAtPeriodEnd);
+    bool CancelAtPeriodEnd)
+{
+    public IReadOnlyCollection<CurrentBillingSubscriptionResponse> Subscriptions { get; init; } = [];
+}
+
+/// <summary>
+/// A single subscription currently linked to the authenticated user.
+/// </summary>
+public sealed record CurrentBillingSubscriptionResponse(
+    Guid Id,
+    string PlanCode,
+    string PlanName,
+    string Status,
+    bool HasActiveEntitlement,
+    string BillingInterval,
+    decimal? Amount,
+    string Currency,
+    DateTime? CurrentPeriodEnd,
+    bool CancelAtPeriodEnd,
+    string ScopeType,
+    Guid? ScopeId);
 
 /// <summary>
 /// Request to create a Stripe Checkout subscription session.
 /// </summary>
 public sealed record CreateCheckoutSessionRequest(
     string PlanCode,
-    string? BillingInterval);
+    string? BillingInterval,
+    string? ScopeType = null,
+    Guid? ScopeId = null);
 
 /// <summary>
 /// Stripe Checkout session details returned to the frontend.
@@ -64,7 +86,14 @@ public sealed record CheckoutSessionResponse(
     string SessionId,
     string Url,
     string PlanCode,
-    string BillingInterval);
+    string BillingInterval)
+{
+    public Guid? SubscriptionId { get; init; }
+
+    public string ScopeType { get; init; } = "account";
+
+    public Guid? ScopeId { get; init; }
+}
 
 /// <summary>
 /// Stripe customer portal session details returned to the frontend.

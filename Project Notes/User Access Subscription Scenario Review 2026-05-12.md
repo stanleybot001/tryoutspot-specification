@@ -55,10 +55,11 @@ The six public account types produce 63 possible non-empty combinations. Current
 
 - Free entitlements come only from `Parent` or `Player` roles.
 - Team and organization roles do not grant free team features by themselves.
-- Paid entitlements come from the user's single current `Subscription` row.
+- Paid entitlements come from every active or trialing `Subscription` row linked to the user.
 - Paid features are granted only for `active` or `trialing` subscription statuses.
 - `checkout_started`, `canceled`, `past_due`, `unpaid`, and failed/unknown statuses do not grant paid features.
 - Entitlements are the union of free role features plus active/trialing plan features.
+- Multiple paid subscriptions can contribute features at the same time.
 
 ## Billing Flow Simulation
 
@@ -67,12 +68,16 @@ The six public account types produce 63 possible non-empty combinations. Current
 3. Free plan is rejected for Stripe checkout because it does not require Stripe.
 4. The requested paid plan must be eligible for at least one of the user's public account types.
 5. Annual interval is rejected for `team_basic`.
-6. Stripe price ID must be configured for the selected plan and interval.
-7. Checkout creates or reuses a Stripe customer.
-8. Local subscription is recorded as `checkout_started`, but no paid features are granted yet.
-9. Stripe webhook sync changes the local subscription to `active` or `trialing`.
-10. Entitlement service begins granting plan features.
-11. Stripe cancellation or non-entitling status removes paid features.
+6. Optional subscription scope must match the selected plan:
+   - `premium_player`: `account` or `player`
+   - `team_basic`, `team_professional`: `account` or `team`
+   - `enterprise_organization`: `account` or `organization`
+7. Stripe price ID must be configured for the selected plan and interval.
+8. Checkout creates or reuses a Stripe customer.
+9. Local subscription is recorded as `checkout_started`, but no paid features are granted yet.
+10. Stripe webhook sync changes the local subscription to `active` or `trialing`.
+11. Entitlement service begins granting plan features.
+12. Stripe cancellation or non-entitling status removes paid features.
 
 ## Plan Eligibility Decision
 
@@ -85,10 +90,10 @@ The six public account types produce 63 possible non-empty combinations. Current
 
 ## Current Gaps To Decide
 
-- The database supports one subscription row per user. A combined `Parent + Coach` user cannot hold separate Premium Player and Professional Team subscriptions at the same time.
 - Changing account types does not check whether the existing subscription still matches the new role mix.
 - `OrganizationAdmin` alone is recommended only Enterprise; that matches current code, but we should confirm whether organization admins should also see Team Basic/Professional.
 - Webhook handling currently relies on subscription events and checkout completion. Invoice events are documented as desirable later but are not currently handled.
+- Scope ids are recorded but not fully validated against player/team/organization ownership yet. Add that validation when those management APIs are built.
 
 ## Recommended Next Verification Tests
 
@@ -96,6 +101,9 @@ The six public account types produce 63 possible non-empty combinations. Current
 - Checkout rejects free plan.
 - Checkout rejects role/plan mismatches for single-role users.
 - Checkout permits mixed-role users to request any plan eligible for one of their roles.
+- Checkout permits multiple same-plan subscriptions with different scopes.
+- Checkout rejects duplicate active subscriptions for the same plan and scope.
 - Entitlements for all five plan codes and non-entitling statuses.
+- Entitlements merge active multiple subscriptions.
 - Role changes preserve platform admin role and update public roles only.
 - Mixed-role user behavior for `Parent + Coach`, `Player + Coach`, and `AcademyDirector + Parent`.

@@ -19,6 +19,8 @@ public interface IStripeBillingService
         BillingPlanDefinition plan,
         string billingInterval,
         string stripePriceId,
+        string scopeType,
+        Guid? scopeId,
         CancellationToken cancellationToken);
 
     Task<StripeBillingPortalSessionResult> CreatePortalSessionAsync(
@@ -49,12 +51,14 @@ public sealed class StripeBillingService(IOptions<StripeBillingOptions> options)
         BillingPlanDefinition plan,
         string billingInterval,
         string stripePriceId,
+        string scopeType,
+        Guid? scopeId,
         CancellationToken cancellationToken)
     {
         EnsureStripeApiIsConfigured();
 
         var stripeCustomerId = await GetOrCreateCustomerAsync(user, existingStripeCustomerId, cancellationToken);
-        var metadata = BuildMetadata(user.Id, plan.Code, billingInterval);
+        var metadata = BuildMetadata(user.Id, plan.Code, billingInterval, scopeType, scopeId);
         var subscriptionData = new CheckoutSessionSubscriptionDataOptions
         {
             Metadata = metadata
@@ -169,7 +173,7 @@ public sealed class StripeBillingService(IOptions<StripeBillingOptions> options)
             {
                 Email = user.Email,
                 Name = $"{user.FirstName} {user.LastName}".Trim(),
-                Metadata = BuildMetadata(user.Id, null, null)
+                Metadata = BuildMetadata(user.Id, null, null, null, null)
             },
             BuildRequestOptions(),
             cancellationToken);
@@ -177,7 +181,12 @@ public sealed class StripeBillingService(IOptions<StripeBillingOptions> options)
         return customer.Id;
     }
 
-    private static Dictionary<string, string> BuildMetadata(Guid userId, string? planCode, string? billingInterval)
+    private static Dictionary<string, string> BuildMetadata(
+        Guid userId,
+        string? planCode,
+        string? billingInterval,
+        string? scopeType,
+        Guid? scopeId)
     {
         var metadata = new Dictionary<string, string>
         {
@@ -192,6 +201,16 @@ public sealed class StripeBillingService(IOptions<StripeBillingOptions> options)
         if (!string.IsNullOrWhiteSpace(billingInterval))
         {
             metadata[StripeBillingMetadataKeys.BillingInterval] = billingInterval;
+        }
+
+        if (!string.IsNullOrWhiteSpace(scopeType))
+        {
+            metadata[StripeBillingMetadataKeys.ScopeType] = scopeType;
+        }
+
+        if (scopeId is not null)
+        {
+            metadata[StripeBillingMetadataKeys.ScopeId] = scopeId.Value.ToString();
         }
 
         return metadata;

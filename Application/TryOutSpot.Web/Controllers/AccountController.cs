@@ -1055,12 +1055,11 @@ public sealed class AccountController(
             && await dbContext.UserTeamRoles
                 .AsNoTracking()
                 .AnyAsync(teamRole => teamRole.UserId == user.Id, cancellationToken);
-        var subscription = await dbContext.Subscriptions
+        var subscriptions = await dbContext.Subscriptions
             .AsNoTracking()
-            .SingleOrDefaultAsync(currentSubscription => currentSubscription.UserId == user.Id, cancellationToken);
-        var subscriptionPlan = TryOutSpotBillingCatalog.GetPlan(subscription?.PlanType);
-        var hasPaidPlan = subscriptionPlan?.RequiresStripeSubscription == true
-            && TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription?.Status);
+            .Where(currentSubscription => currentSubscription.UserId == user.Id)
+            .ToArrayAsync(cancellationToken);
+        var hasPaidPlan = subscriptions.Any(IsActivePaidSubscription);
 
         var steps = new List<OnboardingStepPageItem>
         {
@@ -1134,10 +1133,12 @@ public sealed class AccountController(
             .OrderBy(role => role)
             .ToArray();
         var entitlements = await entitlementService.GetEntitlementsAsync(user.Id, cancellationToken);
-        var subscription = await dbContext.Subscriptions
+        var subscriptions = await dbContext.Subscriptions
             .AsNoTracking()
-            .SingleOrDefaultAsync(currentSubscription => currentSubscription.UserId == user.Id, cancellationToken);
-        var subscriptionPlan = TryOutSpotBillingCatalog.GetPlan(subscription?.PlanType);
+            .Where(currentSubscription => currentSubscription.UserId == user.Id)
+            .OrderByDescending(currentSubscription => currentSubscription.UpdatedAt)
+            .ToArrayAsync(cancellationToken);
+        var activePaidSubscriptions = subscriptions.Where(IsActivePaidSubscription).ToArray();
         var hasLocalPassword = await userManager.HasPasswordAsync(user);
 
         return new AccountSettingsPageModel
@@ -1177,8 +1178,8 @@ public sealed class AccountController(
                 SmsConsentAcceptedAt = user.SmsConsentAcceptedAt,
                 PhoneNumber = user.PhoneNumber
             },
-            CurrentPlanName = subscriptionPlan?.Name ?? "Free Player/Parent",
-            CurrentPlanStatus = subscription?.Status,
+            CurrentPlanName = FormatCurrentPlanName(activePaidSubscriptions),
+            CurrentPlanStatus = FormatCurrentPlanStatus(activePaidSubscriptions),
             RecommendedPlans = GetPlansForAccountTypes(roles),
             FeatureCodes = entitlements?.FeatureCodes ?? []
         };
@@ -1399,6 +1400,48 @@ public sealed class AccountController(
     private static bool HasAnyRole(IReadOnlyCollection<string> roles, params string[] candidates)
     {
         return roles.Any(role => candidates.Contains(role, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static bool IsActivePaidSubscription(Subscription subscription)
+    {
+        var plan = TryOutSpotBillingCatalog.GetPlan(subscription.PlanType);
+        return plan?.RequiresStripeSubscription == true
+            && TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status);
+    }
+
+    private static string FormatCurrentPlanName(IReadOnlyCollection<Subscription> activePaidSubscriptions)
+    {
+        if (activePaidSubscriptions.Count == 0)
+        {
+            return "Free Player/Parent";
+        }
+
+        if (activePaidSubscriptions.Count == 1)
+        {
+            var subscription = activePaidSubscriptions.Single();
+            return TryOutSpotBillingCatalog.GetPlan(subscription.PlanType)?.Name ?? subscription.PlanType;
+        }
+
+        return $"{activePaidSubscriptions.Count} active memberships";
+    }
+
+    private static string? FormatCurrentPlanStatus(IReadOnlyCollection<Subscription> activePaidSubscriptions)
+    {
+        if (activePaidSubscriptions.Count == 0)
+        {
+            return null;
+        }
+
+        if (activePaidSubscriptions.Count == 1)
+        {
+            return activePaidSubscriptions.Single().Status;
+        }
+
+        var planNames = activePaidSubscriptions
+            .Select(subscription => TryOutSpotBillingCatalog.GetPlan(subscription.PlanType)?.Name ?? subscription.PlanType)
+            .OrderBy(planName => planName)
+            .ToArray();
+        return string.Join(", ", planNames);
     }
 
     private static string GetProviderDisplayName(string provider)

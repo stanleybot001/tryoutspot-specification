@@ -42,7 +42,7 @@ public partial class User : IdentityUser<Guid>
 
     public virtual ICollection<Registration> Registrations { get; set; } = new List<Registration>();
 
-    public virtual Subscription? Subscription { get; set; }
+    public virtual ICollection<Subscription> Subscriptions { get; set; } = new List<Subscription>();
 
     public virtual UserAdFrequency? UserAdFrequency { get; set; }
 

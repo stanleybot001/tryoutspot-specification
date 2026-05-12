@@ -13,7 +13,7 @@ public sealed class EntitlementService(
     public async Task<UserEntitlementSet?> GetEntitlementsAsync(Guid userId, CancellationToken cancellationToken)
     {
         var user = await dbContext.Users
-            .Include(currentUser => currentUser.Subscription)
+            .Include(currentUser => currentUser.Subscriptions)
             .SingleOrDefaultAsync(currentUser => currentUser.Id == userId, cancellationToken);
 
         if (user is not { IsActive: true })
@@ -26,20 +26,34 @@ public sealed class EntitlementService(
             TryOutSpotBillingCatalog.GetFreeFeatureCodesForRoles(accountTypes),
             StringComparer.Ordinal);
 
-        var planCode = ResolvePlanCode(user.Subscription);
-        if (planCode is not null
-            && TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(user.Subscription?.Status)
-            && TryOutSpotBillingCatalog.GetPlan(planCode) is { } plan)
+        var activePlanCodes = new SortedSet<string>(StringComparer.Ordinal);
+        string? primaryPlanCode = null;
+        string? primarySubscriptionStatus = null;
+        foreach (var subscription in user.Subscriptions
+            .Where(subscription => TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status))
+            .OrderByDescending(subscription => subscription.UpdatedAt))
         {
+            var planCode = ResolvePlanCode(subscription);
+            if (planCode is null || TryOutSpotBillingCatalog.GetPlan(planCode) is not { } plan)
+            {
+                continue;
+            }
+
             features.UnionWith(plan.IncludedFeatureCodes);
+            activePlanCodes.Add(planCode);
+            primaryPlanCode ??= planCode;
+            primarySubscriptionStatus ??= subscription.Status;
         }
 
         return new UserEntitlementSet(
             user.Id,
-            planCode,
-            user.Subscription?.Status,
+            primaryPlanCode,
+            primarySubscriptionStatus,
             accountTypes.ToArray(),
-            features.ToArray());
+            features.ToArray())
+        {
+            ActivePlanCodes = activePlanCodes.ToArray()
+        };
     }
 
     public async Task<bool> HasFeatureAsync(Guid userId, string featureCode, CancellationToken cancellationToken)

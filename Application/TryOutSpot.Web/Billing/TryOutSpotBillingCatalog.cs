@@ -355,6 +355,22 @@ public static class TryOutSpotBillingCatalog
                 .Contains(normalizedPlanCode, StringComparer.Ordinal);
     }
 
+    public static bool IsSubscriptionScopeEligibleForPlan(string planCode, string scopeType)
+    {
+        var normalizedPlanCode = NormalizePlanCode(planCode);
+        var normalizedScopeType = TryOutSpotSubscriptionScopeTypes.Normalize(scopeType);
+        return normalizedPlanCode switch
+        {
+            TryOutSpotPlanCodes.PremiumPlayer =>
+                normalizedScopeType is TryOutSpotSubscriptionScopeTypes.Account or TryOutSpotSubscriptionScopeTypes.Player,
+            TryOutSpotPlanCodes.TeamBasic or TryOutSpotPlanCodes.TeamProfessional =>
+                normalizedScopeType is TryOutSpotSubscriptionScopeTypes.Account or TryOutSpotSubscriptionScopeTypes.Team,
+            TryOutSpotPlanCodes.EnterpriseOrganization =>
+                normalizedScopeType is TryOutSpotSubscriptionScopeTypes.Account or TryOutSpotSubscriptionScopeTypes.Organization,
+            _ => false
+        };
+    }
+
     public static bool IsEntitlingSubscriptionStatus(string? status)
     {
         return string.Equals(status, "active", StringComparison.OrdinalIgnoreCase)

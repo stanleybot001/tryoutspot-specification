@@ -27,6 +27,8 @@ public sealed record StripeSubscriptionSnapshot(
     decimal? Amount,
     string? Currency,
     string? BillingInterval,
+    string? ScopeType,
+    Guid? ScopeId,
     bool CancelAtPeriodEnd,
     DateTime? CancelledAt);
 
@@ -57,7 +59,9 @@ public sealed class StripeSubscriptionSyncService(
             return null;
         }
 
-        var subscription = await FindExistingSubscriptionAsync(snapshot, cancellationToken);
+        var scopeType = TryOutSpotSubscriptionScopeTypes.Normalize(snapshot.ScopeType)
+            ?? TryOutSpotSubscriptionScopeTypes.Account;
+        var subscription = await FindExistingSubscriptionAsync(snapshot, planCode, scopeType, cancellationToken);
         var now = DateTime.UtcNow;
 
         if (subscription is null)
@@ -92,6 +96,8 @@ public sealed class StripeSubscriptionSyncService(
 
         subscription.PlanType = planCode;
         subscription.Status = snapshot.Status;
+        subscription.ScopeType = scopeType;
+        subscription.ScopeId = snapshot.ScopeId;
         subscription.StripeCustomerId = snapshot.StripeCustomerId;
         subscription.StripeSubscriptionId = snapshot.StripeSubscriptionId;
         subscription.StripePriceId = snapshot.StripePriceId;
@@ -112,6 +118,8 @@ public sealed class StripeSubscriptionSyncService(
 
     private async Task<AppSubscription?> FindExistingSubscriptionAsync(
         StripeSubscriptionSnapshot snapshot,
+        string planCode,
+        string scopeType,
         CancellationToken cancellationToken)
     {
         var subscription = await dbContext.Subscriptions
@@ -126,8 +134,12 @@ public sealed class StripeSubscriptionSyncService(
         if (snapshot.UserId is not null)
         {
             subscription = await dbContext.Subscriptions
-                .SingleOrDefaultAsync(
-                    currentSubscription => currentSubscription.UserId == snapshot.UserId.Value,
+                .OrderByDescending(currentSubscription => currentSubscription.CreatedAt)
+                .FirstOrDefaultAsync(
+                    currentSubscription => currentSubscription.UserId == snapshot.UserId.Value
+                        && currentSubscription.PlanType == planCode
+                        && currentSubscription.ScopeType == scopeType
+                        && currentSubscription.ScopeId == snapshot.ScopeId,
                     cancellationToken);
             if (subscription is not null)
             {
@@ -135,10 +147,7 @@ public sealed class StripeSubscriptionSyncService(
             }
         }
 
-        return await dbContext.Subscriptions
-            .SingleOrDefaultAsync(
-                currentSubscription => currentSubscription.StripeCustomerId == snapshot.StripeCustomerId,
-                cancellationToken);
+        return null;
     }
 
     private string? ResolvePlanCode(StripeSubscriptionSnapshot snapshot)
@@ -159,6 +168,8 @@ public static class StripeSubscriptionSnapshotFactory
         var billingInterval = metadata.GetValueOrDefault(StripeBillingMetadataKeys.BillingInterval)
             ?? price?.Recurring?.Interval;
         var userId = TryParseUserId(metadata.GetValueOrDefault(StripeBillingMetadataKeys.UserId));
+        var scopeType = metadata.GetValueOrDefault(StripeBillingMetadataKeys.ScopeType);
+        var scopeId = TryParseGuid(metadata.GetValueOrDefault(StripeBillingMetadataKeys.ScopeId));
 
         return new StripeSubscriptionSnapshot(
             subscription.Id,
@@ -173,13 +184,20 @@ public static class StripeSubscriptionSnapshotFactory
             ToMajorCurrencyAmount(price?.UnitAmountDecimal, price?.UnitAmount),
             price?.Currency ?? subscription.Currency,
             billingInterval,
+            scopeType,
+            scopeId,
             subscription.CancelAtPeriodEnd,
             subscription.CanceledAt);
     }
 
     private static Guid? TryParseUserId(string? rawUserId)
     {
-        return Guid.TryParse(rawUserId, out var userId) ? userId : null;
+        return TryParseGuid(rawUserId);
+    }
+
+    private static Guid? TryParseGuid(string? rawValue)
+    {
+        return Guid.TryParse(rawValue, out var value) ? value : null;
     }
 
     private static decimal? ToMajorCurrencyAmount(decimal? decimalMinorUnitAmount, long? integerMinorUnitAmount)

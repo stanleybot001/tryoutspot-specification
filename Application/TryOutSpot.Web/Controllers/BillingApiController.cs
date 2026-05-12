@@ -11,6 +11,7 @@ using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Models.Billing;
 using TryOutSpot.Web.Security;
 using TryOutSpot.Web.Services;
+using AppSubscription = TryOutSpot.Web.Data.Entities.Subscription;
 using StripeCheckoutSession = Stripe.Checkout.Session;
 using StripeSubscription = Stripe.Subscription;
 
@@ -92,27 +93,33 @@ public sealed class BillingApiController(
     public async Task<ActionResult<CurrentBillingResponse>> GetCurrentBilling(
         CancellationToken cancellationToken)
     {
-        var user = await GetCurrentUserWithSubscriptionAsync(cancellationToken);
+        var user = await GetCurrentUserWithSubscriptionsAsync(cancellationToken);
         if (user is null)
         {
             return Unauthorized();
         }
 
-        var planCode = TryOutSpotBillingCatalog.NormalizePlanCode(user.Subscription?.PlanType);
-        var plan = TryOutSpotBillingCatalog.GetPlan(planCode);
-        var hasActiveEntitlement = plan is not null
-            && TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(user.Subscription?.Status);
+        var subscriptions = user.Subscriptions
+            .OrderByDescending(subscription => TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status))
+            .ThenByDescending(subscription => subscription.UpdatedAt)
+            .Select(ToCurrentBillingSubscriptionResponse)
+            .ToArray();
+        var primarySubscription = subscriptions.FirstOrDefault(subscription => subscription.HasActiveEntitlement)
+            ?? subscriptions.FirstOrDefault();
 
         return Ok(new CurrentBillingResponse(
-            planCode,
-            plan?.Name,
-            user.Subscription?.Status,
-            hasActiveEntitlement,
-            user.Subscription?.BillingInterval,
-            user.Subscription?.Amount,
-            user.Subscription?.Currency,
-            user.Subscription?.CurrentPeriodEnd,
-            user.Subscription?.CancelAtPeriodEnd ?? false));
+            primarySubscription?.PlanCode,
+            primarySubscription?.PlanName,
+            primarySubscription?.Status,
+            primarySubscription?.HasActiveEntitlement ?? false,
+            primarySubscription?.BillingInterval,
+            primarySubscription?.Amount,
+            primarySubscription?.Currency,
+            primarySubscription?.CurrentPeriodEnd,
+            primarySubscription?.CancelAtPeriodEnd ?? false)
+        {
+            Subscriptions = subscriptions
+        });
     }
 
     /// <summary>
@@ -133,7 +140,7 @@ public sealed class BillingApiController(
         CreateCheckoutSessionRequest request,
         CancellationToken cancellationToken)
     {
-        var user = await GetCurrentUserWithSubscriptionAsync(cancellationToken);
+        var user = await GetCurrentUserWithSubscriptionsAsync(cancellationToken);
         if (user is null)
         {
             return Unauthorized();
@@ -167,6 +174,26 @@ public sealed class BillingApiController(
             return ValidationProblem(ModelState);
         }
 
+        var scope = ValidateSubscriptionScope(plan.Code, request.ScopeType, request.ScopeId);
+        if (scope is null)
+        {
+            return ValidationProblem(ModelState);
+        }
+
+        var existingSubscription = FindSubscriptionForPlanScope(
+            user.Subscriptions,
+            plan.Code,
+            scope.ScopeType,
+            scope.ScopeId);
+        if (existingSubscription is not null
+            && TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(existingSubscription.Status))
+        {
+            ModelState.AddModelError(
+                nameof(request.PlanCode),
+                "This subscription is already active for the selected scope.");
+            return ValidationProblem(ModelState);
+        }
+
         var billingInterval = BillingIntervalCodes.Normalize(request.BillingInterval);
         if (billingInterval is null)
         {
@@ -190,26 +217,35 @@ public sealed class BillingApiController(
 
         var checkoutSession = await stripeBillingService.CreateCheckoutSessionAsync(
             user,
-            user.Subscription?.StripeCustomerId,
+            ResolveStripeCustomerId(user.Subscriptions),
             plan,
             billingInterval,
             stripePriceId,
+            scope.ScopeType,
+            scope.ScopeId,
             cancellationToken);
 
-        await RecordCheckoutStartedAsync(
+        var subscription = await RecordCheckoutStartedAsync(
             user,
             plan,
             billingInterval,
             amount.Value,
             stripePriceId,
             checkoutSession.StripeCustomerId,
+            scope.ScopeType,
+            scope.ScopeId,
             cancellationToken);
 
         return Ok(new CheckoutSessionResponse(
             checkoutSession.SessionId,
             checkoutSession.Url,
             plan.Code,
-            billingInterval));
+            billingInterval)
+        {
+            SubscriptionId = subscription.Id,
+            ScopeType = subscription.ScopeType,
+            ScopeId = subscription.ScopeId
+        });
     }
 
     /// <summary>
@@ -226,20 +262,21 @@ public sealed class BillingApiController(
     public async Task<ActionResult<BillingPortalSessionResponse>> CreateCustomerPortalSession(
         CancellationToken cancellationToken)
     {
-        var user = await GetCurrentUserWithSubscriptionAsync(cancellationToken);
+        var user = await GetCurrentUserWithSubscriptionsAsync(cancellationToken);
         if (user is null)
         {
             return Unauthorized();
         }
 
-        if (string.IsNullOrWhiteSpace(user.Subscription?.StripeCustomerId))
+        var stripeCustomerId = ResolveStripeCustomerId(user.Subscriptions);
+        if (string.IsNullOrWhiteSpace(stripeCustomerId))
         {
             ModelState.AddModelError("subscription", "No Stripe customer is linked to this account yet.");
             return ValidationProblem(ModelState);
         }
 
         var portalSession = await stripeBillingService.CreatePortalSessionAsync(
-            user.Subscription.StripeCustomerId,
+            stripeCustomerId,
             cancellationToken);
 
         return Ok(new BillingPortalSessionResponse(portalSession.Url));
@@ -361,7 +398,7 @@ public sealed class BillingApiController(
             cancellationToken);
     }
 
-    private async Task<User?> GetCurrentUserWithSubscriptionAsync(CancellationToken cancellationToken)
+    private async Task<User?> GetCurrentUserWithSubscriptionsAsync(CancellationToken cancellationToken)
     {
         var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!Guid.TryParse(userIdClaim, out var userId))
@@ -370,36 +407,47 @@ public sealed class BillingApiController(
         }
 
         return await dbContext.Users
-            .Include(user => user.Subscription)
+            .Include(user => user.Subscriptions)
             .SingleOrDefaultAsync(user => user.Id == userId && user.IsActive, cancellationToken);
     }
 
-    private async Task RecordCheckoutStartedAsync(
+    private async Task<AppSubscription> RecordCheckoutStartedAsync(
         User user,
         BillingPlanDefinition plan,
         string billingInterval,
         decimal amount,
         string stripePriceId,
         string stripeCustomerId,
+        string scopeType,
+        Guid? scopeId,
         CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
-        var subscription = user.Subscription;
+        var subscription = FindSubscriptionForPlanScope(user.Subscriptions, plan.Code, scopeType, scopeId);
         if (subscription is null)
         {
-            subscription = new TryOutSpot.Web.Data.Entities.Subscription
+            subscription = new AppSubscription
             {
                 Id = Guid.NewGuid(),
                 UserId = user.Id,
+                PlanType = plan.Code,
+                Status = "checkout_started",
+                Currency = plan.Currency,
+                BillingInterval = billingInterval,
+                ScopeType = scopeType,
+                ScopeId = scopeId,
                 CreatedAt = now
             };
             dbContext.Subscriptions.Add(subscription);
+            user.Subscriptions.Add(subscription);
         }
 
         if (!TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status))
         {
             subscription.PlanType = plan.Code;
             subscription.Status = "checkout_started";
+            subscription.ScopeType = scopeType;
+            subscription.ScopeId = scopeId;
             subscription.Amount = amount;
             subscription.Currency = plan.Currency;
             subscription.BillingInterval = billingInterval;
@@ -412,6 +460,82 @@ public sealed class BillingApiController(
         subscription.StripeCustomerId = stripeCustomerId;
         subscription.UpdatedAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
+        return subscription;
+    }
+
+    private SubscriptionScope? ValidateSubscriptionScope(string planCode, string? requestedScopeType, Guid? scopeId)
+    {
+        var scopeType = TryOutSpotSubscriptionScopeTypes.Normalize(requestedScopeType);
+        if (scopeType is null)
+        {
+            ModelState.AddModelError(nameof(CreateCheckoutSessionRequest.ScopeType), "Choose account, player, team, or organization scope.");
+            return null;
+        }
+
+        if (!TryOutSpotBillingCatalog.IsSubscriptionScopeEligibleForPlan(planCode, scopeType))
+        {
+            ModelState.AddModelError(nameof(CreateCheckoutSessionRequest.ScopeType), "This scope is not available for the selected plan.");
+            return null;
+        }
+
+        if (scopeType == TryOutSpotSubscriptionScopeTypes.Account && scopeId is not null)
+        {
+            ModelState.AddModelError(nameof(CreateCheckoutSessionRequest.ScopeId), "Account-scoped subscriptions should not include a scope id.");
+            return null;
+        }
+
+        if (scopeType != TryOutSpotSubscriptionScopeTypes.Account && scopeId is null)
+        {
+            ModelState.AddModelError(nameof(CreateCheckoutSessionRequest.ScopeId), "Choose the player, team, or organization this subscription applies to.");
+            return null;
+        }
+
+        return new SubscriptionScope(scopeType, scopeId);
+    }
+
+    private static AppSubscription? FindSubscriptionForPlanScope(
+        IEnumerable<AppSubscription> subscriptions,
+        string planCode,
+        string scopeType,
+        Guid? scopeId)
+    {
+        return subscriptions
+            .OrderByDescending(subscription => subscription.UpdatedAt)
+            .FirstOrDefault(subscription =>
+                string.Equals(subscription.PlanType, planCode, StringComparison.Ordinal)
+                && string.Equals(subscription.ScopeType, scopeType, StringComparison.Ordinal)
+                && subscription.ScopeId == scopeId);
+    }
+
+    private static string? ResolveStripeCustomerId(IEnumerable<AppSubscription> subscriptions)
+    {
+        return subscriptions
+            .OrderByDescending(subscription => TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status))
+            .ThenByDescending(subscription => subscription.UpdatedAt)
+            .Select(subscription => subscription.StripeCustomerId)
+            .FirstOrDefault(stripeCustomerId => !string.IsNullOrWhiteSpace(stripeCustomerId));
+    }
+
+    private static CurrentBillingSubscriptionResponse ToCurrentBillingSubscriptionResponse(AppSubscription subscription)
+    {
+        var planCode = TryOutSpotBillingCatalog.NormalizePlanCode(subscription.PlanType)
+            ?? (subscription.IsElite ? TryOutSpotPlanCodes.PremiumPlayer : subscription.PlanType);
+        var plan = TryOutSpotBillingCatalog.GetPlan(planCode);
+        var isEntitling = TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status);
+
+        return new CurrentBillingSubscriptionResponse(
+            subscription.Id,
+            planCode,
+            plan?.Name ?? subscription.PlanType,
+            subscription.Status,
+            plan is not null && isEntitling,
+            subscription.BillingInterval,
+            subscription.Amount,
+            subscription.Currency,
+            subscription.CurrentPeriodEnd,
+            subscription.CancelAtPeriodEnd,
+            subscription.ScopeType,
+            subscription.ScopeId);
     }
 
     private static decimal? GetAmountForInterval(BillingPlanDefinition plan, string billingInterval)
@@ -423,4 +547,6 @@ public sealed class BillingApiController(
             _ => null
         };
     }
+
+    private sealed record SubscriptionScope(string ScopeType, Guid? ScopeId);
 }

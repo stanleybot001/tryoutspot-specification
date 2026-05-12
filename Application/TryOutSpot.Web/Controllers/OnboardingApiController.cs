@@ -160,12 +160,11 @@ public sealed class OnboardingApiController(
                 .AsNoTracking()
                 .AnyAsync(teamRole => teamRole.UserId == user.Id, cancellationToken);
 
-        var subscription = await dbContext.Subscriptions
+        var subscriptions = await dbContext.Subscriptions
             .AsNoTracking()
-            .SingleOrDefaultAsync(subscription => subscription.UserId == user.Id, cancellationToken);
-        var subscriptionPlan = TryOutSpotBillingCatalog.GetPlan(subscription?.PlanType);
-        var hasPaidPlan = subscriptionPlan?.RequiresStripeSubscription == true
-            && TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription?.Status);
+            .Where(subscription => subscription.UserId == user.Id)
+            .ToArrayAsync(cancellationToken);
+        var hasPaidPlan = subscriptions.Any(IsActivePaidSubscription);
 
         var hasPublicAccountType = roles.Any(role =>
             TryOutSpotRoles.PublicRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase));
@@ -334,6 +333,13 @@ public sealed class OnboardingApiController(
     private static bool HasAnyRole(IReadOnlyCollection<string> roles, params string[] candidates)
     {
         return roles.Any(role => candidates.Contains(role, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static bool IsActivePaidSubscription(Subscription subscription)
+    {
+        var plan = TryOutSpotBillingCatalog.GetPlan(subscription.PlanType);
+        return plan?.RequiresStripeSubscription == true
+            && TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status);
     }
 
     private static CurrentUserResponse ToCurrentUserResponse(User user, IReadOnlyCollection<string> accountTypes)

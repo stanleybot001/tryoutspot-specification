@@ -13,6 +13,7 @@ using TryOutSpot.Web.Identity;
 using TryOutSpot.Web.Models.Account;
 using TryOutSpot.Web.Models.Billing;
 using TryOutSpot.Web.Services;
+using AppSubscription = TryOutSpot.Web.Data.Entities.Subscription;
 
 namespace TryOutSpot.Web.Tests;
 
@@ -64,6 +65,8 @@ public sealed class BillingApiTests
 
         Assert.Equal("checkout_started", subscription.Status);
         Assert.Equal(TryOutSpotPlanCodes.PremiumPlayer, subscription.PlanType);
+        Assert.Equal(TryOutSpotSubscriptionScopeTypes.Account, subscription.ScopeType);
+        Assert.Null(subscription.ScopeId);
         Assert.Equal("cus_test_checkout", subscription.StripeCustomerId);
         Assert.Equal("price_premium_month", subscription.StripePriceId);
         Assert.Equal(9.99m, subscription.Amount);
@@ -123,6 +126,93 @@ public sealed class BillingApiTests
     }
 
     [Fact]
+    public async Task CreateCheckoutSession_WithDifferentPlayerScopes_AllowsMultiplePremiumSubscriptions()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync("checkout-multiple-player-scopes@example.com", [TryOutSpotRoles.Parent]);
+        var client = await CreateAuthorizedClientAsync(factory, user.Email!);
+        var firstPlayerId = Guid.NewGuid();
+        var secondPlayerId = Guid.NewGuid();
+
+        var firstResponse = await client.PostAsJsonAsync(
+            "/api/billing/checkout-session",
+            new CreateCheckoutSessionRequest(
+                TryOutSpotPlanCodes.PremiumPlayer,
+                BillingIntervalCodes.Month,
+                TryOutSpotSubscriptionScopeTypes.Player,
+                firstPlayerId));
+
+        var secondResponse = await client.PostAsJsonAsync(
+            "/api/billing/checkout-session",
+            new CreateCheckoutSessionRequest(
+                TryOutSpotPlanCodes.PremiumPlayer,
+                BillingIntervalCodes.Month,
+                TryOutSpotSubscriptionScopeTypes.Player,
+                secondPlayerId));
+
+        Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var subscriptions = await dbContext.Subscriptions
+            .Where(subscription => subscription.UserId == user.Id)
+            .OrderBy(subscription => subscription.ScopeId)
+            .ToArrayAsync();
+
+        Assert.Equal(2, subscriptions.Length);
+        Assert.All(subscriptions, subscription => Assert.Equal(TryOutSpotPlanCodes.PremiumPlayer, subscription.PlanType));
+        Assert.Contains(subscriptions, subscription => subscription.ScopeId == firstPlayerId);
+        Assert.Contains(subscriptions, subscription => subscription.ScopeId == secondPlayerId);
+        Assert.All(subscriptions, subscription => Assert.Equal(TryOutSpotSubscriptionScopeTypes.Player, subscription.ScopeType));
+    }
+
+    [Fact]
+    public async Task CreateCheckoutSession_WithActiveSameScope_ReturnsBadRequest()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync("checkout-active-same-scope@example.com", [TryOutSpotRoles.Parent]);
+        var client = await CreateAuthorizedClientAsync(factory, user.Email!);
+        var playerId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            dbContext.Subscriptions.Add(new AppSubscription
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                PlanType = TryOutSpotPlanCodes.PremiumPlayer,
+                Status = "active",
+                ScopeType = TryOutSpotSubscriptionScopeTypes.Player,
+                ScopeId = playerId,
+                StripeCustomerId = "cus_existing",
+                StripeSubscriptionId = "sub_existing",
+                StripePriceId = "price_premium_month",
+                CurrentPeriodStart = now,
+                CurrentPeriodEnd = now.AddMonths(1),
+                Amount = 9.99m,
+                Currency = "USD",
+                BillingInterval = BillingIntervalCodes.Month,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var response = await client.PostAsJsonAsync(
+            "/api/billing/checkout-session",
+            new CreateCheckoutSessionRequest(
+                TryOutSpotPlanCodes.PremiumPlayer,
+                BillingIntervalCodes.Month,
+                TryOutSpotSubscriptionScopeTypes.Player,
+                playerId));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task CreateCheckoutSession_WithAcademyDirector_AllowsTeamAndEnterprisePlans()
     {
         await using var factory = CreateFactoryWithStripe();
@@ -167,6 +257,8 @@ public sealed class BillingApiTests
                 79m,
                 "usd",
                 BillingIntervalCodes.Month,
+                TryOutSpotSubscriptionScopeTypes.Account,
+                null,
                 false,
                 null),
             CancellationToken.None);
@@ -191,6 +283,8 @@ public sealed class BillingApiTests
                 79m,
                 "usd",
                 BillingIntervalCodes.Month,
+                TryOutSpotSubscriptionScopeTypes.Account,
+                null,
                 false,
                 now),
             CancellationToken.None);
@@ -271,6 +365,8 @@ public sealed class BillingApiTests
             BillingPlanDefinition plan,
             string billingInterval,
             string stripePriceId,
+            string scopeType,
+            Guid? scopeId,
             CancellationToken cancellationToken)
         {
             return Task.FromResult(new StripeCheckoutSessionResult(

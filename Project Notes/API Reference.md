@@ -737,7 +737,23 @@ Success response: `200 OK`
   "amount": 9.99,
   "currency": "USD",
   "currentPeriodEnd": "2026-06-11T22:00:00Z",
-  "cancelAtPeriodEnd": false
+  "cancelAtPeriodEnd": false,
+  "subscriptions": [
+    {
+      "id": "30f9487f-4865-4dfc-bbdb-96c16d610470",
+      "planCode": "premium_player",
+      "planName": "Premium Player",
+      "status": "active",
+      "hasActiveEntitlement": true,
+      "billingInterval": "month",
+      "amount": 9.99,
+      "currency": "USD",
+      "currentPeriodEnd": "2026-06-11T22:00:00Z",
+      "cancelAtPeriodEnd": false,
+      "scopeType": "player",
+      "scopeId": "994d4f68-b1af-44e5-adfc-394ba4e903f5"
+    }
+  ]
 }
 ```
 
@@ -747,12 +763,16 @@ Creates a Stripe Checkout session for a paid subscription plan. This starts chec
 
 The requested plan must be eligible for at least one of the user's public account types. Eligibility is additive, so a mixed `Parent + Coach` or `Player + Coach` user can request either player/parent plans or team plans.
 
+`scopeType` and `scopeId` are optional. Use `account` scope for account-level purchases, `player` for a subscription tied to a specific player profile, `team` for a team subscription, and `organization` for an organization subscription.
+
 Request:
 
 ```json
 {
   "planCode": "premium_player",
-  "billingInterval": "month"
+  "billingInterval": "month",
+  "scopeType": "player",
+  "scopeId": "994d4f68-b1af-44e5-adfc-394ba4e903f5"
 }
 ```
 
@@ -763,7 +783,10 @@ Success response: `200 OK`
   "sessionId": "cs_test_123",
   "url": "https://checkout.stripe.com/c/pay/cs_test_123",
   "planCode": "premium_player",
-  "billingInterval": "month"
+  "billingInterval": "month",
+  "subscriptionId": "30f9487f-4865-4dfc-bbdb-96c16d610470",
+  "scopeType": "player",
+  "scopeId": "994d4f68-b1af-44e5-adfc-394ba4e903f5"
 }
 ```
 

@@ -5,4 +5,7 @@ public sealed record UserEntitlementSet(
     string? PlanCode,
     string? SubscriptionStatus,
     IReadOnlyCollection<string> AccountTypes,
-    IReadOnlyCollection<string> FeatureCodes);
+    IReadOnlyCollection<string> FeatureCodes)
+{
+    public IReadOnlyCollection<string> ActivePlanCodes { get; init; } = [];
+}

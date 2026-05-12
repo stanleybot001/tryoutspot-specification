@@ -260,7 +260,8 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
 
         modelBuilder.Entity<Subscription>(entity =>
         {
-            entity.HasIndex(e => e.UserId, "IX_Subscriptions_UserId").IsUnique();
+            entity.HasIndex(e => e.UserId, "IX_Subscriptions_UserId");
+            entity.HasIndex(e => new { e.UserId, e.PlanType, e.ScopeType, e.ScopeId }, "IX_Subscriptions_UserId_PlanType_Scope");
             entity.HasIndex(e => e.StripeCustomerId, "IX_Subscriptions_StripeCustomerId");
             entity.HasIndex(e => e.StripeSubscriptionId, "IX_Subscriptions_StripeSubscriptionId");
 
@@ -270,13 +271,14 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.Currency).HasMaxLength(3);
             entity.Property(e => e.IsElite).HasDefaultValue(false);
             entity.Property(e => e.PlanType).HasMaxLength(50);
+            entity.Property(e => e.ScopeType).HasMaxLength(50).HasDefaultValue("account");
             entity.Property(e => e.Status).HasMaxLength(50);
             entity.Property(e => e.StripeCustomerId).HasMaxLength(255);
             entity.Property(e => e.StripePriceId).HasMaxLength(255);
             entity.Property(e => e.StripeSubscriptionId).HasMaxLength(255);
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-            entity.HasOne(d => d.User).WithOne(p => p.Subscription).HasForeignKey<Subscription>(d => d.UserId);
+            entity.HasOne(d => d.User).WithMany(p => p.Subscriptions).HasForeignKey(d => d.UserId);
         });
 
         modelBuilder.Entity<Team>(entity =>

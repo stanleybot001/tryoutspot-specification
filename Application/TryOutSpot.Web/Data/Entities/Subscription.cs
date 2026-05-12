@@ -13,6 +13,10 @@ public partial class Subscription
 
     public string Status { get; set; } = null!;
 
+    public string ScopeType { get; set; } = "account";
+
+    public Guid? ScopeId { get; set; }
+
     public string? StripeCustomerId { get; set; }
 
     public string? StripeSubscriptionId { get; set; }
