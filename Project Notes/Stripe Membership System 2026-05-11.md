@@ -29,8 +29,8 @@
 
 ## Stripe Dashboard Setup Needed
 
-- Create recurring Stripe Prices for each configured paid plan and interval.
-- Put the Price IDs into `appsettings.Local.json` or server environment configuration under `Stripe:Plans`.
+- Recurring Stripe Products and Prices were created in live mode on 2026-05-12.
+- Put the Stripe secret key and webhook signing secret into `appsettings.Local.json` or server environment configuration.
 - Configure the customer portal in Stripe for plan changes, payment method updates, and cancellation.
 - Add the webhook endpoint:
   - `https://tryoutspot.com/api/billing/stripe/webhook`
@@ -48,6 +48,15 @@
 - Basic Team: `$29/month`, 30-day trial
 - Professional Team: `$79/month` or `$799/year`
 - Enterprise Organization: `$199/month` or `$1999/year`
+
+## Live Stripe Catalog
+
+| Plan | Product ID | Monthly Price ID | Annual Price ID |
+| --- | --- | --- | --- |
+| Premium Player | `prod_UVESGVXw45yULP` | `price_1TWE0SLqfLl80mfTjXWqloRG` | `price_1TWE0SLqfLl80mfTrQr2UB2R` |
+| Basic Team | `prod_UVESSQz8UunuTB` | `price_1TWE0TLqfLl80mfTKtTyngNt` |  |
+| Professional Team | `prod_UVESd6FOs5hOSo` | `price_1TWE0TLqfLl80mfTOozKTxJZ` | `price_1TWE0ULqfLl80mfT7lfpTuoi` |
+| Enterprise Organization | `prod_UVESDsN5b3f7rd` | `price_1TWE0ULqfLl80mfTKLRMtdjx` | `price_1TWE0ULqfLl80mfTQuSQBZhP` |
 
 ## Notes
 
