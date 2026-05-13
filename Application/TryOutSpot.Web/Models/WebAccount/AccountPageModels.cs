@@ -276,6 +276,63 @@ public sealed class ChoosePlanPageModel
     public IReadOnlyCollection<BillingPlanResponse> AvailablePlans { get; set; } = [];
 }
 
+public sealed class AddTeamOrOrganizationPageModel
+{
+    [Required]
+    [Display(Name = "Create")]
+    public string CreateType { get; set; } = "team";
+
+    [Required]
+    [MaxLength(200)]
+    [Display(Name = "Team name")]
+    public string TeamName { get; set; } = string.Empty;
+
+    [MaxLength(200)]
+    [Display(Name = "Organization name")]
+    public string? OrganizationName { get; set; }
+
+    [Required]
+    [MaxLength(50)]
+    [Display(Name = "Your team role")]
+    public string TeamRole { get; set; } = string.Empty;
+
+    [MaxLength(50)]
+    [Display(Name = "Team level")]
+    public string? TeamLevel { get; set; }
+
+    [EmailAddress]
+    [MaxLength(255)]
+    [Display(Name = "Contact email")]
+    public string? ContactEmail { get; set; }
+
+    [Phone]
+    [MaxLength(20)]
+    [Display(Name = "Contact phone")]
+    public string? ContactPhone { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Website URL")]
+    public string? WebsiteUrl { get; set; }
+
+    [MaxLength(100)]
+    [Display(Name = "City")]
+    public string? City { get; set; }
+
+    [MaxLength(2)]
+    [Display(Name = "State")]
+    public string? State { get; set; }
+
+    [MaxLength(10)]
+    [Display(Name = "ZIP code")]
+    public string? ZipCode { get; set; }
+
+    public List<Guid> SelectedSportIds { get; set; } = [];
+
+    public IReadOnlyCollection<SportSelectionPageItem> AvailableSports { get; set; } = [];
+
+    public IReadOnlyCollection<string> AvailableTeamRoleOptions { get; set; } = [];
+}
+
 public sealed class AccountSettingsPageModel
 {
     public ProfileSettingsPageModel Profile { get; set; } = new();

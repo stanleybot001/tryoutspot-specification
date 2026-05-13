@@ -179,6 +179,25 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task Onboarding_WithCoachRole_ShowsTeamOrOrganizationStepLink()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        await factory.CreateUserAsync("web-onboarding-coach@example.com", [TryOutSpotRoles.Coach]);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        await LoginWebUserAsync(client, "web-onboarding-coach@example.com");
+        var response = await client.GetAsync("/account/onboarding");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Add team or organization", html);
+        Assert.Contains("href=\"/account/onboarding/add-team-or-organization\"", html);
+    }
+
+    [Fact]
     public async Task Settings_RequiresWebCookieAndRendersAccountManagementForms()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -423,6 +442,85 @@ public sealed class AccountPageTests
         Assert.Equal("Parent", relationship.Relationship);
         Assert.Equal(player.Id, playerSport.PlayerId);
         Assert.Equal(sportId, playerSport.SportId);
+    }
+
+    [Fact]
+    public async Task AddTeamOrOrganizationPage_AndPost_CreateLinkedTeamAndOrganizationRecords()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("onboarding-team-setup@example.com", [TryOutSpotRoles.Coach]);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            dbContext.Sports.Add(new Sport
+            {
+                Id = Guid.NewGuid(),
+                Name = "Baseball",
+                Category = "Travel",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/onboarding/add-team-or-organization");
+
+        Guid sportId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            sportId = await dbContext.Sports.Select(sport => sport.Id).SingleAsync();
+        }
+
+        var response = await client.PostAsync(
+            "/account/onboarding/add-team-or-organization",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("CreateType", "organization"),
+                new("TeamName", "Midamserv Thunder 14U"),
+                new("OrganizationName", "Midamserv Baseball Club"),
+                new("TeamRole", TryOutSpotRoles.Coach),
+                new("TeamLevel", "14U"),
+                new("ContactEmail", "coach@example.com"),
+                new("ContactPhone", "620-555-9090"),
+                new("WebsiteUrl", "https://midamserv.test"),
+                new("City", "Wichita"),
+                new("State", "ks"),
+                new("ZipCode", "67202"),
+                new("SelectedSportIds", sportId.ToString())
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/account/onboarding", response.Headers.Location?.ToString());
+
+        using var verifyScope = factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var organization = await verifyDb.Organizations.SingleAsync();
+        var team = await verifyDb.Teams.SingleAsync();
+        var userTeamRole = await verifyDb.UserTeamRoles.SingleAsync();
+        var teamSport = await verifyDb.TeamSports.SingleAsync();
+
+        Assert.Equal("Midamserv Baseball Club", organization.Name);
+        Assert.False(organization.IsAcademy);
+        Assert.Equal("Wichita", organization.City);
+        Assert.Equal("KS", organization.State);
+        Assert.Equal("Midamserv Thunder 14U", team.Name);
+        Assert.Equal(organization.Id, team.OrganizationId);
+        Assert.Equal("14U", team.TeamLevel);
+        Assert.Equal("KS", team.State);
+        Assert.Equal(user.Id, userTeamRole.UserId);
+        Assert.Equal(team.Id, userTeamRole.TeamId);
+        Assert.Equal(TryOutSpotRoles.Coach, userTeamRole.Role);
+        Assert.Equal(team.Id, teamSport.TeamId);
+        Assert.Equal(sportId, teamSport.SportId);
     }
 
     [Fact]

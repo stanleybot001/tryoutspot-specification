@@ -33,6 +33,13 @@ public sealed class AccountController(
     private readonly GoogleAuthenticationOptions googleAuthentication = googleOptions.Value;
     private readonly StripeBillingOptions stripeBillingOptions = stripeOptions.Value;
     private static readonly string[] PlayerRelationshipOptions = ["Parent", "Guardian", "Self", "Coach", "Other"];
+    private static readonly string[] TeamOnboardingRoleOptions =
+    [
+        TryOutSpotRoles.Coach,
+        TryOutSpotRoles.TeamManager,
+        TryOutSpotRoles.AcademyDirector,
+        TryOutSpotRoles.OrganizationAdmin
+    ];
 
     [HttpGet("register")]
     public async Task<IActionResult> Register([FromQuery] string? returnUrl = null)
@@ -772,6 +779,166 @@ public sealed class AccountController(
 
         await dbContext.SaveChangesAsync(cancellationToken);
         TempData["StatusMessage"] = "Player profile added.";
+        return RedirectToAction(nameof(Onboarding));
+    }
+
+    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [HttpGet("onboarding/add-team-or-organization")]
+    public async Task<IActionResult> AddTeamOrOrganization(CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(AddTeamOrOrganization)) });
+        }
+
+        var model = await BuildAddTeamOrOrganizationPageModelAsync(
+            user,
+            new AddTeamOrOrganizationPageModel
+            {
+                ContactEmail = user.Email,
+                ContactPhone = user.PhoneNumber,
+                City = user.City,
+                State = user.State,
+                ZipCode = user.ZipCode
+            },
+            cancellationToken);
+
+        if (model.AvailableTeamRoleOptions.Count == 0)
+        {
+            TempData["StatusMessage"] = "Select a coach, team manager, academy director, or organization admin account type before adding a team.";
+            return RedirectToAction(nameof(Onboarding));
+        }
+
+        return View(model);
+    }
+
+    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [HttpPost("onboarding/add-team-or-organization")]
+    public async Task<IActionResult> AddTeamOrOrganization(
+        AddTeamOrOrganizationPageModel model,
+        CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(AddTeamOrOrganization)) });
+        }
+
+        model = await BuildAddTeamOrOrganizationPageModelAsync(user, model, cancellationToken);
+        if (model.AvailableTeamRoleOptions.Count == 0)
+        {
+            TempData["StatusMessage"] = "Select a coach, team manager, academy director, or organization admin account type before adding a team.";
+            return RedirectToAction(nameof(Onboarding));
+        }
+
+        var createType = NormalizeTeamCreateType(model.CreateType);
+        if (createType is null)
+        {
+            ModelState.AddModelError(nameof(model.CreateType), "Choose whether you are creating a team or an organization.");
+        }
+
+        var teamRole = NormalizeTeamOnboardingRole(model.TeamRole, model.AvailableTeamRoleOptions);
+        if (teamRole is null)
+        {
+            ModelState.AddModelError(nameof(model.TeamRole), "Choose a team role that matches your account type.");
+        }
+
+        if (string.Equals(createType, "organization", StringComparison.Ordinal)
+            && string.IsNullOrWhiteSpace(model.OrganizationName))
+        {
+            ModelState.AddModelError(nameof(model.OrganizationName), "Enter an organization name when creating an organization.");
+        }
+
+        var selectedSportIds = model.SelectedSportIds.Distinct().ToArray();
+        var selectedSports = selectedSportIds.Length == 0
+            ? Array.Empty<Guid>()
+            : await dbContext.Sports
+                .AsNoTracking()
+                .Where(sport => sport.IsActive && selectedSportIds.Contains(sport.Id))
+                .Select(sport => sport.Id)
+                .ToArrayAsync(cancellationToken);
+        if (selectedSports.Length != selectedSportIds.Length)
+        {
+            ModelState.AddModelError(nameof(model.SelectedSportIds), "One or more selected sports are no longer available.");
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        var now = DateTime.UtcNow;
+        Organization? organization = null;
+        if (string.Equals(createType, "organization", StringComparison.Ordinal))
+        {
+            organization = new Organization
+            {
+                Id = Guid.NewGuid(),
+                Name = model.OrganizationName!.Trim(),
+                WebsiteUrl = NormalizeOptional(model.WebsiteUrl),
+                City = NormalizeOptional(model.City),
+                State = NormalizeState(model.State),
+                ZipCode = NormalizeOptional(model.ZipCode),
+                PhoneNumber = NormalizeOptional(model.ContactPhone),
+                Email = NormalizeOptional(model.ContactEmail),
+                IsAcademy = string.Equals(teamRole, TryOutSpotRoles.AcademyDirector, StringComparison.Ordinal),
+                IsVerified = false,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            };
+            dbContext.Organizations.Add(organization);
+        }
+
+        var teamId = Guid.NewGuid();
+        var team = new Team
+        {
+            Id = teamId,
+            OrganizationId = organization?.Id,
+            Name = model.TeamName.Trim(),
+            TeamLevel = NormalizeOptional(model.TeamLevel),
+            WebsiteUrl = NormalizeOptional(model.WebsiteUrl),
+            City = NormalizeOptional(model.City),
+            State = NormalizeState(model.State),
+            ZipCode = NormalizeOptional(model.ZipCode),
+            PhoneNumber = NormalizeOptional(model.ContactPhone),
+            Email = NormalizeOptional(model.ContactEmail),
+            IsElite = false,
+            IsVerified = false,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        };
+
+        var userTeamRole = new UserTeamRole
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            TeamId = teamId,
+            Role = teamRole!,
+            StartDate = now,
+            IsActive = true,
+            CreatedAt = now
+        };
+
+        dbContext.Teams.Add(team);
+        dbContext.UserTeamRoles.Add(userTeamRole);
+
+        foreach (var sportId in selectedSports)
+        {
+            dbContext.TeamSports.Add(new TeamSport
+            {
+                Id = Guid.NewGuid(),
+                TeamId = teamId,
+                SportId = sportId,
+                IsActive = true,
+                CreatedAt = now
+            });
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        TempData["StatusMessage"] = "Team setup saved.";
         return RedirectToAction(nameof(Onboarding));
     }
 
@@ -1533,6 +1700,56 @@ public sealed class AccountController(
         return model;
     }
 
+    private async Task<AddTeamOrOrganizationPageModel> BuildAddTeamOrOrganizationPageModelAsync(
+        User user,
+        AddTeamOrOrganizationPageModel model,
+        CancellationToken cancellationToken)
+    {
+        var roles = (await userManager.GetRolesAsync(user))
+            .Where(role => TryOutSpotRoles.PublicRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+        var availableTeamRoleOptions = TeamOnboardingRoleOptions
+            .Where(teamRole => roles.Contains(teamRole, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+        var selectedSportIds = model.SelectedSportIds.ToHashSet();
+        var availableSports = await dbContext.Sports
+            .AsNoTracking()
+            .Where(sport => sport.IsActive)
+            .OrderBy(sport => sport.Name)
+            .Select(sport => new SportSelectionPageItem(
+                sport.Id,
+                sport.Name,
+                selectedSportIds.Contains(sport.Id)))
+            .ToArrayAsync(cancellationToken);
+
+        model.AvailableSports = availableSports;
+        model.AvailableTeamRoleOptions = availableTeamRoleOptions;
+        model.CreateType = string.IsNullOrWhiteSpace(model.CreateType)
+            ? "team"
+            : model.CreateType.Trim();
+        model.ContactEmail = string.IsNullOrWhiteSpace(model.ContactEmail)
+            ? user.Email
+            : model.ContactEmail;
+        model.ContactPhone = string.IsNullOrWhiteSpace(model.ContactPhone)
+            ? user.PhoneNumber
+            : model.ContactPhone;
+        model.City = string.IsNullOrWhiteSpace(model.City)
+            ? user.City
+            : model.City;
+        model.State = string.IsNullOrWhiteSpace(model.State)
+            ? user.State
+            : model.State;
+        model.ZipCode = string.IsNullOrWhiteSpace(model.ZipCode)
+            ? user.ZipCode
+            : model.ZipCode;
+        if (string.IsNullOrWhiteSpace(model.TeamRole))
+        {
+            model.TeamRole = availableTeamRoleOptions.FirstOrDefault() ?? string.Empty;
+        }
+
+        return model;
+    }
+
     private async Task<Subscription> FindOrCreateAccountScopeSubscriptionAsync(
         User user,
         string planCode,
@@ -2018,6 +2235,41 @@ public sealed class AccountController(
         return PlayerRelationshipOptions.Contains(trimmed, StringComparer.OrdinalIgnoreCase)
             ? PlayerRelationshipOptions.First(option => string.Equals(option, trimmed, StringComparison.OrdinalIgnoreCase))
             : trimmed;
+    }
+
+    private static string? NormalizeTeamCreateType(string? createType)
+    {
+        if (string.IsNullOrWhiteSpace(createType))
+        {
+            return null;
+        }
+
+        return string.Equals(createType.Trim(), "organization", StringComparison.OrdinalIgnoreCase)
+            ? "organization"
+            : string.Equals(createType.Trim(), "team", StringComparison.OrdinalIgnoreCase)
+                ? "team"
+                : null;
+    }
+
+    private static string? NormalizeTeamOnboardingRole(
+        string? role,
+        IReadOnlyCollection<string> availableTeamRoleOptions)
+    {
+        if (string.IsNullOrWhiteSpace(role))
+        {
+            return null;
+        }
+
+        var normalizedRole = TeamOnboardingRoleOptions
+            .FirstOrDefault(knownRole => string.Equals(knownRole, role.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (normalizedRole is null)
+        {
+            return null;
+        }
+
+        return availableTeamRoleOptions.Contains(normalizedRole, StringComparer.OrdinalIgnoreCase)
+            ? normalizedRole
+            : null;
     }
 
     private static DateTime NormalizeUtcDate(DateTime value)
