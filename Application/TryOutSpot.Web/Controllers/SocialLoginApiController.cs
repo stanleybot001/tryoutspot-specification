@@ -125,6 +125,7 @@ public sealed class SocialLoginApiController(
             return ValidationProblem(ModelState);
         }
 
+        var ticket = CreateTicket(normalizedProvider, providerKey, email, principal);
         var linkedUser = await userManager.FindByLoginAsync(normalizedProvider, providerKey);
         await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
 
@@ -135,11 +136,15 @@ public sealed class SocialLoginApiController(
                 return Unauthorized(new AccountActionResponse("The linked account is inactive."));
             }
 
+            if (ApplyVerifiedExternalEmail(linkedUser, ticket, DateTime.UtcNow))
+            {
+                await userManager.UpdateAsync(linkedUser);
+            }
+
             var tokenResponse = await authTokenService.CreateTokenResponseAsync(linkedUser, cancellationToken);
             return Ok(tokenResponse);
         }
 
-        var ticket = CreateTicket(normalizedProvider, providerKey, email, principal);
         var externalLoginToken = externalLoginTicketService.Create(ticket);
         return Conflict(new SocialLoginRegistrationRequiredResponse(
             "Complete registration or link this social login to an existing account.",
@@ -313,6 +318,11 @@ public sealed class SocialLoginApiController(
 
         if (existingLogin is not null)
         {
+            if (ApplyVerifiedExternalEmail(user, ticket, DateTime.UtcNow))
+            {
+                await userManager.UpdateAsync(user);
+            }
+
             return Ok(new SocialLoginActionResponse("The social login is already linked to this account."));
         }
 
@@ -325,7 +335,9 @@ public sealed class SocialLoginApiController(
             return ValidationProblem(ModelState);
         }
 
-        user.UpdatedAt = DateTime.UtcNow;
+        var now = DateTime.UtcNow;
+        user.UpdatedAt = now;
+        ApplyVerifiedExternalEmail(user, ticket, now);
         await userManager.UpdateAsync(user);
 
         return Ok(new SocialLoginActionResponse("The social login has been linked."));
@@ -420,6 +432,26 @@ public sealed class SocialLoginApiController(
         }
 
         return false;
+    }
+
+    private static bool ApplyVerifiedExternalEmail(
+        User user,
+        ExternalLoginTicket ticket,
+        DateTime updatedAtUtc)
+    {
+        if (!ticket.EmailVerified || user.EmailConfirmed)
+        {
+            return false;
+        }
+
+        if (!string.Equals(user.Email, ticket.Email, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        user.EmailConfirmed = true;
+        user.UpdatedAt = updatedAtUtc;
+        return true;
     }
 
     private List<string> GetValidatedPublicAccountTypes(

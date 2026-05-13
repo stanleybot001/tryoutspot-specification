@@ -348,6 +348,7 @@ public sealed class AccountController(
             return RedirectToAction(nameof(Login));
         }
 
+        var ticket = CreateTicket(normalizedProvider, providerKey, email, principal);
         var linkedUser = await userManager.FindByLoginAsync(normalizedProvider, providerKey);
         await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
 
@@ -359,11 +360,15 @@ public sealed class AccountController(
                 return RedirectToAction(nameof(Login));
             }
 
+            if (ApplyVerifiedExternalEmail(linkedUser, ticket, DateTime.UtcNow))
+            {
+                await userManager.UpdateAsync(linkedUser);
+            }
+
             await SignInWebUserAsync(linkedUser, isPersistent: true);
             return RedirectToLocalOrOnboarding(returnUrl);
         }
 
-        var ticket = CreateTicket(normalizedProvider, providerKey, email, principal);
         var externalLoginToken = externalLoginTicketService.Create(ticket);
 
         return RedirectToAction(nameof(CompleteSocialRegistration), new
@@ -524,6 +529,11 @@ public sealed class AccountController(
                 return RedirectToAction(nameof(Login));
             }
 
+            if (ApplyVerifiedExternalEmail(existingLogin, ticket, DateTime.UtcNow))
+            {
+                await userManager.UpdateAsync(existingLogin);
+            }
+
             await SignInWebUserAsync(existingLogin, isPersistent: true);
             TempData["StatusMessage"] = "Signed in with social login.";
             return RedirectToLocalOrOnboarding(returnUrl);
@@ -573,7 +583,9 @@ public sealed class AccountController(
             return RedirectToAction(nameof(CompleteSocialRegistration), new { externalLoginToken, returnUrl });
         }
 
-        userToLink.UpdatedAt = DateTime.UtcNow;
+        var now = DateTime.UtcNow;
+        userToLink.UpdatedAt = now;
+        ApplyVerifiedExternalEmail(userToLink, ticket, now);
         await userManager.UpdateAsync(userToLink);
         await SignInWebUserAsync(userToLink, isPersistent: true);
 
@@ -1398,6 +1410,26 @@ public sealed class AccountController(
         }
 
         return false;
+    }
+
+    private static bool ApplyVerifiedExternalEmail(
+        User user,
+        ExternalLoginTicket ticket,
+        DateTime updatedAtUtc)
+    {
+        if (!ticket.EmailVerified || user.EmailConfirmed)
+        {
+            return false;
+        }
+
+        if (!string.Equals(user.Email, ticket.Email, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        user.EmailConfirmed = true;
+        user.UpdatedAt = updatedAtUtc;
+        return true;
     }
 
     private void AddIdentityErrors(IdentityResult result)

@@ -15,7 +15,7 @@ public sealed class AccountWebSocialLoginTests
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
         var email = "web-social-link@example.com";
-        await factory.CreateUserAsync(email, [TryOutSpotRoles.Parent]);
+        await factory.CreateUserAsync(email, [TryOutSpotRoles.Parent], emailConfirmed: false);
         var externalLoginToken = CreateExternalToken(
             factory,
             TryOutSpotSocialLoginProviders.Google,
@@ -47,6 +47,7 @@ public sealed class AccountWebSocialLoginTests
 
         Assert.NotNull(user);
         Assert.Equal(email, user.Email);
+        Assert.True(user.EmailConfirmed);
     }
 
     private static string CreateExternalToken(
