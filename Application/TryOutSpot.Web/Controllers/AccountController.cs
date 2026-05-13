@@ -105,8 +105,15 @@ public sealed class AccountController(
     }
 
     [HttpGet("login")]
-    public IActionResult Login([FromQuery] string? returnUrl = null)
+    public IActionResult Login(
+        [FromQuery] string? returnUrl = null,
+        [FromQuery] string? externalLoginStatus = null)
     {
+        if (string.Equals(externalLoginStatus, "failed", StringComparison.OrdinalIgnoreCase))
+        {
+            TempData["StatusMessage"] = "The social login session expired or could not be verified. Please start Google sign-in again.";
+        }
+
         return View(new LoginPageModel
         {
             ReturnUrl = returnUrl,

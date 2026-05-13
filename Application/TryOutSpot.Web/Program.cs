@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -43,6 +44,12 @@ builder.Services.Configure<ResendEmailOptions>(builder.Configuration.GetSection(
 builder.Services.Configure<AccountSmsOptions>(builder.Configuration.GetSection(AccountSmsOptions.SectionName));
 builder.Services.Configure<TwilioSmsOptions>(builder.Configuration.GetSection(TwilioSmsOptions.SectionName));
 builder.Services.Configure<StripeBillingOptions>(builder.Configuration.GetSection(StripeBillingOptions.SectionName));
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(
         builder.Environment.ContentRootPath,
@@ -148,6 +155,12 @@ if (googleAuthentication.IsConfigured)
 
             return Task.CompletedTask;
         };
+        options.Events.OnRemoteFailure = context =>
+        {
+            context.HandleResponse();
+            context.Response.Redirect("/account/login?externalLoginStatus=failed");
+            return Task.CompletedTask;
+        };
     });
 }
 
@@ -174,6 +187,12 @@ if (HasConfiguredValue(facebookAuthentication["AppId"]) && HasConfiguredValue(fa
                 context.Identity?.AddClaim(new Claim(ClaimTypes.Surname, lastName.GetString() ?? string.Empty));
             }
 
+            return Task.CompletedTask;
+        };
+        options.Events.OnRemoteFailure = context =>
+        {
+            context.HandleResponse();
+            context.Response.Redirect("/account/login?externalLoginStatus=failed");
             return Task.CompletedTask;
         };
     });
@@ -247,6 +266,8 @@ if (app.Environment.IsDevelopment())
 }
 
 // Configure the HTTP request pipeline.
+app.UseForwardedHeaders();
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
