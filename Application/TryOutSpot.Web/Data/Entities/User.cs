@@ -4,11 +4,32 @@ namespace TryOutSpot.Web.Data.Entities;
 
 public partial class User : IdentityUser<Guid>
 {
+    private DateTime? dateOfBirth;
+
     public string FirstName { get; set; } = null!;
 
     public string LastName { get; set; } = null!;
 
-    public DateTime? DateOfBirth { get; set; }
+    public DateTime? DateOfBirth
+    {
+        get => dateOfBirth;
+        set
+        {
+            if (!value.HasValue)
+            {
+                dateOfBirth = null;
+                return;
+            }
+
+            var normalized = value.Value;
+            dateOfBirth = normalized.Kind switch
+            {
+                DateTimeKind.Utc => normalized,
+                DateTimeKind.Local => normalized.ToUniversalTime(),
+                _ => DateTime.SpecifyKind(normalized, DateTimeKind.Utc)
+            };
+        }
+    }
 
     public string? ProfileImageUrl { get; set; }
 

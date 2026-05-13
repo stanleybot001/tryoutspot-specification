@@ -37,6 +37,7 @@ public sealed class AccountWebSocialLoginTests
                 ["ExternalLoginToken"] = externalLoginToken,
                 ["FirstName"] = "Social",
                 ["LastName"] = "Signup",
+                ["DateOfBirth"] = "1973-02-22",
                 ["AccountTypes"] = TryOutSpotRoles.Parent
             }));
 
@@ -51,6 +52,7 @@ public sealed class AccountWebSocialLoginTests
         Assert.Equal(email, user.Email);
         Assert.True(user.EmailConfirmed);
         Assert.Null(user.PasswordHash);
+        Assert.Equal(new DateTime(1973, 2, 22, 0, 0, 0, DateTimeKind.Utc), user.DateOfBirth);
 
         var roles = await userManager.GetRolesAsync(user);
         Assert.Contains(TryOutSpotRoles.Parent, roles);
