@@ -248,6 +248,17 @@ body {
   margin-top: 1rem;
 }
 
+.social-login-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.social-login-actions .section-help {
+  margin: 0;
+}
+
 .social-profile-summary,
 .account-summary-strip {
   display: grid;

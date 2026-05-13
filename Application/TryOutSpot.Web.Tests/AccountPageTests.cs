@@ -2,9 +2,11 @@ using System.Net;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
+using TryOutSpot.Web.Security;
 
 namespace TryOutSpot.Web.Tests;
 
@@ -35,6 +37,19 @@ public sealed class AccountPageTests
         Assert.Contains("name=\"DateOfBirth\"", html);
         Assert.Contains("name=\"ZipCode\"", html);
         Assert.Contains("required-marker", html);
+    }
+
+    [Fact]
+    public async Task RegisterPage_WithConfiguredGoogle_ShowsSocialSignupOption()
+    {
+        await using var factory = CreateFactoryWithGoogleConfiguration();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/account/register");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Continue with Google", html);
     }
 
     [Fact]
@@ -355,5 +370,39 @@ public sealed class AccountPageTests
             ]));
 
         Assert.Equal(HttpStatusCode.Redirect, loginResponse.StatusCode);
+    }
+
+    private static WebApplicationFactory<Program> CreateFactoryWithGoogleConfiguration()
+    {
+        return new TryOutSpotWebApplicationFactory()
+            .WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureAppConfiguration((_, configuration) =>
+                {
+                    configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["Authentication:Google:ClientId"] = "test-google-client-id.apps.googleusercontent.com",
+                        ["Authentication:Google:ClientSecret"] = "test-google-client-secret",
+                        ["Authentication:Google:CallbackPath"] = "/signin-google"
+                    });
+                });
+                builder.ConfigureServices(services =>
+                {
+                    services.AddAuthentication()
+                        .AddGoogle(TryOutSpotSocialLoginProviders.Google, options =>
+                        {
+                            options.SignInScheme = IdentityConstants.ExternalScheme;
+                            options.ClientId = "test-google-client-id.apps.googleusercontent.com";
+                            options.ClientSecret = "test-google-client-secret";
+                            options.CallbackPath = "/signin-google";
+                        });
+                    services.PostConfigure<GoogleAuthenticationOptions>(options =>
+                    {
+                        options.ClientId = "test-google-client-id.apps.googleusercontent.com";
+                        options.ClientSecret = "test-google-client-secret";
+                        options.CallbackPath = "/signin-google";
+                    });
+                });
+            });
     }
 }

@@ -11,6 +11,52 @@ namespace TryOutSpot.Web.Tests;
 public sealed class AccountWebSocialLoginTests
 {
     [Fact]
+    public async Task CompleteSocialRegistration_WithVerifiedEmail_CreatesAccountAndSignsIn()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var email = $"web-social-signup-{Guid.NewGuid():N}@example.com";
+        var externalLoginToken = CreateExternalToken(
+            factory,
+            TryOutSpotSocialLoginProviders.Google,
+            "google-web-signup-123",
+            email,
+            emailVerified: true);
+        var client = factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        var page = await client.GetAsync($"/account/complete-social-registration?externalLoginToken={Uri.EscapeDataString(externalLoginToken)}");
+        page.EnsureSuccessStatusCode();
+        var antiForgeryToken = await ReadAntiForgeryTokenAsync(page);
+
+        var response = await client.PostAsync(
+            "/account/complete-social-registration",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = antiForgeryToken,
+                ["ExternalLoginToken"] = externalLoginToken,
+                ["FirstName"] = "Social",
+                ["LastName"] = "Signup",
+                ["AccountTypes"] = TryOutSpotRoles.Parent
+            }));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/account/onboarding", response.Headers.Location?.OriginalString);
+
+        using var scope = factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+        var user = await userManager.FindByLoginAsync(TryOutSpotSocialLoginProviders.Google, "google-web-signup-123");
+
+        Assert.NotNull(user);
+        Assert.Equal(email, user.Email);
+        Assert.True(user.EmailConfirmed);
+        Assert.Null(user.PasswordHash);
+
+        var roles = await userManager.GetRolesAsync(user);
+        Assert.Contains(TryOutSpotRoles.Parent, roles);
+    }
+
+    [Fact]
     public async Task LinkSocialLogin_WithVerifiedExistingEmail_LinksAndSignsInWithoutPassword()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();

@@ -31,9 +31,11 @@ public sealed class AccountController(
     private readonly GoogleAuthenticationOptions googleAuthentication = googleOptions.Value;
 
     [HttpGet("register")]
-    public IActionResult Register([FromQuery] string? returnUrl = null)
+    public async Task<IActionResult> Register([FromQuery] string? returnUrl = null)
     {
-        return View(PrepareRegisterModel(new RegisterPageModel { ReturnUrl = returnUrl }));
+        var model = PrepareRegisterModel(new RegisterPageModel { ReturnUrl = returnUrl });
+        await PopulateExternalProviderAvailabilityAsync(model);
+        return View(model);
     }
 
     [HttpPost("register")]
@@ -45,6 +47,7 @@ public sealed class AccountController(
             ModelState.AddModelError(nameof(model.AccountTypes), "Choose at least one account type.");
         }
         ValidateSmsConsent(model.SmsConsentAccepted, model.PhoneNumber, nameof(model.PhoneNumber));
+        await PopulateExternalProviderAvailabilityAsync(model);
 
         if (!ModelState.IsValid)
         {
@@ -105,26 +108,27 @@ public sealed class AccountController(
     }
 
     [HttpGet("login")]
-    public IActionResult Login(
+    public async Task<IActionResult> Login(
         [FromQuery] string? returnUrl = null,
         [FromQuery] string? externalLoginStatus = null)
     {
         if (string.Equals(externalLoginStatus, "failed", StringComparison.OrdinalIgnoreCase))
         {
-            TempData["StatusMessage"] = "The social login session expired or could not be verified. Please start Google sign-in again.";
+            TempData["StatusMessage"] = "The social login session expired or could not be verified. Please start social sign-in again.";
         }
 
-        return View(new LoginPageModel
+        var model = new LoginPageModel
         {
-            ReturnUrl = returnUrl,
-            GoogleIsConfigured = googleAuthentication.IsConfigured
-        });
+            ReturnUrl = returnUrl
+        };
+        await PopulateExternalProviderAvailabilityAsync(model);
+        return View(model);
     }
 
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginPageModel model, CancellationToken cancellationToken)
     {
-        model.GoogleIsConfigured = googleAuthentication.IsConfigured;
+        await PopulateExternalProviderAvailabilityAsync(model);
         if (!ModelState.IsValid)
         {
             return View(model);
@@ -1066,6 +1070,41 @@ public sealed class AccountController(
         model.AvailableAccountTypes = GetAccountTypeOptions(model.AccountTypes);
         return model;
     }
+
+    private async Task PopulateExternalProviderAvailabilityAsync(RegisterPageModel model)
+    {
+        var availability = await GetExternalProviderAvailabilityAsync();
+        model.GoogleIsConfigured = availability.GoogleIsConfigured;
+        model.FacebookIsConfigured = availability.FacebookIsConfigured;
+        model.AppleIsConfigured = availability.AppleIsConfigured;
+    }
+
+    private async Task PopulateExternalProviderAvailabilityAsync(LoginPageModel model)
+    {
+        var availability = await GetExternalProviderAvailabilityAsync();
+        model.GoogleIsConfigured = availability.GoogleIsConfigured;
+        model.FacebookIsConfigured = availability.FacebookIsConfigured;
+        model.AppleIsConfigured = availability.AppleIsConfigured;
+    }
+
+    private async Task<ExternalProviderAvailability> GetExternalProviderAvailabilityAsync()
+    {
+        var schemeProvider = HttpContext.RequestServices.GetRequiredService<IAuthenticationSchemeProvider>();
+        var configuredProviders = (await schemeProvider.GetAllSchemesAsync())
+            .Select(scheme => scheme.Name)
+            .Where(schemeName => !string.IsNullOrWhiteSpace(schemeName))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return new ExternalProviderAvailability(
+            configuredProviders.Contains(TryOutSpotSocialLoginProviders.Google),
+            configuredProviders.Contains(TryOutSpotSocialLoginProviders.Facebook),
+            configuredProviders.Contains(TryOutSpotSocialLoginProviders.Apple));
+    }
+
+    private sealed record ExternalProviderAvailability(
+        bool GoogleIsConfigured,
+        bool FacebookIsConfigured,
+        bool AppleIsConfigured);
 
     private async Task<SocialRegistrationPageModel> PrepareSocialRegistrationModelAsync(
         SocialRegistrationPageModel model,

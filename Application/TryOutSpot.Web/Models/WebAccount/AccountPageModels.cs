@@ -59,6 +59,12 @@ public sealed class RegisterPageModel
     public IReadOnlyCollection<AccountTypeSelectionItem> AvailableAccountTypes { get; set; } = [];
 
     public string? ReturnUrl { get; set; }
+
+    public bool GoogleIsConfigured { get; set; }
+
+    public bool FacebookIsConfigured { get; set; }
+
+    public bool AppleIsConfigured { get; set; }
 }
 
 public sealed class LoginPageModel
@@ -79,6 +85,10 @@ public sealed class LoginPageModel
     public string? ReturnUrl { get; set; }
 
     public bool GoogleIsConfigured { get; set; }
+
+    public bool FacebookIsConfigured { get; set; }
+
+    public bool AppleIsConfigured { get; set; }
 }
 
 public sealed class ForgotPasswordPageModel

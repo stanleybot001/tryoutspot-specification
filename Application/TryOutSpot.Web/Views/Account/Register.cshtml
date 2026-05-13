@@ -17,6 +17,27 @@
         <div class="account-alert">@statusMessage</div>
     }
 
+    <div class="account-divider"><span>or sign up faster</span></div>
+    <div class="social-login-actions">
+        @if (Model.GoogleIsConfigured)
+        {
+            <a class="btn btn-outline-dark" asp-action="ExternalLogin" asp-controller="Account" asp-route-provider="Google" asp-route-returnUrl="@Model.ReturnUrl">Continue with Google</a>
+        }
+        @if (Model.FacebookIsConfigured)
+        {
+            <a class="btn btn-outline-dark" asp-action="ExternalLogin" asp-controller="Account" asp-route-provider="Facebook" asp-route-returnUrl="@Model.ReturnUrl">Continue with Facebook</a>
+        }
+        @if (Model.AppleIsConfigured)
+        {
+            <a class="btn btn-outline-dark" asp-action="ExternalLogin" asp-controller="Account" asp-route-provider="Apple" asp-route-returnUrl="@Model.ReturnUrl">Continue with Apple</a>
+        }
+        @if (!Model.GoogleIsConfigured && !Model.FacebookIsConfigured && !Model.AppleIsConfigured)
+        {
+            <p class="section-help">Social sign-up is not configured for this environment yet.</p>
+        }
+    </div>
+    <p class="account-secondary-link">Prefer email and password? Complete the form below.</p>
+
     <form asp-action="Register" asp-controller="Account" method="post" class="account-form">
         <input asp-for="ReturnUrl" type="hidden" />
         <div asp-validation-summary="ModelOnly" class="text-danger"></div>
