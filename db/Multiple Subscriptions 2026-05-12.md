@@ -23,15 +23,9 @@ Migration: `20260512170318_AddMultipleUserSubscriptions`
 
 ## Database Update Status
 
-The migration was generated and tests passed, but applying it to the configured PostgreSQL database is still pending.
+The migration was applied to `tryoutspot_prod` on 2026-05-12 using the `Production` environment connection string from `appsettings.Production.json`.
 
-Attempted `dotnet ef database update` on 2026-05-12:
-
-- Sandbox run could not open the VPN socket.
-- Escalated run reached `192.168.48.15:5432`.
-- PostgreSQL rejected the configured `postgres` password with `28P01: password authentication failed`.
-
-Update the server/local connection string with the correct database credentials, then rerun the EF database update before deploying code that reads `Subscriptions.ScopeType` or `Subscriptions.ScopeId`.
+Earlier attempts with the default appsettings connection failed because `appsettings.json` still contains the placeholder `Password=CHANGE_ME`. Use the Production configuration when applying migrations against the live PostgreSQL database.
 
 ## Scope Types
 
