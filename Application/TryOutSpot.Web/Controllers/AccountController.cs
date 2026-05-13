@@ -1403,12 +1403,55 @@ public sealed class AccountController(
 
     private static bool IsEmailVerified(string provider, ClaimsPrincipal principal)
     {
-        if (provider == TryOutSpotSocialLoginProviders.Google)
+        if (TryReadBooleanClaim(
+                principal,
+                out var isVerified,
+                "urn:google:email_verified",
+                "urn:facebook:email_verified",
+                "urn:apple:email_verified",
+                "email_verified",
+                "verified_email"))
         {
-            var value = principal.FindFirstValue("urn:google:email_verified");
-            return string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+            return isVerified;
         }
 
+        return provider is TryOutSpotSocialLoginProviders.Google
+            or TryOutSpotSocialLoginProviders.Facebook
+            or TryOutSpotSocialLoginProviders.Apple;
+    }
+
+    private static bool TryReadBooleanClaim(
+        ClaimsPrincipal principal,
+        out bool value,
+        params string[] claimTypes)
+    {
+        foreach (var claimType in claimTypes)
+        {
+            var rawValue = principal.FindFirstValue(claimType);
+            if (string.IsNullOrWhiteSpace(rawValue))
+            {
+                continue;
+            }
+
+            if (bool.TryParse(rawValue, out value))
+            {
+                return true;
+            }
+
+            if (string.Equals(rawValue, "1", StringComparison.Ordinal))
+            {
+                value = true;
+                return true;
+            }
+
+            if (string.Equals(rawValue, "0", StringComparison.Ordinal))
+            {
+                value = false;
+                return true;
+            }
+        }
+
+        value = false;
         return false;
     }
 

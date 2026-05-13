@@ -143,7 +143,8 @@ if (googleAuthentication.IsConfigured)
             : googleAuthentication.CallbackPath;
         options.Events.OnCreatingTicket = context =>
         {
-            if (context.User.TryGetProperty("email_verified", out var emailVerified))
+            if (context.User.TryGetProperty("email_verified", out var emailVerified)
+                || context.User.TryGetProperty("verified_email", out emailVerified))
             {
                 context.Identity?.AddClaim(new Claim("urn:google:email_verified", emailVerified.GetRawText().Trim('"')));
             }
@@ -175,6 +176,8 @@ if (HasConfiguredValue(facebookAuthentication["AppId"]) && HasConfiguredValue(fa
         options.CallbackPath = facebookAuthentication["CallbackPath"] ?? "/signin-facebook";
         options.Fields.Add("first_name");
         options.Fields.Add("last_name");
+        options.Fields.Add("verified");
+        options.Fields.Add("is_verified");
         options.Events.OnCreatingTicket = context =>
         {
             if (context.User.TryGetProperty("first_name", out var firstName))
@@ -185,6 +188,15 @@ if (HasConfiguredValue(facebookAuthentication["AppId"]) && HasConfiguredValue(fa
             if (context.User.TryGetProperty("last_name", out var lastName))
             {
                 context.Identity?.AddClaim(new Claim(ClaimTypes.Surname, lastName.GetString() ?? string.Empty));
+            }
+
+            if (context.User.TryGetProperty("verified", out var verified))
+            {
+                context.Identity?.AddClaim(new Claim("urn:facebook:email_verified", verified.GetRawText().Trim('"')));
+            }
+            else if (context.User.TryGetProperty("is_verified", out var isVerified))
+            {
+                context.Identity?.AddClaim(new Claim("urn:facebook:email_verified", isVerified.GetRawText().Trim('"')));
             }
 
             return Task.CompletedTask;
