@@ -499,55 +499,86 @@ public sealed class AccountController(
     [HttpPost("link-social-login")]
     public async Task<IActionResult> LinkSocialLogin(
         [FromForm] string externalLoginToken,
+        [FromForm] string? returnUrl,
         CancellationToken cancellationToken)
     {
-        var currentUser = await GetCurrentWebUserAsync();
-        if (currentUser is null)
-        {
-            TempData["StatusMessage"] = "Sign in before linking this social login.";
-            return RedirectToAction(nameof(Login), new
-            {
-                returnUrl = Url.Action(nameof(CompleteSocialRegistration), new { externalLoginToken })
-            });
-        }
-
         if (!externalLoginTicketService.TryRead(externalLoginToken, out var ticket))
         {
             TempData["StatusMessage"] = "The social login session expired. Please try again.";
             return RedirectToAction(nameof(Login));
         }
 
-        if (!string.Equals(currentUser.Email, ticket.Email, StringComparison.OrdinalIgnoreCase))
-        {
-            TempData["StatusMessage"] = "Sign in with the matching email account before linking this social login.";
-            return RedirectToAction(nameof(CompleteSocialRegistration), new { externalLoginToken });
-        }
-
         var existingLogin = await userManager.FindByLoginAsync(ticket.Provider, ticket.ProviderKey);
-        if (existingLogin is not null && existingLogin.Id != currentUser.Id)
+        var currentUser = await GetCurrentWebUserAsync();
+        if (existingLogin is not null)
         {
-            TempData["StatusMessage"] = "This social login is already linked to another account.";
-            return RedirectToAction(nameof(Onboarding));
-        }
-
-        if (existingLogin is null)
-        {
-            var result = await userManager.AddLoginAsync(
-                currentUser,
-                new UserLoginInfo(ticket.Provider, ticket.ProviderKey, GetProviderDisplayName(ticket.Provider)));
-            if (!result.Succeeded)
+            if (currentUser is not null && existingLogin.Id != currentUser.Id)
             {
-                TempData["StatusMessage"] = string.Join(" ", result.Errors.Select(error => error.Description));
-                return RedirectToAction(nameof(CompleteSocialRegistration), new { externalLoginToken });
+                TempData["StatusMessage"] = "This social login is already linked to another account.";
+                return RedirectToLocalOrOnboarding(returnUrl);
             }
 
-            currentUser.UpdatedAt = DateTime.UtcNow;
-            await userManager.UpdateAsync(currentUser);
-            await SignInWebUserAsync(currentUser, isPersistent: true);
+            if (!existingLogin.IsActive)
+            {
+                TempData["StatusMessage"] = "The linked account is inactive.";
+                return RedirectToAction(nameof(Login));
+            }
+
+            await SignInWebUserAsync(existingLogin, isPersistent: true);
+            TempData["StatusMessage"] = "Signed in with social login.";
+            return RedirectToLocalOrOnboarding(returnUrl);
         }
 
+        User? userToLink;
+        if (currentUser is null)
+        {
+            if (!ticket.EmailVerified)
+            {
+                TempData["StatusMessage"] = "Sign in before linking this social login.";
+                return RedirectToAction(nameof(Login), new
+                {
+                    returnUrl = Url.Action(nameof(CompleteSocialRegistration), new { externalLoginToken, returnUrl })
+                });
+            }
+
+            userToLink = await userManager.FindByEmailAsync(ticket.Email.Trim());
+            if (userToLink is null)
+            {
+                return RedirectToAction(nameof(CompleteSocialRegistration), new { externalLoginToken, returnUrl });
+            }
+
+            if (!userToLink.IsActive)
+            {
+                TempData["StatusMessage"] = "The matching account is inactive.";
+                return RedirectToAction(nameof(Login));
+            }
+        }
+        else
+        {
+            if (!string.Equals(currentUser.Email, ticket.Email, StringComparison.OrdinalIgnoreCase))
+            {
+                TempData["StatusMessage"] = "Sign in with the matching email account before linking this social login.";
+                return RedirectToAction(nameof(CompleteSocialRegistration), new { externalLoginToken, returnUrl });
+            }
+
+            userToLink = currentUser;
+        }
+
+        var result = await userManager.AddLoginAsync(
+            userToLink,
+            new UserLoginInfo(ticket.Provider, ticket.ProviderKey, GetProviderDisplayName(ticket.Provider)));
+        if (!result.Succeeded)
+        {
+            TempData["StatusMessage"] = string.Join(" ", result.Errors.Select(error => error.Description));
+            return RedirectToAction(nameof(CompleteSocialRegistration), new { externalLoginToken, returnUrl });
+        }
+
+        userToLink.UpdatedAt = DateTime.UtcNow;
+        await userManager.UpdateAsync(userToLink);
+        await SignInWebUserAsync(userToLink, isPersistent: true);
+
         TempData["StatusMessage"] = "Social login linked.";
-        return RedirectToAction(nameof(Onboarding));
+        return RedirectToLocalOrOnboarding(returnUrl);
     }
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]

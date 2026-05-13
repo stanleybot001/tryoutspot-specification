@@ -38,16 +38,27 @@
     {
         <section class="account-notice">
             <h2>Existing account found</h2>
-            <p>An account already exists with this email address. Sign in with that account first, then link this social login.</p>
-            @if (Model.CanLinkToSignedInAccount)
+            @if (Model.EmailVerified)
             {
+                <p>An account already exists with this email address. Because @providerName verified the same email, you can link @providerName and sign in now.</p>
                 <form asp-action="LinkSocialLogin" asp-controller="Account" method="post">
                     <input name="externalLoginToken" type="hidden" value="@Model.ExternalLoginToken" />
+                    <input name="returnUrl" type="hidden" value="@Model.ReturnUrl" />
+                    <button type="submit" class="btn btn-primary">Link @providerName and sign in</button>
+                </form>
+            }
+            else if (Model.CanLinkToSignedInAccount)
+            {
+                <p>An account already exists with this email address. Link this social login to your signed-in account.</p>
+                <form asp-action="LinkSocialLogin" asp-controller="Account" method="post">
+                    <input name="externalLoginToken" type="hidden" value="@Model.ExternalLoginToken" />
+                    <input name="returnUrl" type="hidden" value="@Model.ReturnUrl" />
                     <button type="submit" class="btn btn-primary">Link this login</button>
                 </form>
             }
             else
             {
+                <p>An account already exists with this email address. Sign in with that account first, then link this social login.</p>
                 <a asp-action="Login" asp-controller="Account" asp-route-returnUrl="@linkReturnUrl" class="btn btn-primary">Sign in to link account</a>
             }
         </section>
