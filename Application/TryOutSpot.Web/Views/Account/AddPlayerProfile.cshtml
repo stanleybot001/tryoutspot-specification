@@ -1,0 +1,116 @@
+@model AddPlayerProfilePageModel
+
+@{
+    ViewData["Title"] = "Add Player Profile";
+}
+
+<section class="account-page compact">
+    <div class="account-heading">
+        <p class="account-kicker">Onboarding</p>
+        <h1>Add player profile</h1>
+        <p>Create a player profile so you can start registering for tryouts and opportunities.</p>
+        <p class="required-note"><span class="required-marker">*</span> Required field</p>
+    </div>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    <section class="form-section">
+        <form asp-action="AddPlayerProfile" asp-controller="Account" method="post" class="stacked-form">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="form-grid two-column">
+                <div class="form-field">
+                    <label asp-for="FirstName" class="form-label">Player first name <span class="required-marker">*</span></label>
+                    <input asp-for="FirstName" class="form-control" autocomplete="given-name" />
+                    <span asp-validation-for="FirstName" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="LastName" class="form-label">Player last name <span class="required-marker">*</span></label>
+                    <input asp-for="LastName" class="form-control" autocomplete="family-name" />
+                    <span asp-validation-for="LastName" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="DateOfBirth" class="form-label">Player date of birth <span class="required-marker">*</span></label>
+                    <input asp-for="DateOfBirth" class="form-control" />
+                    <span asp-validation-for="DateOfBirth" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Relationship" class="form-label">Relationship <span class="required-marker">*</span></label>
+                    <select asp-for="Relationship" class="form-select">
+                        @foreach (var relationshipOption in Model.AvailableRelationshipOptions)
+                        {
+                            <option value="@relationshipOption">@relationshipOption</option>
+                        }
+                    </select>
+                    <span asp-validation-for="Relationship" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="ContactEmail" class="form-label">Contact email</label>
+                    <input asp-for="ContactEmail" class="form-control" autocomplete="email" />
+                    <span asp-validation-for="ContactEmail" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="ContactPhone" class="form-label">Contact phone</label>
+                    <input asp-for="ContactPhone" class="form-control" autocomplete="tel" />
+                    <span asp-validation-for="ContactPhone" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="City" class="form-label">City</label>
+                    <input asp-for="City" class="form-control" autocomplete="address-level2" />
+                    <span asp-validation-for="City" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="State" class="form-label">State</label>
+                    <input asp-for="State" class="form-control" autocomplete="address-level1" maxlength="2" />
+                    <span asp-validation-for="State" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="ZipCode" class="form-label">ZIP code</label>
+                    <input asp-for="ZipCode" class="form-control" autocomplete="postal-code" />
+                    <span asp-validation-for="ZipCode" class="text-danger"></span>
+                </div>
+            </div>
+
+            <label class="sms-consent-option" for="CanManage">
+                <input asp-for="CanManage" class="form-check-input" />
+                <span>Allow this account to manage the player profile.</span>
+            </label>
+
+            <div>
+                <label class="form-label">Sports</label>
+                @if (Model.AvailableSports.Count == 0)
+                {
+                    <p class="section-help">Sports options will appear here after the catalog is available.</p>
+                }
+                else
+                {
+                    <div class="account-type-grid compact-grid">
+                        @foreach (var sport in Model.AvailableSports)
+                        {
+                            <label class="account-type-option" for="sport-@sport.Id">
+                                <input class="form-check-input" id="sport-@sport.Id" name="SelectedSportIds" type="checkbox" value="@sport.Id" checked="@sport.IsSelected" />
+                                <span>
+                                    <strong>@sport.Name</strong>
+                                    <small>Select every sport this player participates in.</small>
+                                </span>
+                            </label>
+                        }
+                    </div>
+                }
+                <span asp-validation-for="SelectedSportIds" class="text-danger"></span>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Save player profile</button>
+                <a class="btn btn-outline-secondary" href="/account/onboarding">Back to onboarding</a>
+            </div>
+        </form>
+    </section>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

@@ -48,14 +48,25 @@
                             {
                                 <span class="required-pill">Required</span>
                             }
-                            <span>@(step.IsComplete ? "Complete" : "Open")</span>
+                            @if (step.IsComplete)
+                            {
+                                <span>Complete</span>
+                            }
+                            else if (TryGetStepOpenUrl(step.Code, out var stepOpenUrl))
+                            {
+                                <a class="btn btn-sm btn-outline-primary" href="@stepOpenUrl">Open</a>
+                            }
+                            else
+                            {
+                                <span>Open</span>
+                            }
                         </div>
                     </div>
                 }
             </div>
         </section>
 
-        <section class="form-section">
+        <section class="form-section" id="onboarding-account-types">
             <h2>Account type <span class="required-marker">*</span></h2>
             <p class="section-help">A user can have more than one role. Select every role that fits your current work.</p>
             <form asp-action="UpdateOnboardingAccountTypes" asp-controller="Account" method="post">
@@ -128,5 +139,19 @@
     private static string FormatMonthlyAmount(decimal monthlyAmount)
     {
         return monthlyAmount <= 0 ? "Free" : $"{monthlyAmount:C0}/mo";
+    }
+
+    private bool TryGetStepOpenUrl(string stepCode, out string url)
+    {
+        url = stepCode switch
+        {
+            "choose_account_types" => "#onboarding-account-types",
+            "verify_email" => "/account/settings",
+            "add_player_profile" => "/account/onboarding/add-player-profile",
+            "choose_plan" => "/account/onboarding/choose-plan",
+            _ => string.Empty
+        };
+
+        return !string.IsNullOrWhiteSpace(url);
     }
 }

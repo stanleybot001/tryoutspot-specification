@@ -205,6 +205,77 @@ public sealed class OnboardingPageModel
     public IReadOnlyCollection<string> FeatureCodes { get; set; } = [];
 }
 
+public sealed class AddPlayerProfilePageModel
+{
+    [Required]
+    [MaxLength(100)]
+    [Display(Name = "Player first name")]
+    public string FirstName { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(100)]
+    [Display(Name = "Player last name")]
+    public string LastName { get; set; } = string.Empty;
+
+    [Required]
+    [DataType(DataType.Date)]
+    [Display(Name = "Player date of birth")]
+    public DateTime DateOfBirth { get; set; }
+
+    [Required]
+    [MaxLength(50)]
+    [Display(Name = "Relationship")]
+    public string Relationship { get; set; } = "Parent";
+
+    [Display(Name = "Can manage this player profile")]
+    public bool CanManage { get; set; } = true;
+
+    [EmailAddress]
+    [MaxLength(255)]
+    [Display(Name = "Contact email")]
+    public string? ContactEmail { get; set; }
+
+    [Phone]
+    [MaxLength(20)]
+    [Display(Name = "Contact phone")]
+    public string? ContactPhone { get; set; }
+
+    [MaxLength(100)]
+    [Display(Name = "City")]
+    public string? City { get; set; }
+
+    [MaxLength(2)]
+    [Display(Name = "State")]
+    public string? State { get; set; }
+
+    [MaxLength(10)]
+    [Display(Name = "ZIP code")]
+    public string? ZipCode { get; set; }
+
+    public List<Guid> SelectedSportIds { get; set; } = [];
+
+    public IReadOnlyCollection<SportSelectionPageItem> AvailableSports { get; set; } = [];
+
+    public IReadOnlyCollection<string> AvailableRelationshipOptions { get; set; } = [];
+}
+
+public sealed class ChoosePlanPageModel
+{
+    [Required]
+    [Display(Name = "Plan")]
+    public string PlanCode { get; set; } = string.Empty;
+
+    [Required]
+    [Display(Name = "Billing interval")]
+    public string BillingInterval { get; set; } = "month";
+
+    public bool StripeIsConfigured { get; set; }
+
+    public bool CheckoutAvailableForSelection { get; set; }
+
+    public IReadOnlyCollection<BillingPlanResponse> AvailablePlans { get; set; } = [];
+}
+
 public sealed class AccountSettingsPageModel
 {
     public ProfileSettingsPageModel Profile { get; set; } = new();
@@ -343,3 +414,8 @@ public sealed record OnboardingStepPageItem(
     string Description,
     bool IsRequired,
     bool IsComplete);
+
+public sealed record SportSelectionPageItem(
+    Guid Id,
+    string Name,
+    bool IsSelected);

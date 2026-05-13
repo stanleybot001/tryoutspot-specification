@@ -26,9 +26,13 @@ public sealed class AccountController(
     IAccountSmsSender accountSmsSender,
     IEntitlementService entitlementService,
     IExternalLoginTicketService externalLoginTicketService,
-    IOptions<GoogleAuthenticationOptions> googleOptions) : Controller
+    IStripeBillingService stripeBillingService,
+    IOptions<GoogleAuthenticationOptions> googleOptions,
+    IOptions<StripeBillingOptions> stripeOptions) : Controller
 {
     private readonly GoogleAuthenticationOptions googleAuthentication = googleOptions.Value;
+    private readonly StripeBillingOptions stripeBillingOptions = stripeOptions.Value;
+    private static readonly string[] PlayerRelationshipOptions = ["Parent", "Guardian", "Self", "Coach", "Other"];
 
     [HttpGet("register")]
     public async Task<IActionResult> Register([FromQuery] string? returnUrl = null)
@@ -663,6 +667,245 @@ public sealed class AccountController(
     }
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [HttpGet("onboarding/add-player-profile")]
+    public async Task<IActionResult> AddPlayerProfile(CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(AddPlayerProfile)) });
+        }
+
+        var model = await BuildAddPlayerProfilePageModelAsync(
+            user,
+            new AddPlayerProfilePageModel
+            {
+                ContactEmail = user.Email,
+                ContactPhone = user.PhoneNumber,
+                City = user.City,
+                State = user.State,
+                ZipCode = user.ZipCode,
+                DateOfBirth = DateTime.UtcNow.Date.AddYears(-12)
+            },
+            cancellationToken);
+        return View(model);
+    }
+
+    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [HttpPost("onboarding/add-player-profile")]
+    public async Task<IActionResult> AddPlayerProfile(
+        AddPlayerProfilePageModel model,
+        CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(AddPlayerProfile)) });
+        }
+
+        var relationship = NormalizeRelationship(model.Relationship);
+        if (string.IsNullOrWhiteSpace(relationship))
+        {
+            ModelState.AddModelError(nameof(model.Relationship), "Choose a relationship.");
+        }
+
+        var selectedSportIds = model.SelectedSportIds.Distinct().ToArray();
+        var selectedSports = selectedSportIds.Length == 0
+            ? Array.Empty<Guid>()
+            : await dbContext.Sports
+                .AsNoTracking()
+                .Where(sport => selectedSportIds.Contains(sport.Id))
+                .Select(sport => sport.Id)
+                .ToArrayAsync(cancellationToken);
+        if (selectedSports.Length != selectedSportIds.Length)
+        {
+            ModelState.AddModelError(nameof(model.SelectedSportIds), "One or more selected sports are no longer available.");
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return View(await BuildAddPlayerProfilePageModelAsync(user, model, cancellationToken));
+        }
+
+        var now = DateTime.UtcNow;
+        var playerId = Guid.NewGuid();
+        var player = new Player
+        {
+            Id = playerId,
+            FirstName = model.FirstName.Trim(),
+            LastName = model.LastName.Trim(),
+            DateOfBirth = NormalizeUtcDate(model.DateOfBirth),
+            ContactEmail = NormalizeOptional(model.ContactEmail),
+            ContactPhone = NormalizeOptional(model.ContactPhone),
+            City = NormalizeOptional(model.City),
+            State = NormalizeState(model.State),
+            ZipCode = NormalizeOptional(model.ZipCode),
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        };
+
+        var relationshipToUser = new UserPlayerRelationship
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            PlayerId = playerId,
+            Relationship = relationship!,
+            CanManage = model.CanManage,
+            CreatedAt = now
+        };
+
+        dbContext.Players.Add(player);
+        dbContext.UserPlayerRelationships.Add(relationshipToUser);
+
+        foreach (var sportId in selectedSports)
+        {
+            dbContext.PlayerSports.Add(new PlayerSport
+            {
+                Id = Guid.NewGuid(),
+                PlayerId = playerId,
+                SportId = sportId,
+                IsActive = true,
+                CreatedAt = now
+            });
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        TempData["StatusMessage"] = "Player profile added.";
+        return RedirectToAction(nameof(Onboarding));
+    }
+
+    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [HttpGet("onboarding/choose-plan")]
+    public async Task<IActionResult> ChoosePlan(CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(ChoosePlan)) });
+        }
+
+        var model = await BuildChoosePlanPageModelAsync(user, new ChoosePlanPageModel(), cancellationToken);
+        return View(model);
+    }
+
+    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [HttpPost("onboarding/choose-plan")]
+    public async Task<IActionResult> ChoosePlan(
+        ChoosePlanPageModel model,
+        CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(ChoosePlan)) });
+        }
+
+        var roles = (await userManager.GetRolesAsync(user))
+            .Where(role => TryOutSpotRoles.PublicRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+        var availablePlans = GetPlansForAccountTypes(roles);
+        if (availablePlans.Count == 0)
+        {
+            TempData["StatusMessage"] = "No plan options are available for the selected account types yet.";
+            return RedirectToAction(nameof(Onboarding));
+        }
+
+        var normalizedPlanCode = TryOutSpotBillingCatalog.NormalizePlanCode(model.PlanCode);
+        var selectedPlan = availablePlans
+            .FirstOrDefault(plan => string.Equals(plan.Code, normalizedPlanCode, StringComparison.Ordinal));
+        if (selectedPlan is null)
+        {
+            ModelState.AddModelError(nameof(model.PlanCode), "Choose one of the available plans.");
+            return View(await BuildChoosePlanPageModelAsync(user, model, cancellationToken));
+        }
+
+        var billingInterval = BillingIntervalCodes.Normalize(model.BillingInterval);
+        if (billingInterval is null)
+        {
+            ModelState.AddModelError(nameof(model.BillingInterval), "Choose monthly or annual billing.");
+            return View(await BuildChoosePlanPageModelAsync(user, model, cancellationToken));
+        }
+
+        var amount = billingInterval switch
+        {
+            BillingIntervalCodes.Month => selectedPlan.MonthlyAmount,
+            BillingIntervalCodes.Year => selectedPlan.AnnualAmount,
+            _ => null
+        };
+        if (amount is null)
+        {
+            ModelState.AddModelError(nameof(model.BillingInterval), "This plan does not offer the selected billing interval.");
+            return View(await BuildChoosePlanPageModelAsync(user, model, cancellationToken));
+        }
+
+        var now = DateTime.UtcNow;
+        var subscription = await FindOrCreateAccountScopeSubscriptionAsync(
+            user,
+            selectedPlan.Code,
+            now,
+            cancellationToken);
+
+        subscription.PlanType = selectedPlan.Code;
+        subscription.ScopeType = TryOutSpotSubscriptionScopeTypes.Account;
+        subscription.ScopeId = null;
+        subscription.Currency = selectedPlan.Currency;
+        subscription.BillingInterval = billingInterval;
+        subscription.Amount = amount;
+        subscription.UpdatedAt = now;
+        subscription.CancelAtPeriodEnd = false;
+        subscription.CancelledAt = null;
+        subscription.IsElite = string.Equals(selectedPlan.Code, TryOutSpotPlanCodes.PremiumPlayer, StringComparison.Ordinal);
+
+        if (!selectedPlan.RequiresStripeSubscription)
+        {
+            subscription.Status = "active";
+            subscription.CurrentPeriodStart = now;
+            subscription.CurrentPeriodEnd = null;
+            subscription.TrialEnd = null;
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            TempData["StatusMessage"] = $"{selectedPlan.Name} selected.";
+            return RedirectToAction(nameof(Onboarding));
+        }
+
+        var stripePriceId = stripeBillingOptions.GetPriceId(selectedPlan.Code, billingInterval);
+        if (!stripeBillingOptions.IsConfigured || string.IsNullOrWhiteSpace(stripePriceId))
+        {
+            subscription.Status = "plan_selected";
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            TempData["StatusMessage"] = "Plan selected. Checkout will be available as soon as Stripe is fully configured.";
+            return RedirectToAction(nameof(Onboarding));
+        }
+
+        var planDefinition = TryOutSpotBillingCatalog.GetPlan(selectedPlan.Code);
+        if (planDefinition is null)
+        {
+            ModelState.AddModelError(nameof(model.PlanCode), "The selected plan is no longer available.");
+            return View(await BuildChoosePlanPageModelAsync(user, model, cancellationToken));
+        }
+
+        var existingStripeCustomerId = await ResolveExistingStripeCustomerIdAsync(user.Id, cancellationToken);
+        var checkoutSession = await stripeBillingService.CreateCheckoutSessionAsync(
+            user,
+            existingStripeCustomerId,
+            planDefinition,
+            billingInterval,
+            stripePriceId,
+            TryOutSpotSubscriptionScopeTypes.Account,
+            null,
+            cancellationToken);
+
+        subscription.Status = "checkout_started";
+        subscription.StripeCustomerId = checkoutSession.StripeCustomerId;
+        subscription.StripePriceId = stripePriceId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Redirect(checkoutSession.Url);
+    }
+
+    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
     [HttpGet("settings")]
     public async Task<IActionResult> Settings(CancellationToken cancellationToken)
     {
@@ -1148,7 +1391,8 @@ public sealed class AccountController(
             .AsNoTracking()
             .Where(currentSubscription => currentSubscription.UserId == user.Id)
             .ToArrayAsync(cancellationToken);
-        var hasPaidPlan = subscriptions.Any(IsActivePaidSubscription);
+        var recommendedPlans = GetPlansForAccountTypes(roles);
+        var hasPlanSelection = HasSelectedAnyRecommendedPlan(subscriptions, recommendedPlans);
 
         var steps = new List<OnboardingStepPageItem>
         {
@@ -1186,7 +1430,6 @@ public sealed class AccountController(
                 hasTeamRole));
         }
 
-        var recommendedPlans = GetPlansForAccountTypes(roles);
         if (recommendedPlans.Any(plan => plan.RequiresStripeSubscription))
         {
             steps.Add(new OnboardingStepPageItem(
@@ -1194,7 +1437,7 @@ public sealed class AccountController(
                 "Choose plan",
                 "Start free and upgrade when premium tools are needed.",
                 false,
-                hasPaidPlan));
+                hasPlanSelection));
         }
 
         return new OnboardingPageModel
@@ -1211,6 +1454,148 @@ public sealed class AccountController(
             FeatureCodes = entitlements?.FeatureCodes ?? [],
             Steps = steps
         };
+    }
+
+    private async Task<AddPlayerProfilePageModel> BuildAddPlayerProfilePageModelAsync(
+        User user,
+        AddPlayerProfilePageModel model,
+        CancellationToken cancellationToken)
+    {
+        var selectedSportIds = model.SelectedSportIds.ToHashSet();
+        var availableSports = await dbContext.Sports
+            .AsNoTracking()
+            .Where(sport => sport.IsActive)
+            .OrderBy(sport => sport.Name)
+            .Select(sport => new SportSelectionPageItem(
+                sport.Id,
+                sport.Name,
+                selectedSportIds.Contains(sport.Id)))
+            .ToArrayAsync(cancellationToken);
+
+        model.AvailableSports = availableSports;
+        model.AvailableRelationshipOptions = PlayerRelationshipOptions;
+        model.ContactEmail = string.IsNullOrWhiteSpace(model.ContactEmail)
+            ? user.Email
+            : model.ContactEmail;
+        model.ContactPhone = string.IsNullOrWhiteSpace(model.ContactPhone)
+            ? user.PhoneNumber
+            : model.ContactPhone;
+        model.City = string.IsNullOrWhiteSpace(model.City)
+            ? user.City
+            : model.City;
+        model.State = string.IsNullOrWhiteSpace(model.State)
+            ? user.State
+            : model.State;
+        model.ZipCode = string.IsNullOrWhiteSpace(model.ZipCode)
+            ? user.ZipCode
+            : model.ZipCode;
+
+        return model;
+    }
+
+    private async Task<ChoosePlanPageModel> BuildChoosePlanPageModelAsync(
+        User user,
+        ChoosePlanPageModel model,
+        CancellationToken cancellationToken)
+    {
+        var roles = (await userManager.GetRolesAsync(user))
+            .Where(role => TryOutSpotRoles.PublicRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+        var availablePlans = GetPlansForAccountTypes(roles);
+        var latestSelection = await dbContext.Subscriptions
+            .AsNoTracking()
+            .Where(subscription => subscription.UserId == user.Id
+                && subscription.ScopeType == TryOutSpotSubscriptionScopeTypes.Account)
+            .OrderByDescending(subscription => subscription.UpdatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        model.AvailablePlans = availablePlans;
+        model.StripeIsConfigured = stripeBillingOptions.IsConfigured;
+
+        if (string.IsNullOrWhiteSpace(model.PlanCode))
+        {
+            var currentPlanCode = TryOutSpotBillingCatalog.NormalizePlanCode(latestSelection?.PlanType);
+            var defaultPlanCode = currentPlanCode is not null
+                && availablePlans.Any(plan => string.Equals(plan.Code, currentPlanCode, StringComparison.Ordinal))
+                ? currentPlanCode
+                : availablePlans.FirstOrDefault()?.Code;
+            model.PlanCode = defaultPlanCode ?? string.Empty;
+        }
+
+        model.BillingInterval = BillingIntervalCodes.Normalize(model.BillingInterval) ?? BillingIntervalCodes.Month;
+        var selectedPlan = availablePlans
+            .FirstOrDefault(plan => string.Equals(plan.Code, model.PlanCode, StringComparison.Ordinal));
+        model.CheckoutAvailableForSelection = selectedPlan is not null
+            && selectedPlan.RequiresStripeSubscription
+            && stripeBillingOptions.IsConfigured
+            && stripeBillingOptions.GetPriceId(selectedPlan.Code, model.BillingInterval) is not null;
+
+        return model;
+    }
+
+    private async Task<Subscription> FindOrCreateAccountScopeSubscriptionAsync(
+        User user,
+        string planCode,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var subscription = await dbContext.Subscriptions
+            .SingleOrDefaultAsync(currentSubscription =>
+                currentSubscription.UserId == user.Id
+                && currentSubscription.PlanType == planCode
+                && currentSubscription.ScopeType == TryOutSpotSubscriptionScopeTypes.Account
+                && currentSubscription.ScopeId == null,
+                cancellationToken);
+        if (subscription is not null)
+        {
+            return subscription;
+        }
+
+        subscription = new Subscription
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            PlanType = planCode,
+            ScopeType = TryOutSpotSubscriptionScopeTypes.Account,
+            ScopeId = null,
+            Status = "plan_selected",
+            Currency = "USD",
+            BillingInterval = BillingIntervalCodes.Month,
+            CreatedAt = nowUtc,
+            UpdatedAt = nowUtc
+        };
+        dbContext.Subscriptions.Add(subscription);
+        return subscription;
+    }
+
+    private async Task<string?> ResolveExistingStripeCustomerIdAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        return await dbContext.Subscriptions
+            .AsNoTracking()
+            .Where(subscription => subscription.UserId == userId)
+            .Where(subscription => subscription.StripeCustomerId != null && subscription.StripeCustomerId != string.Empty)
+            .OrderByDescending(subscription =>
+                TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status))
+            .ThenByDescending(subscription => subscription.UpdatedAt)
+            .Select(subscription => subscription.StripeCustomerId)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private static bool HasSelectedAnyRecommendedPlan(
+        IEnumerable<Subscription> subscriptions,
+        IReadOnlyCollection<BillingPlanResponse> recommendedPlans)
+    {
+        var planCodes = recommendedPlans
+            .Select(plan => plan.Code)
+            .ToHashSet(StringComparer.Ordinal);
+
+        return subscriptions.Any(subscription =>
+        {
+            var normalizedPlanCode = TryOutSpotBillingCatalog.NormalizePlanCode(subscription.PlanType);
+            return normalizedPlanCode is not null && planCodes.Contains(normalizedPlanCode);
+        });
     }
 
     private async Task<AccountSettingsPageModel> BuildAccountSettingsPageModelAsync(
@@ -1620,6 +2005,24 @@ public sealed class AccountController(
     private static string? NormalizeOptional(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string? NormalizeRelationship(string? relationship)
+    {
+        if (string.IsNullOrWhiteSpace(relationship))
+        {
+            return null;
+        }
+
+        var trimmed = relationship.Trim();
+        return PlayerRelationshipOptions.Contains(trimmed, StringComparer.OrdinalIgnoreCase)
+            ? PlayerRelationshipOptions.First(option => string.Equals(option, trimmed, StringComparison.OrdinalIgnoreCase))
+            : trimmed;
+    }
+
+    private static DateTime NormalizeUtcDate(DateTime value)
+    {
+        return DateTime.SpecifyKind(value.Date, DateTimeKind.Utc);
     }
 
     private static string? NormalizeState(string? state)

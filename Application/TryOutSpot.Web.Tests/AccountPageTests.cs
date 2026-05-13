@@ -2,11 +2,19 @@ using System.Net;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+using Stripe;
+using TryOutSpot.Web.Billing;
+using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
+using TryOutSpot.Web.Models.Billing;
 using TryOutSpot.Web.Security;
+using TryOutSpot.Web.Services;
 
 namespace TryOutSpot.Web.Tests;
 
@@ -166,6 +174,8 @@ public sealed class AccountPageTests
         Assert.Contains("Setup checklist", html);
         Assert.Contains("name=\"accountTypes\"", html);
         Assert.Contains("Recommended plan options", html);
+        Assert.Contains("href=\"/account/onboarding/add-player-profile\"", html);
+        Assert.Contains("href=\"/account/onboarding/choose-plan\"", html);
     }
 
     [Fact]
@@ -341,6 +351,147 @@ public sealed class AccountPageTests
         Assert.True(await userManager.CheckPasswordAsync(updatedUser, "Tryout2027"));
     }
 
+    [Fact]
+    public async Task AddPlayerProfilePage_AndPost_CreateLinkedPlayerProfile()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("onboarding-player-profile@example.com", [TryOutSpotRoles.Parent]);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            dbContext.Sports.Add(new Sport
+            {
+                Id = Guid.NewGuid(),
+                Name = "Softball",
+                Category = "Fastpitch",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/onboarding/add-player-profile");
+
+        Guid sportId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            sportId = await dbContext.Sports.Select(sport => sport.Id).SingleAsync();
+        }
+
+        var response = await client.PostAsync(
+            "/account/onboarding/add-player-profile",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("FirstName", "Alex"),
+                new("LastName", "Rivera"),
+                new("DateOfBirth", "2011-03-14"),
+                new("Relationship", "Parent"),
+                new("CanManage", "true"),
+                new("ContactEmail", "parent-contact@example.com"),
+                new("ContactPhone", "620-555-7070"),
+                new("City", "Wichita"),
+                new("State", "ks"),
+                new("ZipCode", "67202"),
+                new("SelectedSportIds", sportId.ToString())
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/account/onboarding", response.Headers.Location?.ToString());
+
+        using var verifyScope = factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var player = await verifyDb.Players.SingleAsync();
+        var relationship = await verifyDb.UserPlayerRelationships.SingleAsync();
+        var playerSport = await verifyDb.PlayerSports.SingleAsync();
+
+        Assert.Equal("Alex", player.FirstName);
+        Assert.Equal("Rivera", player.LastName);
+        Assert.Equal(new DateTime(2011, 3, 14, 0, 0, 0, DateTimeKind.Utc), player.DateOfBirth);
+        Assert.Equal("KS", player.State);
+        Assert.Equal("67202", player.ZipCode);
+        Assert.Equal(user.Id, relationship.UserId);
+        Assert.Equal(player.Id, relationship.PlayerId);
+        Assert.Equal("Parent", relationship.Relationship);
+        Assert.Equal(player.Id, playerSport.PlayerId);
+        Assert.Equal(sportId, playerSport.SportId);
+    }
+
+    [Fact]
+    public async Task ChoosePlanPost_WithFreePlan_SavesSelectionAndReturnsToOnboarding()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("onboarding-plan-select@example.com", [TryOutSpotRoles.Parent]);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/onboarding/choose-plan");
+        var response = await client.PostAsync(
+            "/account/onboarding/choose-plan",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("PlanCode", TryOutSpotPlanCodes.FreePlayerParent),
+                new("BillingInterval", BillingIntervalCodes.Month)
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/account/onboarding", response.Headers.Location?.ToString());
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var subscription = await dbContext.Subscriptions.SingleAsync(current => current.UserId == user.Id);
+        Assert.Equal(TryOutSpotPlanCodes.FreePlayerParent, subscription.PlanType);
+        Assert.Equal("active", subscription.Status);
+        Assert.Equal(BillingIntervalCodes.Month, subscription.BillingInterval);
+        Assert.Equal(TryOutSpotSubscriptionScopeTypes.Account, subscription.ScopeType);
+        Assert.Null(subscription.ScopeId);
+    }
+
+    [Fact]
+    public async Task ChoosePlanPost_WithPaidPlanAndStripeConfigured_StartsCheckout()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync("onboarding-plan-checkout@example.com", [TryOutSpotRoles.Parent]);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/onboarding/choose-plan");
+        var response = await client.PostAsync(
+            "/account/onboarding/choose-plan",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("PlanCode", TryOutSpotPlanCodes.PremiumPlayer),
+                new("BillingInterval", BillingIntervalCodes.Month)
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("https://checkout.stripe.test/session", response.Headers.Location?.ToString());
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var subscription = await dbContext.Subscriptions.SingleAsync(current => current.UserId == user.Id);
+        Assert.Equal(TryOutSpotPlanCodes.PremiumPlayer, subscription.PlanType);
+        Assert.Equal("checkout_started", subscription.Status);
+        Assert.Equal("cus_test_checkout", subscription.StripeCustomerId);
+        Assert.Equal("price_premium_month", subscription.StripePriceId);
+    }
+
     private static async Task<string> GetAntiForgeryTokenAsync(HttpClient client, string path)
     {
         var response = await client.GetAsync(path);
@@ -404,5 +555,68 @@ public sealed class AccountPageTests
                     });
                 });
             });
+    }
+
+    private static TryOutSpotWebApplicationFactory CreateFactoryWithStripe()
+    {
+        return new TryOutSpotWebApplicationFactory(services =>
+        {
+            services.RemoveAll<IStripeBillingService>();
+            services.AddSingleton<IStripeBillingService, TestStripeBillingService>();
+            services.PostConfigure<StripeBillingOptions>(options =>
+            {
+                options.SecretKey = "stripe_secret_placeholder";
+                options.WebhookSigningSecret = "stripe_webhook_placeholder";
+                options.SuccessUrl = "https://example.test/billing/success?session_id={CHECKOUT_SESSION_ID}";
+                options.CancelUrl = "https://example.test/billing/cancelled";
+                options.PortalReturnUrl = "https://example.test/account/settings";
+                options.Plans = new Dictionary<string, StripeBillingPlanPriceOptions>
+                {
+                    [TryOutSpotPlanCodes.PremiumPlayer] = new()
+                    {
+                        MonthlyPriceId = "price_premium_month",
+                        AnnualPriceId = "price_premium_year"
+                    }
+                };
+            });
+        });
+    }
+
+    private sealed class TestStripeBillingService : IStripeBillingService
+    {
+        public Task<StripeCheckoutSessionResult> CreateCheckoutSessionAsync(
+            User user,
+            string? existingStripeCustomerId,
+            BillingPlanDefinition plan,
+            string billingInterval,
+            string stripePriceId,
+            string scopeType,
+            Guid? scopeId,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new StripeCheckoutSessionResult(
+                "cs_test_checkout",
+                "https://checkout.stripe.test/session",
+                existingStripeCustomerId ?? "cus_test_checkout"));
+        }
+
+        public Task<StripeBillingPortalSessionResult> CreatePortalSessionAsync(
+            string stripeCustomerId,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new StripeBillingPortalSessionResult("https://billing.stripe.test/session"));
+        }
+
+        public Task<Stripe.Subscription?> GetSubscriptionAsync(
+            string stripeSubscriptionId,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult<Stripe.Subscription?>(null);
+        }
+
+        public Event ConstructWebhookEvent(string payload, string signatureHeader)
+        {
+            throw new NotSupportedException("Webhook construction is not used by these tests.");
+        }
     }
 }
