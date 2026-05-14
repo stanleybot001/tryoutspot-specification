@@ -230,6 +230,9 @@ public sealed class AddPlayerProfilePageModel
     [Display(Name = "Can manage this player profile")]
     public bool CanManage { get; set; } = true;
 
+    [Display(Name = "Allow this player to appear in search")]
+    public bool IsSearchable { get; set; } = true;
+
     [EmailAddress]
     [MaxLength(255)]
     [Display(Name = "Contact email")]
@@ -347,6 +350,9 @@ public sealed class AddTeamOrOrganizationPageModel
     [MaxLength(50)]
     [Display(Name = "Team level")]
     public string? TeamLevel { get; set; }
+
+    [Display(Name = "Allow this team or organization to appear in search")]
+    public bool IsSearchable { get; set; } = true;
 
     [EmailAddress]
     [MaxLength(255)]

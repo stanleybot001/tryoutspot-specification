@@ -35,6 +35,8 @@ public partial class Organization
 
     public string? SocialMediaLinks { get; set; }
 
+    public bool IsSearchable { get; set; }
+
     public bool IsAcademy { get; set; }
 
     public bool IsVerified { get; set; }

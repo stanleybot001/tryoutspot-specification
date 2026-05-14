@@ -416,6 +416,7 @@ public sealed class AccountPageTests
                 new("DateOfBirth", "2011-03-14"),
                 new("Relationship", "Parent"),
                 new("CanManage", "true"),
+                new("IsSearchable", "false"),
                 new("ContactEmail", "parent-contact@example.com"),
                 new("ContactPhone", "620-555-7070"),
                 new("ProfileImageUrl", "https://cdn.example.com/player/alex.jpg"),
@@ -451,6 +452,7 @@ public sealed class AccountPageTests
         Assert.Equal("KS", player.State);
         Assert.Equal("67202", player.ZipCode);
         Assert.Equal("https://cdn.example.com/player/alex.jpg", player.ProfileImageUrl);
+        Assert.False(player.IsSearchable);
         Assert.Equal(user.Id, relationship.UserId);
         Assert.Equal(player.Id, relationship.PlayerId);
         Assert.Equal("Parent", relationship.Relationship);
@@ -518,6 +520,7 @@ public sealed class AccountPageTests
                 new("OrganizationName", "Midamserv Baseball Club"),
                 new("TeamRole", TryOutSpotRoles.Coach),
                 new("TeamLevel", "14U"),
+                new("IsSearchable", "false"),
                 new("ContactEmail", "coach@example.com"),
                 new("ContactPhone", "620-555-9090"),
                 new("ProfileImageUrl", "https://cdn.example.com/teams/thunder-logo.png"),
@@ -547,6 +550,7 @@ public sealed class AccountPageTests
 
         Assert.Equal("Midamserv Baseball Club", organization.Name);
         Assert.False(organization.IsAcademy);
+        Assert.False(organization.IsSearchable);
         Assert.Equal("Wichita", organization.City);
         Assert.Equal("KS", organization.State);
         Assert.Equal("https://cdn.example.com/teams/thunder-logo.png", organization.LogoImageUrl);
@@ -555,6 +559,7 @@ public sealed class AccountPageTests
         Assert.Equal("14U", team.TeamLevel);
         Assert.Equal("KS", team.State);
         Assert.Equal("https://cdn.example.com/teams/thunder-logo.png", team.LogoImageUrl);
+        Assert.False(team.IsSearchable);
         Assert.Equal(user.Id, userTeamRole.UserId);
         Assert.Equal(team.Id, userTeamRole.TeamId);
         Assert.Equal(TryOutSpotRoles.Coach, userTeamRole.Role);

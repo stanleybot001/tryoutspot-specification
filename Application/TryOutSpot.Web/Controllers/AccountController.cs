@@ -764,6 +764,7 @@ public sealed class AccountController(
             ZipCode = NormalizeOptional(model.ZipCode),
             SocialMediaLinks = socialMediaLinks,
             RecruitingProfileLinks = recruitingProfileLinks,
+            IsSearchable = model.IsSearchable,
             CreatedAt = now,
             UpdatedAt = now,
             IsActive = true
@@ -909,6 +910,7 @@ public sealed class AccountController(
                 PhoneNumber = NormalizeOptional(model.ContactPhone),
                 Email = NormalizeOptional(model.ContactEmail),
                 SocialMediaLinks = socialMediaLinks,
+                IsSearchable = model.IsSearchable,
                 IsAcademy = string.Equals(teamRole, TryOutSpotRoles.AcademyDirector, StringComparison.Ordinal),
                 IsVerified = false,
                 CreatedAt = now,
@@ -933,6 +935,7 @@ public sealed class AccountController(
             PhoneNumber = NormalizeOptional(model.ContactPhone),
             Email = NormalizeOptional(model.ContactEmail),
             SocialMediaLinks = socialMediaLinks,
+            IsSearchable = model.IsSearchable,
             IsElite = false,
             IsVerified = false,
             CreatedAt = now,

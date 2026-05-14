@@ -153,6 +153,7 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.City).HasMaxLength(100);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.Email).HasMaxLength(255);
+            entity.Property(e => e.IsSearchable).HasDefaultValue(true);
             entity.Property(e => e.LogoImageUrl).HasMaxLength(500);
             entity.Property(e => e.Name).HasMaxLength(200);
             entity.Property(e => e.PhoneNumber).HasMaxLength(20);
@@ -176,6 +177,7 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.FirstName).HasMaxLength(100);
             entity.Property(e => e.Gender).HasMaxLength(10);
             entity.Property(e => e.Height).HasMaxLength(20);
+            entity.Property(e => e.IsSearchable).HasDefaultValue(true);
             entity.Property(e => e.LastName).HasMaxLength(100);
             entity.Property(e => e.ProfileImageUrl).HasMaxLength(500);
             entity.Property(e => e.SchoolName).HasMaxLength(200);
@@ -290,6 +292,7 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.City).HasMaxLength(100);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.Email).HasMaxLength(255);
+            entity.Property(e => e.IsSearchable).HasDefaultValue(true);
             entity.Property(e => e.LogoImageUrl).HasMaxLength(500);
             entity.Property(e => e.Name).HasMaxLength(200);
             entity.Property(e => e.PhoneNumber).HasMaxLength(20);

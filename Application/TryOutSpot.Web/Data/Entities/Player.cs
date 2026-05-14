@@ -47,6 +47,8 @@ public partial class Player
 
     public string? RecruitingProfileLinks { get; set; }
 
+    public bool IsSearchable { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }

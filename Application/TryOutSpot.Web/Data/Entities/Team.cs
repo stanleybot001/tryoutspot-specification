@@ -39,6 +39,8 @@ public partial class Team
 
     public string? SocialMediaLinks { get; set; }
 
+    public bool IsSearchable { get; set; }
+
     public bool IsElite { get; set; }
 
     public bool IsVerified { get; set; }
