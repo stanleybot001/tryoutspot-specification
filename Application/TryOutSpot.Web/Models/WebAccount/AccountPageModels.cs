@@ -240,6 +240,18 @@ public sealed class AddPlayerProfilePageModel
     [Display(Name = "Contact phone")]
     public string? ContactPhone { get; set; }
 
+    [MaxLength(500)]
+    [Display(Name = "Profile picture URL")]
+    public string? ProfileImageUrl { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Highlight video link 1")]
+    public string? HighlightVideoUrl1 { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Highlight video link 2")]
+    public string? HighlightVideoUrl2 { get; set; }
+
     [MaxLength(100)]
     [Display(Name = "City")]
     public string? City { get; set; }
@@ -345,6 +357,18 @@ public sealed class AddTeamOrOrganizationPageModel
     [MaxLength(20)]
     [Display(Name = "Contact phone")]
     public string? ContactPhone { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Profile picture URL")]
+    public string? ProfileImageUrl { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Highlight video link 1")]
+    public string? HighlightVideoUrl1 { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Highlight video link 2")]
+    public string? HighlightVideoUrl2 { get; set; }
 
     [MaxLength(500)]
     [Display(Name = "Website URL")]

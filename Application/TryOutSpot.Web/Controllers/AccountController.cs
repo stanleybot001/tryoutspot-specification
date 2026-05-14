@@ -741,7 +741,9 @@ public sealed class AccountController(
             ("x", NormalizeSocialHandleOrUrl(model.XPageUrl, "https://x.com/")),
             ("instagram", NormalizeSocialHandleOrUrl(model.InstagramUrl, "https://instagram.com/")),
             ("youtube", model.YouTubeUrl),
-            ("tiktok", NormalizeSocialHandleOrUrl(model.TikTokUrl, "https://tiktok.com/")));
+            ("tiktok", NormalizeSocialHandleOrUrl(model.TikTokUrl, "https://tiktok.com/")),
+            ("highlight_video_1", model.HighlightVideoUrl1),
+            ("highlight_video_2", model.HighlightVideoUrl2));
         var recruitingProfileLinks = SerializeLinkCollection(
             ("sportsrecruits", model.SportsRecruitsProfileUrl),
             ("fieldlevel", model.FieldLevelProfileUrl),
@@ -756,6 +758,7 @@ public sealed class AccountController(
             DateOfBirth = NormalizeUtcDate(model.DateOfBirth),
             ContactEmail = NormalizeOptional(model.ContactEmail),
             ContactPhone = NormalizeOptional(model.ContactPhone),
+            ProfileImageUrl = NormalizeOptional(model.ProfileImageUrl),
             City = NormalizeOptional(model.City),
             State = NormalizeState(model.State),
             ZipCode = NormalizeOptional(model.ZipCode),
@@ -888,7 +891,9 @@ public sealed class AccountController(
             ("x", NormalizeSocialHandleOrUrl(model.XPageUrl, "https://x.com/")),
             ("instagram", NormalizeSocialHandleOrUrl(model.InstagramUrl, "https://instagram.com/")),
             ("youtube", model.YouTubeUrl),
-            ("tiktok", NormalizeSocialHandleOrUrl(model.TikTokUrl, "https://tiktok.com/")));
+            ("tiktok", NormalizeSocialHandleOrUrl(model.TikTokUrl, "https://tiktok.com/")),
+            ("highlight_video_1", model.HighlightVideoUrl1),
+            ("highlight_video_2", model.HighlightVideoUrl2));
         Organization? organization = null;
         if (string.Equals(createType, "organization", StringComparison.Ordinal))
         {
@@ -896,6 +901,7 @@ public sealed class AccountController(
             {
                 Id = Guid.NewGuid(),
                 Name = model.OrganizationName!.Trim(),
+                LogoImageUrl = NormalizeOptional(model.ProfileImageUrl),
                 WebsiteUrl = NormalizeOptional(model.WebsiteUrl),
                 City = NormalizeOptional(model.City),
                 State = NormalizeState(model.State),
@@ -919,6 +925,7 @@ public sealed class AccountController(
             OrganizationId = organization?.Id,
             Name = model.TeamName.Trim(),
             TeamLevel = NormalizeOptional(model.TeamLevel),
+            LogoImageUrl = NormalizeOptional(model.ProfileImageUrl),
             WebsiteUrl = NormalizeOptional(model.WebsiteUrl),
             City = NormalizeOptional(model.City),
             State = NormalizeState(model.State),

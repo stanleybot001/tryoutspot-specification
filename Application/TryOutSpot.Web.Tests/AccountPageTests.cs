@@ -418,6 +418,9 @@ public sealed class AccountPageTests
                 new("CanManage", "true"),
                 new("ContactEmail", "parent-contact@example.com"),
                 new("ContactPhone", "620-555-7070"),
+                new("ProfileImageUrl", "https://cdn.example.com/player/alex.jpg"),
+                new("HighlightVideoUrl1", "https://www.youtube.com/watch?v=alex123"),
+                new("HighlightVideoUrl2", "https://www.hudl.com/video/alex456"),
                 new("City", "Wichita"),
                 new("State", "ks"),
                 new("ZipCode", "67202"),
@@ -447,6 +450,7 @@ public sealed class AccountPageTests
         Assert.Equal(new DateTime(2011, 3, 14, 0, 0, 0, DateTimeKind.Utc), player.DateOfBirth);
         Assert.Equal("KS", player.State);
         Assert.Equal("67202", player.ZipCode);
+        Assert.Equal("https://cdn.example.com/player/alex.jpg", player.ProfileImageUrl);
         Assert.Equal(user.Id, relationship.UserId);
         Assert.Equal(player.Id, relationship.PlayerId);
         Assert.Equal("Parent", relationship.Relationship);
@@ -459,6 +463,8 @@ public sealed class AccountPageTests
         Assert.Equal("https://instagram.com/alex.ig", socialMediaLinks?["instagram"]);
         Assert.Equal("https://youtube.com/@alex", socialMediaLinks?["youtube"]);
         Assert.Equal("https://tiktok.com/alextok", socialMediaLinks?["tiktok"]);
+        Assert.Equal("https://www.youtube.com/watch?v=alex123", socialMediaLinks?["highlight_video_1"]);
+        Assert.Equal("https://www.hudl.com/video/alex456", socialMediaLinks?["highlight_video_2"]);
 
         var recruitingProfileLinks = JsonSerializer.Deserialize<Dictionary<string, string>>(player.RecruitingProfileLinks ?? "{}");
         Assert.Equal("https://sportsrecruits.com/athlete/alex", recruitingProfileLinks?["sportsrecruits"]);
@@ -514,6 +520,9 @@ public sealed class AccountPageTests
                 new("TeamLevel", "14U"),
                 new("ContactEmail", "coach@example.com"),
                 new("ContactPhone", "620-555-9090"),
+                new("ProfileImageUrl", "https://cdn.example.com/teams/thunder-logo.png"),
+                new("HighlightVideoUrl1", "https://www.youtube.com/watch?v=thunder123"),
+                new("HighlightVideoUrl2", "https://www.hudl.com/video/thunder456"),
                 new("WebsiteUrl", "https://midamserv.test"),
                 new("City", "Wichita"),
                 new("State", "ks"),
@@ -540,10 +549,12 @@ public sealed class AccountPageTests
         Assert.False(organization.IsAcademy);
         Assert.Equal("Wichita", organization.City);
         Assert.Equal("KS", organization.State);
+        Assert.Equal("https://cdn.example.com/teams/thunder-logo.png", organization.LogoImageUrl);
         Assert.Equal("Midamserv Thunder 14U", team.Name);
         Assert.Equal(organization.Id, team.OrganizationId);
         Assert.Equal("14U", team.TeamLevel);
         Assert.Equal("KS", team.State);
+        Assert.Equal("https://cdn.example.com/teams/thunder-logo.png", team.LogoImageUrl);
         Assert.Equal(user.Id, userTeamRole.UserId);
         Assert.Equal(team.Id, userTeamRole.TeamId);
         Assert.Equal(TryOutSpotRoles.Coach, userTeamRole.Role);
@@ -556,6 +567,8 @@ public sealed class AccountPageTests
         Assert.Equal("https://instagram.com/midamserv", teamSocialLinks?["instagram"]);
         Assert.Equal("https://youtube.com/@midamserv", teamSocialLinks?["youtube"]);
         Assert.Equal("https://tiktok.com/midamserv", teamSocialLinks?["tiktok"]);
+        Assert.Equal("https://www.youtube.com/watch?v=thunder123", teamSocialLinks?["highlight_video_1"]);
+        Assert.Equal("https://www.hudl.com/video/thunder456", teamSocialLinks?["highlight_video_2"]);
 
         var organizationSocialLinks = JsonSerializer.Deserialize<Dictionary<string, string>>(organization.SocialMediaLinks ?? "{}");
         Assert.Equal("https://facebook.com/midamserv", organizationSocialLinks?["facebook"]);
@@ -563,6 +576,8 @@ public sealed class AccountPageTests
         Assert.Equal("https://instagram.com/midamserv", organizationSocialLinks?["instagram"]);
         Assert.Equal("https://youtube.com/@midamserv", organizationSocialLinks?["youtube"]);
         Assert.Equal("https://tiktok.com/midamserv", organizationSocialLinks?["tiktok"]);
+        Assert.Equal("https://www.youtube.com/watch?v=thunder123", organizationSocialLinks?["highlight_video_1"]);
+        Assert.Equal("https://www.hudl.com/video/thunder456", organizationSocialLinks?["highlight_video_2"]);
     }
 
     [Fact]
