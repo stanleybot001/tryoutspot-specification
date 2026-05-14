@@ -108,6 +108,38 @@
             </div>
 
             <div>
+                <label class="form-label">Social pages</label>
+                <p class="section-help">Add public links so families can find your team or organization.</p>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="FacebookPageUrl" class="form-label">Facebook page</label>
+                        <input asp-for="FacebookPageUrl" class="form-control" placeholder="https://facebook.com/yourpage" />
+                        <span asp-validation-for="FacebookPageUrl" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="XPageUrl" class="form-label">X page</label>
+                        <input asp-for="XPageUrl" class="form-control" placeholder="https://x.com/yourpage" />
+                        <span asp-validation-for="XPageUrl" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="InstagramUrl" class="form-label">Instagram</label>
+                        <input asp-for="InstagramUrl" class="form-control" placeholder="https://instagram.com/yourpage" />
+                        <span asp-validation-for="InstagramUrl" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="YouTubeUrl" class="form-label">YouTube</label>
+                        <input asp-for="YouTubeUrl" class="form-control" placeholder="https://youtube.com/@@yourchannel" />
+                        <span asp-validation-for="YouTubeUrl" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="TikTokUrl" class="form-label">TikTok</label>
+                        <input asp-for="TikTokUrl" class="form-control" placeholder="https://tiktok.com/@@yourpage" />
+                        <span asp-validation-for="TikTokUrl" class="text-danger"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div>
                 <label class="form-label">Sports</label>
                 @if (Model.AvailableSports.Count == 0)
                 {

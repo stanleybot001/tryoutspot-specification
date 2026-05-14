@@ -43,6 +43,10 @@ public partial class Player
 
     public int? GraduationYear { get; set; }
 
+    public string? SocialMediaLinks { get; set; }
+
+    public string? RecruitingProfileLinks { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }

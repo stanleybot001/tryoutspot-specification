@@ -252,6 +252,42 @@ public sealed class AddPlayerProfilePageModel
     [Display(Name = "ZIP code")]
     public string? ZipCode { get; set; }
 
+    [MaxLength(500)]
+    [Display(Name = "Facebook page")]
+    public string? FacebookPageUrl { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "X page")]
+    public string? XPageUrl { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Instagram")]
+    public string? InstagramUrl { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "YouTube")]
+    public string? YouTubeUrl { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "TikTok")]
+    public string? TikTokUrl { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "SportsRecruits profile")]
+    public string? SportsRecruitsProfileUrl { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "FieldLevel profile")]
+    public string? FieldLevelProfileUrl { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "NCSA profile")]
+    public string? NcsaProfileUrl { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Other recruiting profile")]
+    public string? OtherRecruitingProfileUrl { get; set; }
+
     public List<Guid> SelectedSportIds { get; set; } = [];
 
     public IReadOnlyCollection<SportSelectionPageItem> AvailableSports { get; set; } = [];
@@ -325,6 +361,26 @@ public sealed class AddTeamOrOrganizationPageModel
     [MaxLength(10)]
     [Display(Name = "ZIP code")]
     public string? ZipCode { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Facebook page")]
+    public string? FacebookPageUrl { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "X page")]
+    public string? XPageUrl { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Instagram")]
+    public string? InstagramUrl { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "YouTube")]
+    public string? YouTubeUrl { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "TikTok")]
+    public string? TikTokUrl { get; set; }
 
     public List<Guid> SelectedSportIds { get; set; } = [];
 

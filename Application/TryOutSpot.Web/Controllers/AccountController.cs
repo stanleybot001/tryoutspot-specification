@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 using System.Security.Claims;
 using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data;
@@ -735,6 +736,17 @@ public sealed class AccountController(
         }
 
         var now = DateTime.UtcNow;
+        var socialMediaLinks = SerializeLinkCollection(
+            ("facebook", model.FacebookPageUrl),
+            ("x", model.XPageUrl),
+            ("instagram", model.InstagramUrl),
+            ("youtube", model.YouTubeUrl),
+            ("tiktok", model.TikTokUrl));
+        var recruitingProfileLinks = SerializeLinkCollection(
+            ("sportsrecruits", model.SportsRecruitsProfileUrl),
+            ("fieldlevel", model.FieldLevelProfileUrl),
+            ("ncsa", model.NcsaProfileUrl),
+            ("other", model.OtherRecruitingProfileUrl));
         var playerId = Guid.NewGuid();
         var player = new Player
         {
@@ -747,6 +759,8 @@ public sealed class AccountController(
             City = NormalizeOptional(model.City),
             State = NormalizeState(model.State),
             ZipCode = NormalizeOptional(model.ZipCode),
+            SocialMediaLinks = socialMediaLinks,
+            RecruitingProfileLinks = recruitingProfileLinks,
             CreatedAt = now,
             UpdatedAt = now,
             IsActive = true
@@ -869,6 +883,12 @@ public sealed class AccountController(
         }
 
         var now = DateTime.UtcNow;
+        var socialMediaLinks = SerializeLinkCollection(
+            ("facebook", model.FacebookPageUrl),
+            ("x", model.XPageUrl),
+            ("instagram", model.InstagramUrl),
+            ("youtube", model.YouTubeUrl),
+            ("tiktok", model.TikTokUrl));
         Organization? organization = null;
         if (string.Equals(createType, "organization", StringComparison.Ordinal))
         {
@@ -882,6 +902,7 @@ public sealed class AccountController(
                 ZipCode = NormalizeOptional(model.ZipCode),
                 PhoneNumber = NormalizeOptional(model.ContactPhone),
                 Email = NormalizeOptional(model.ContactEmail),
+                SocialMediaLinks = socialMediaLinks,
                 IsAcademy = string.Equals(teamRole, TryOutSpotRoles.AcademyDirector, StringComparison.Ordinal),
                 IsVerified = false,
                 CreatedAt = now,
@@ -904,6 +925,7 @@ public sealed class AccountController(
             ZipCode = NormalizeOptional(model.ZipCode),
             PhoneNumber = NormalizeOptional(model.ContactPhone),
             Email = NormalizeOptional(model.ContactEmail),
+            SocialMediaLinks = socialMediaLinks,
             IsElite = false,
             IsVerified = false,
             CreatedAt = now,
@@ -2222,6 +2244,25 @@ public sealed class AccountController(
     private static string? NormalizeOptional(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string? SerializeLinkCollection(params (string Key, string? Value)[] links)
+    {
+        var populatedLinks = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in links)
+        {
+            var normalizedValue = NormalizeOptional(value);
+            if (normalizedValue is null)
+            {
+                continue;
+            }
+
+            populatedLinks[key] = normalizedValue;
+        }
+
+        return populatedLinks.Count == 0
+            ? null
+            : JsonSerializer.Serialize(populatedLinks);
     }
 
     private static string? NormalizeRelationship(string? relationship)
