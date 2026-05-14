@@ -76,6 +76,16 @@
                     <span asp-validation-for="TeamLevel" class="text-danger"></span>
                 </div>
                 <div class="form-field">
+                    <label asp-for="GeographicScope" class="form-label">Coverage <span class="required-marker">*</span></label>
+                    <select asp-for="GeographicScope" class="form-select">
+                        @foreach (var option in Model.AvailableGeographicScopeOptions)
+                        {
+                            <option value="@option">@option</option>
+                        }
+                    </select>
+                    <span asp-validation-for="GeographicScope" class="text-danger"></span>
+                </div>
+                <div class="form-field">
                     <label asp-for="ContactEmail" class="form-label">Contact email</label>
                     <input asp-for="ContactEmail" class="form-control" autocomplete="email" />
                     <span asp-validation-for="ContactEmail" class="text-danger"></span>

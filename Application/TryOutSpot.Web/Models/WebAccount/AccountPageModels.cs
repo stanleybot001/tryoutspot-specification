@@ -351,6 +351,11 @@ public sealed class AddTeamOrOrganizationPageModel
     [Display(Name = "Team level")]
     public string? TeamLevel { get; set; }
 
+    [Required]
+    [MaxLength(20)]
+    [Display(Name = "Coverage")]
+    public string GeographicScope { get; set; } = "Local";
+
     [Display(Name = "Allow this team or organization to appear in search")]
     public bool IsSearchable { get; set; } = true;
 
@@ -415,6 +420,8 @@ public sealed class AddTeamOrOrganizationPageModel
     public List<Guid> SelectedSportIds { get; set; } = [];
 
     public IReadOnlyCollection<SportSelectionPageItem> AvailableSports { get; set; } = [];
+
+    public IReadOnlyCollection<string> AvailableGeographicScopeOptions { get; set; } = [];
 
     public IReadOnlyCollection<string> AvailableTeamRoleOptions { get; set; } = [];
 }

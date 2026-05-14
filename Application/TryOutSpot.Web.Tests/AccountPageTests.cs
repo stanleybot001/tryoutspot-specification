@@ -498,6 +498,7 @@ public sealed class AccountPageTests
                 new("OrganizationName", "Midamserv Baseball Club"),
                 new("TeamRole", TryOutSpotRoles.Coach),
                 new("TeamLevel", "14U"),
+                new("GeographicScope", "Regional"),
                 new("IsSearchable", "false"),
                 new("ContactEmail", "coach@example.com"),
                 new("ContactPhone", "620-555-9090"),
@@ -535,6 +536,7 @@ public sealed class AccountPageTests
         Assert.Equal("Midamserv Thunder 14U", team.Name);
         Assert.Equal(organization.Id, team.OrganizationId);
         Assert.Equal("14U", team.TeamLevel);
+        Assert.Equal("Regional", team.GeographicScope);
         Assert.Equal("KS", team.State);
         Assert.Equal("https://cdn.example.com/teams/thunder-logo.png", team.LogoImageUrl);
         Assert.False(team.IsSearchable);

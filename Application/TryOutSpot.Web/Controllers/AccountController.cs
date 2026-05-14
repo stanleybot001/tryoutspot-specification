@@ -41,6 +41,7 @@ public sealed class AccountController(
         TryOutSpotRoles.AcademyDirector,
         TryOutSpotRoles.OrganizationAdmin
     ];
+    private static readonly string[] TeamGeographicScopeOptions = ["Local", "Regional", "National"];
 
     [HttpGet("register")]
     public async Task<IActionResult> Register([FromQuery] string? returnUrl = null)
@@ -862,6 +863,12 @@ public sealed class AccountController(
             ModelState.AddModelError(nameof(model.TeamRole), "Choose a team role that matches your account type.");
         }
 
+        var geographicScope = NormalizeTeamGeographicScope(model.GeographicScope);
+        if (geographicScope is null)
+        {
+            ModelState.AddModelError(nameof(model.GeographicScope), "Choose Local, Regional, or National.");
+        }
+
         if (string.Equals(createType, "organization", StringComparison.Ordinal)
             && string.IsNullOrWhiteSpace(model.OrganizationName))
         {
@@ -927,6 +934,7 @@ public sealed class AccountController(
             OrganizationId = organization?.Id,
             Name = model.TeamName.Trim(),
             TeamLevel = NormalizeOptional(model.TeamLevel),
+            GeographicScope = geographicScope!,
             LogoImageUrl = NormalizeOptional(model.ProfileImageUrl),
             WebsiteUrl = NormalizeOptional(model.WebsiteUrl),
             City = NormalizeOptional(model.City),
@@ -1756,6 +1764,7 @@ public sealed class AccountController(
 
         model.AvailableSports = availableSports;
         model.AvailableTeamRoleOptions = availableTeamRoleOptions;
+        model.AvailableGeographicScopeOptions = TeamGeographicScopeOptions;
         model.CreateType = string.IsNullOrWhiteSpace(model.CreateType)
             ? "team"
             : model.CreateType.Trim();
@@ -1778,6 +1787,9 @@ public sealed class AccountController(
         {
             model.TeamRole = availableTeamRoleOptions.FirstOrDefault() ?? string.Empty;
         }
+
+        model.GeographicScope = NormalizeTeamGeographicScope(model.GeographicScope)
+            ?? TeamGeographicScopeOptions[0];
 
         return model;
     }
@@ -2344,6 +2356,17 @@ public sealed class AccountController(
         return availableTeamRoleOptions.Contains(normalizedRole, StringComparer.OrdinalIgnoreCase)
             ? normalizedRole
             : null;
+    }
+
+    private static string? NormalizeTeamGeographicScope(string? geographicScope)
+    {
+        if (string.IsNullOrWhiteSpace(geographicScope))
+        {
+            return null;
+        }
+
+        return TeamGeographicScopeOptions.FirstOrDefault(
+            option => string.Equals(option, geographicScope.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
     private static DateTime NormalizeUtcDate(DateTime value)

@@ -13,6 +13,8 @@ public partial class Team
 
     public string? TeamLevel { get; set; }
 
+    public string GeographicScope { get; set; } = "Local";
+
     public string? Description { get; set; }
 
     public string? LogoImageUrl { get; set; }

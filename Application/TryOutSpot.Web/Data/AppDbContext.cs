@@ -300,6 +300,7 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.PrimaryColor).HasMaxLength(7);
             entity.Property(e => e.SecondaryColor).HasMaxLength(7);
             entity.Property(e => e.State).HasMaxLength(2);
+            entity.Property(e => e.GeographicScope).HasMaxLength(20);
             entity.Property(e => e.TeamLevel).HasMaxLength(50);
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.WebsiteUrl).HasMaxLength(500);
