@@ -41,7 +41,11 @@ public partial class Player
 
     public string? SchoolName { get; set; }
 
+    public string? CurrentTeamName { get; set; }
+
     public int? GraduationYear { get; set; }
+
+    public string ContactVisibility { get; set; } = "VerifiedCoachesOnly";
 
     public string? SocialMediaLinks { get; set; }
 

@@ -73,6 +73,41 @@
                     <span asp-validation-for="HighlightVideoUrl2" class="text-danger"></span>
                 </div>
                 <div class="form-field">
+                    <label asp-for="SchoolName" class="form-label">School name</label>
+                    <input asp-for="SchoolName" class="form-control" autocomplete="organization" />
+                    <span asp-validation-for="SchoolName" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="CurrentTeamName" class="form-label">Club or team name</label>
+                    <input asp-for="CurrentTeamName" class="form-control" autocomplete="organization" />
+                    <span asp-validation-for="CurrentTeamName" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="GraduationYear" class="form-label">Graduation year</label>
+                    <input asp-for="GraduationYear" class="form-control" inputmode="numeric" />
+                    <span asp-validation-for="GraduationYear" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Height" class="form-label">Height</label>
+                    <input asp-for="Height" class="form-control" placeholder="Example: 5'8&quot;" />
+                    <span asp-validation-for="Height" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Weight" class="form-label">Weight</label>
+                    <input asp-for="Weight" class="form-control" placeholder="Example: 145 lb" />
+                    <span asp-validation-for="Weight" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="ThrowsHand" class="form-label">Throws hand</label>
+                    <input asp-for="ThrowsHand" class="form-control" placeholder="Right, Left, or Switch" />
+                    <span asp-validation-for="ThrowsHand" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="BatsHand" class="form-label">Bats hand</label>
+                    <input asp-for="BatsHand" class="form-control" placeholder="Right, Left, or Switch" />
+                    <span asp-validation-for="BatsHand" class="text-danger"></span>
+                </div>
+                <div class="form-field">
                     <label asp-for="City" class="form-label">City</label>
                     <input asp-for="City" class="form-control" autocomplete="address-level2" />
                     <span asp-validation-for="City" class="text-danger"></span>
@@ -93,6 +128,17 @@
                 <input asp-for="IsSearchable" class="form-check-input" />
                 <span>Allow this player profile to appear in search results.</span>
             </label>
+
+            <div class="form-field">
+                <label asp-for="ContactVisibility" class="form-label">Contact visibility <span class="required-marker">*</span></label>
+                <select asp-for="ContactVisibility" class="form-select">
+                    @foreach (var visibilityOption in Model.AvailableContactVisibilityOptions)
+                    {
+                        <option value="@visibilityOption">@FormatContactVisibilityLabel(visibilityOption)</option>
+                    }
+                </select>
+                <span asp-validation-for="ContactVisibility" class="text-danger"></span>
+            </div>
 
             <div>
                 <label class="form-label">Social pages</label>
@@ -160,26 +206,46 @@
 
             <div>
                 <label class="form-label">Sports</label>
-                @if (Model.AvailableSports.Count == 0)
+                @if (Model.SportDetails.Count == 0)
                 {
                     <p class="section-help">Sports options will appear here after the catalog is available.</p>
                 }
                 else
                 {
                     <div class="account-type-grid compact-grid">
-                        @foreach (var sport in Model.AvailableSports)
+                        @for (var sportIndex = 0; sportIndex < Model.SportDetails.Count; sportIndex++)
                         {
-                            <label class="account-type-option" for="sport-@sport.Id">
-                                <input class="form-check-input" id="sport-@sport.Id" name="SelectedSportIds" type="checkbox" value="@sport.Id" checked="@sport.IsSelected" />
+                            var sport = Model.SportDetails[sportIndex];
+                            <label class="account-type-option" for="sport-@sport.SportId">
+                                <input asp-for="SportDetails[sportIndex].IsSelected" class="form-check-input" id="sport-@sport.SportId" />
+                                <input asp-for="SportDetails[sportIndex].SportId" type="hidden" />
+                                <input asp-for="SportDetails[sportIndex].SportName" type="hidden" />
                                 <span>
-                                    <strong>@sport.Name</strong>
+                                    <strong>@sport.SportName</strong>
                                     <small>Select every sport this player participates in.</small>
                                 </span>
                             </label>
+                            <div class="form-grid two-column">
+                                <div class="form-field">
+                                    <label asp-for="SportDetails[sportIndex].SkillLevel" class="form-label">Ability level</label>
+                                    <input asp-for="SportDetails[sportIndex].SkillLevel" class="form-control" placeholder="Example: A, AA, AAA, Varsity, Club" />
+                                    <span asp-validation-for="SportDetails[sportIndex].SkillLevel" class="text-danger"></span>
+                                </div>
+                                <div class="form-field">
+                                    <label asp-for="SportDetails[sportIndex].PrimaryPosition" class="form-label">Primary position</label>
+                                    <input asp-for="SportDetails[sportIndex].PrimaryPosition" class="form-control" placeholder="Example: Pitcher, Shortstop, Midfielder" />
+                                    <span asp-validation-for="SportDetails[sportIndex].PrimaryPosition" class="text-danger"></span>
+                                </div>
+                                <div class="form-field">
+                                    <label asp-for="SportDetails[sportIndex].SecondaryPositions" class="form-label">Secondary positions</label>
+                                    <input asp-for="SportDetails[sportIndex].SecondaryPositions" class="form-control" placeholder="Optional additional positions" />
+                                    <span asp-validation-for="SportDetails[sportIndex].SecondaryPositions" class="text-danger"></span>
+                                </div>
+                            </div>
                         }
                     </div>
                 }
-                <span asp-validation-for="SelectedSportIds" class="text-danger"></span>
+                <span asp-validation-for="SportDetails" class="text-danger"></span>
             </div>
 
             <div class="form-actions">
@@ -189,6 +255,18 @@
         </form>
     </section>
 </section>
+
+@functions {
+    private static string FormatContactVisibilityLabel(string visibility)
+    {
+        return visibility switch
+        {
+            "Public" => "Visible to everyone",
+            "VerifiedCoachesOnly" => "Visible only to verified coaches",
+            _ => visibility
+        };
+    }
+}
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />

@@ -34,6 +34,7 @@ public sealed class AccountController(
     private readonly GoogleAuthenticationOptions googleAuthentication = googleOptions.Value;
     private readonly StripeBillingOptions stripeBillingOptions = stripeOptions.Value;
     private static readonly string[] PlayerRelationshipOptions = ["Parent", "Guardian", "Self", "Coach", "Other"];
+    private static readonly string[] PlayerContactVisibilityOptions = ["Public", "VerifiedCoachesOnly"];
     private static readonly string[] TeamOnboardingRoleOptions =
     [
         TryOutSpotRoles.Coach,
@@ -718,17 +719,44 @@ public sealed class AccountController(
             ModelState.AddModelError(nameof(model.Relationship), "Choose a relationship.");
         }
 
-        var selectedSportIds = model.SelectedSportIds.Distinct().ToArray();
+        var contactVisibility = NormalizePlayerContactVisibility(model.ContactVisibility);
+        if (contactVisibility is null)
+        {
+            ModelState.AddModelError(nameof(model.ContactVisibility), "Choose whether contact details are public or limited to verified coaches.");
+        }
+
+        var selectedSportDetails = model.SportDetails
+            .Where(detail => detail.IsSelected)
+            .GroupBy(detail => detail.SportId)
+            .Select(group => group.First())
+            .ToArray();
+        var selectedSportIds = selectedSportDetails
+            .Select(detail => detail.SportId)
+            .ToArray();
         var selectedSports = selectedSportIds.Length == 0
             ? Array.Empty<Guid>()
             : await dbContext.Sports
                 .AsNoTracking()
-                .Where(sport => selectedSportIds.Contains(sport.Id))
+                .Where(sport => sport.IsActive && selectedSportIds.Contains(sport.Id))
                 .Select(sport => sport.Id)
                 .ToArrayAsync(cancellationToken);
         if (selectedSports.Length != selectedSportIds.Length)
         {
-            ModelState.AddModelError(nameof(model.SelectedSportIds), "One or more selected sports are no longer available.");
+            ModelState.AddModelError(nameof(model.SportDetails), "One or more selected sports are no longer available.");
+        }
+
+        for (var sportIndex = 0; sportIndex < model.SportDetails.Count; sportIndex++)
+        {
+            var sportDetail = model.SportDetails[sportIndex];
+            if (!sportDetail.IsSelected)
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(sportDetail.SkillLevel))
+            {
+                ModelState.AddModelError($"SportDetails[{sportIndex}].SkillLevel", "Enter ability level for each selected sport.");
+            }
         }
 
         if (!ModelState.IsValid)
@@ -760,6 +788,14 @@ public sealed class AccountController(
             ContactEmail = NormalizeOptional(model.ContactEmail),
             ContactPhone = NormalizeOptional(model.ContactPhone),
             ProfileImageUrl = NormalizeOptional(model.ProfileImageUrl),
+            Height = NormalizeOptional(model.Height),
+            Weight = NormalizeOptional(model.Weight),
+            ThrowsHand = NormalizeOptional(model.ThrowsHand),
+            BatsHand = NormalizeOptional(model.BatsHand),
+            SchoolName = NormalizeOptional(model.SchoolName),
+            CurrentTeamName = NormalizeOptional(model.CurrentTeamName),
+            GraduationYear = model.GraduationYear,
+            ContactVisibility = contactVisibility!,
             City = NormalizeOptional(model.City),
             State = NormalizeState(model.State),
             ZipCode = NormalizeOptional(model.ZipCode),
@@ -784,13 +820,22 @@ public sealed class AccountController(
         dbContext.Players.Add(player);
         dbContext.UserPlayerRelationships.Add(relationshipToUser);
 
-        foreach (var sportId in selectedSports)
+        var selectedSportSet = selectedSports.ToHashSet();
+        foreach (var sportDetail in selectedSportDetails)
         {
+            if (!selectedSportSet.Contains(sportDetail.SportId))
+            {
+                continue;
+            }
+
             dbContext.PlayerSports.Add(new PlayerSport
             {
                 Id = Guid.NewGuid(),
                 PlayerId = playerId,
-                SportId = sportId,
+                SportId = sportDetail.SportId,
+                SkillLevel = NormalizeOptional(sportDetail.SkillLevel),
+                PrimaryPosition = NormalizeOptional(sportDetail.PrimaryPosition),
+                SecondaryPositions = NormalizeOptional(sportDetail.SecondaryPositions),
                 IsActive = true,
                 CreatedAt = now
             });
@@ -1668,7 +1713,10 @@ public sealed class AccountController(
         AddPlayerProfilePageModel model,
         CancellationToken cancellationToken)
     {
-        var selectedSportIds = model.SelectedSportIds.ToHashSet();
+        var selectedSportIds = model.SportDetails
+            .Where(detail => detail.IsSelected)
+            .Select(detail => detail.SportId)
+            .ToHashSet();
         var availableSports = await dbContext.Sports
             .AsNoTracking()
             .Where(sport => sport.IsActive)
@@ -1679,8 +1727,38 @@ public sealed class AccountController(
                 selectedSportIds.Contains(sport.Id)))
             .ToArrayAsync(cancellationToken);
 
+        var sportDetailsById = model.SportDetails
+            .Where(detail => detail.SportId != Guid.Empty)
+            .ToDictionary(detail => detail.SportId, detail => detail);
+        var sportDetails = availableSports.Select(sport =>
+        {
+            if (sportDetailsById.TryGetValue(sport.Id, out var existingDetail))
+            {
+                return new PlayerSportDetailPageModel
+                {
+                    SportId = sport.Id,
+                    SportName = sport.Name,
+                    IsSelected = existingDetail.IsSelected,
+                    SkillLevel = existingDetail.SkillLevel,
+                    PrimaryPosition = existingDetail.PrimaryPosition,
+                    SecondaryPositions = existingDetail.SecondaryPositions
+                };
+            }
+
+            return new PlayerSportDetailPageModel
+            {
+                SportId = sport.Id,
+                SportName = sport.Name,
+                IsSelected = sport.IsSelected
+            };
+        }).ToList();
+
+        model.SportDetails = sportDetails;
         model.AvailableSports = availableSports;
         model.AvailableRelationshipOptions = PlayerRelationshipOptions;
+        model.AvailableContactVisibilityOptions = PlayerContactVisibilityOptions;
+        model.ContactVisibility = NormalizePlayerContactVisibility(model.ContactVisibility)
+            ?? PlayerContactVisibilityOptions[1];
         model.ContactEmail = string.IsNullOrWhiteSpace(model.ContactEmail)
             ? user.Email
             : model.ContactEmail;
@@ -2356,6 +2434,17 @@ public sealed class AccountController(
         return availableTeamRoleOptions.Contains(normalizedRole, StringComparer.OrdinalIgnoreCase)
             ? normalizedRole
             : null;
+    }
+
+    private static string? NormalizePlayerContactVisibility(string? contactVisibility)
+    {
+        if (string.IsNullOrWhiteSpace(contactVisibility))
+        {
+            return null;
+        }
+
+        return PlayerContactVisibilityOptions.FirstOrDefault(
+            option => string.Equals(option, contactVisibility.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
     private static string? NormalizeTeamGeographicScope(string? geographicScope)

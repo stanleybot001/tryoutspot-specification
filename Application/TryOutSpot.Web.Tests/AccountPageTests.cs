@@ -411,6 +411,14 @@ public sealed class AccountPageTests
                 new("ProfileImageUrl", "https://cdn.example.com/player/alex.jpg"),
                 new("HighlightVideoUrl1", "https://www.youtube.com/watch?v=alex123"),
                 new("HighlightVideoUrl2", "https://www.hudl.com/video/alex456"),
+                new("SchoolName", "Wichita Central High"),
+                new("CurrentTeamName", "Midamserv 14U Select"),
+                new("GraduationYear", "2029"),
+                new("Height", "5'8\""),
+                new("Weight", "145 lb"),
+                new("ThrowsHand", "Right"),
+                new("BatsHand", "Left"),
+                new("ContactVisibility", "VerifiedCoachesOnly"),
                 new("City", "Wichita"),
                 new("State", "ks"),
                 new("ZipCode", "67202"),
@@ -423,7 +431,12 @@ public sealed class AccountPageTests
                 new("FieldLevelProfileUrl", "https://fieldlevel.com/alex"),
                 new("NcsaProfileUrl", "https://recruit-match.ncsasports.org/alex"),
                 new("OtherRecruitingProfileUrl", "https://example.com/alex-recruiting"),
-                new("SelectedSportIds", sportId.ToString())
+                new("SportDetails[0].SportId", sportId.ToString()),
+                new("SportDetails[0].SportName", "Softball"),
+                new("SportDetails[0].IsSelected", "true"),
+                new("SportDetails[0].SkillLevel", "A"),
+                new("SportDetails[0].PrimaryPosition", "Pitcher"),
+                new("SportDetails[0].SecondaryPositions", "Shortstop")
             ]));
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
@@ -442,11 +455,22 @@ public sealed class AccountPageTests
         Assert.Equal("67202", player.ZipCode);
         Assert.Equal("https://cdn.example.com/player/alex.jpg", player.ProfileImageUrl);
         Assert.False(player.IsSearchable);
+        Assert.Equal("Wichita Central High", player.SchoolName);
+        Assert.Equal("Midamserv 14U Select", player.CurrentTeamName);
+        Assert.Equal(2029, player.GraduationYear);
+        Assert.Equal("5'8\"", player.Height);
+        Assert.Equal("145 lb", player.Weight);
+        Assert.Equal("Right", player.ThrowsHand);
+        Assert.Equal("Left", player.BatsHand);
+        Assert.Equal("VerifiedCoachesOnly", player.ContactVisibility);
         Assert.Equal(user.Id, relationship.UserId);
         Assert.Equal(player.Id, relationship.PlayerId);
         Assert.Equal("Parent", relationship.Relationship);
         Assert.Equal(player.Id, playerSport.PlayerId);
         Assert.Equal(sportId, playerSport.SportId);
+        Assert.Equal("A", playerSport.SkillLevel);
+        Assert.Equal("Pitcher", playerSport.PrimaryPosition);
+        Assert.Equal("Shortstop", playerSport.SecondaryPositions);
 
         var socialMediaLinks = JsonSerializer.Deserialize<Dictionary<string, string>>(player.SocialMediaLinks ?? "{}");
         Assert.Equal("https://facebook.com/alex", socialMediaLinks?["facebook"]);

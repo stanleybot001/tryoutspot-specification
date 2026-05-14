@@ -171,9 +171,11 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.Address).HasMaxLength(500);
             entity.Property(e => e.BatsHand).HasMaxLength(10);
             entity.Property(e => e.City).HasMaxLength(100);
+            entity.Property(e => e.ContactVisibility).HasMaxLength(40).HasDefaultValue("VerifiedCoachesOnly");
             entity.Property(e => e.ContactEmail).HasMaxLength(255);
             entity.Property(e => e.ContactPhone).HasMaxLength(20);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.CurrentTeamName).HasMaxLength(200);
             entity.Property(e => e.FirstName).HasMaxLength(100);
             entity.Property(e => e.Gender).HasMaxLength(10);
             entity.Property(e => e.Height).HasMaxLength(20);
@@ -197,6 +199,7 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.ExperienceLevel).HasMaxLength(50);
             entity.Property(e => e.PrimaryPosition).HasMaxLength(100);
+            entity.Property(e => e.SecondaryPositions).HasMaxLength(200);
             entity.Property(e => e.SkillLevel).HasMaxLength(50);
 
             entity.HasOne(d => d.Player).WithMany(p => p.PlayerSports).HasForeignKey(d => d.PlayerId);

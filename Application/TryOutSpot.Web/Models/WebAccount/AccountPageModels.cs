@@ -233,6 +233,11 @@ public sealed class AddPlayerProfilePageModel
     [Display(Name = "Allow this player to appear in search")]
     public bool IsSearchable { get; set; } = true;
 
+    [Required]
+    [MaxLength(40)]
+    [Display(Name = "Contact visibility")]
+    public string ContactVisibility { get; set; } = "VerifiedCoachesOnly";
+
     [EmailAddress]
     [MaxLength(255)]
     [Display(Name = "Contact email")]
@@ -254,6 +259,34 @@ public sealed class AddPlayerProfilePageModel
     [MaxLength(500)]
     [Display(Name = "Highlight video link 2")]
     public string? HighlightVideoUrl2 { get; set; }
+
+    [MaxLength(200)]
+    [Display(Name = "School name")]
+    public string? SchoolName { get; set; }
+
+    [MaxLength(200)]
+    [Display(Name = "Club or team name")]
+    public string? CurrentTeamName { get; set; }
+
+    [Display(Name = "Graduation year")]
+    [Range(1900, 2200)]
+    public int? GraduationYear { get; set; }
+
+    [MaxLength(20)]
+    [Display(Name = "Height")]
+    public string? Height { get; set; }
+
+    [MaxLength(20)]
+    [Display(Name = "Weight")]
+    public string? Weight { get; set; }
+
+    [MaxLength(10)]
+    [Display(Name = "Throws hand")]
+    public string? ThrowsHand { get; set; }
+
+    [MaxLength(10)]
+    [Display(Name = "Bats hand")]
+    public string? BatsHand { get; set; }
 
     [MaxLength(100)]
     [Display(Name = "City")]
@@ -303,9 +336,11 @@ public sealed class AddPlayerProfilePageModel
     [Display(Name = "Other recruiting profile")]
     public string? OtherRecruitingProfileUrl { get; set; }
 
-    public List<Guid> SelectedSportIds { get; set; } = [];
+    public List<PlayerSportDetailPageModel> SportDetails { get; set; } = [];
 
     public IReadOnlyCollection<SportSelectionPageItem> AvailableSports { get; set; } = [];
+
+    public IReadOnlyCollection<string> AvailableContactVisibilityOptions { get; set; } = [];
 
     public IReadOnlyCollection<string> AvailableRelationshipOptions { get; set; } = [];
 }
@@ -569,3 +604,25 @@ public sealed record SportSelectionPageItem(
     Guid Id,
     string Name,
     bool IsSelected);
+
+public sealed class PlayerSportDetailPageModel
+{
+    public Guid SportId { get; set; }
+
+    public string SportName { get; set; } = string.Empty;
+
+    [Display(Name = "Participates")]
+    public bool IsSelected { get; set; }
+
+    [MaxLength(50)]
+    [Display(Name = "Ability level")]
+    public string? SkillLevel { get; set; }
+
+    [MaxLength(100)]
+    [Display(Name = "Primary position")]
+    public string? PrimaryPosition { get; set; }
+
+    [MaxLength(200)]
+    [Display(Name = "Secondary positions")]
+    public string? SecondaryPositions { get; set; }
+}
