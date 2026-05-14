@@ -377,20 +377,6 @@ public sealed class AccountPageTests
         await using var factory = new TryOutSpotWebApplicationFactory();
         var user = await factory.CreateUserAsync("onboarding-player-profile@example.com", [TryOutSpotRoles.Parent]);
 
-        using (var scope = factory.Services.CreateScope())
-        {
-            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            dbContext.Sports.Add(new Sport
-            {
-                Id = Guid.NewGuid(),
-                Name = "Softball",
-                Category = "Fastpitch",
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow
-            });
-            await dbContext.SaveChangesAsync();
-        }
-
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false
@@ -403,7 +389,10 @@ public sealed class AccountPageTests
         using (var scope = factory.Services.CreateScope())
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            sportId = await dbContext.Sports.Select(sport => sport.Id).SingleAsync();
+            sportId = await dbContext.Sports
+                .Where(sport => sport.IsActive && sport.Name == "Softball")
+                .Select(sport => sport.Id)
+                .SingleAsync();
         }
 
         var response = await client.PostAsync(
@@ -481,20 +470,6 @@ public sealed class AccountPageTests
         await using var factory = new TryOutSpotWebApplicationFactory();
         var user = await factory.CreateUserAsync("onboarding-team-setup@example.com", [TryOutSpotRoles.Coach]);
 
-        using (var scope = factory.Services.CreateScope())
-        {
-            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            dbContext.Sports.Add(new Sport
-            {
-                Id = Guid.NewGuid(),
-                Name = "Baseball",
-                Category = "Travel",
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow
-            });
-            await dbContext.SaveChangesAsync();
-        }
-
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false
@@ -507,7 +482,10 @@ public sealed class AccountPageTests
         using (var scope = factory.Services.CreateScope())
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            sportId = await dbContext.Sports.Select(sport => sport.Id).SingleAsync();
+            sportId = await dbContext.Sports
+                .Where(sport => sport.IsActive && sport.Name == "Baseball")
+                .Select(sport => sport.Id)
+                .SingleAsync();
         }
 
         var response = await client.PostAsync(

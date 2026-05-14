@@ -259,6 +259,7 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.Name).HasMaxLength(100);
         });
+        modelBuilder.Entity<Sport>().HasData(TryOutSpotSportsCatalog.SeedSports);
 
         modelBuilder.Entity<Subscription>(entity =>
         {
