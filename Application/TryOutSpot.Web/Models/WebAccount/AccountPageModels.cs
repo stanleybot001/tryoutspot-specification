@@ -257,11 +257,11 @@ public sealed class AddPlayerProfilePageModel
     public string? FacebookPageUrl { get; set; }
 
     [MaxLength(500)]
-    [Display(Name = "X page")]
+    [Display(Name = "X username")]
     public string? XPageUrl { get; set; }
 
     [MaxLength(500)]
-    [Display(Name = "Instagram")]
+    [Display(Name = "Instagram username")]
     public string? InstagramUrl { get; set; }
 
     [MaxLength(500)]
@@ -269,7 +269,7 @@ public sealed class AddPlayerProfilePageModel
     public string? YouTubeUrl { get; set; }
 
     [MaxLength(500)]
-    [Display(Name = "TikTok")]
+    [Display(Name = "TikTok username")]
     public string? TikTokUrl { get; set; }
 
     [MaxLength(500)]
@@ -367,11 +367,11 @@ public sealed class AddTeamOrOrganizationPageModel
     public string? FacebookPageUrl { get; set; }
 
     [MaxLength(500)]
-    [Display(Name = "X page")]
+    [Display(Name = "X username")]
     public string? XPageUrl { get; set; }
 
     [MaxLength(500)]
-    [Display(Name = "Instagram")]
+    [Display(Name = "Instagram username")]
     public string? InstagramUrl { get; set; }
 
     [MaxLength(500)]
@@ -379,7 +379,7 @@ public sealed class AddTeamOrOrganizationPageModel
     public string? YouTubeUrl { get; set; }
 
     [MaxLength(500)]
-    [Display(Name = "TikTok")]
+    [Display(Name = "TikTok username")]
     public string? TikTokUrl { get; set; }
 
     public List<Guid> SelectedSportIds { get; set; } = [];

@@ -422,10 +422,10 @@ public sealed class AccountPageTests
                 new("State", "ks"),
                 new("ZipCode", "67202"),
                 new("FacebookPageUrl", "https://facebook.com/alex"),
-                new("XPageUrl", "https://x.com/alex"),
-                new("InstagramUrl", "https://instagram.com/alex"),
+                new("XPageUrl", "@alex"),
+                new("InstagramUrl", "alex.ig"),
                 new("YouTubeUrl", "https://youtube.com/@alex"),
-                new("TikTokUrl", "https://tiktok.com/@alex"),
+                new("TikTokUrl", "@alextok"),
                 new("SportsRecruitsProfileUrl", "https://sportsrecruits.com/athlete/alex"),
                 new("FieldLevelProfileUrl", "https://fieldlevel.com/alex"),
                 new("NcsaProfileUrl", "https://recruit-match.ncsasports.org/alex"),
@@ -456,9 +456,9 @@ public sealed class AccountPageTests
         var socialMediaLinks = JsonSerializer.Deserialize<Dictionary<string, string>>(player.SocialMediaLinks ?? "{}");
         Assert.Equal("https://facebook.com/alex", socialMediaLinks?["facebook"]);
         Assert.Equal("https://x.com/alex", socialMediaLinks?["x"]);
-        Assert.Equal("https://instagram.com/alex", socialMediaLinks?["instagram"]);
+        Assert.Equal("https://instagram.com/alex.ig", socialMediaLinks?["instagram"]);
         Assert.Equal("https://youtube.com/@alex", socialMediaLinks?["youtube"]);
-        Assert.Equal("https://tiktok.com/@alex", socialMediaLinks?["tiktok"]);
+        Assert.Equal("https://tiktok.com/alextok", socialMediaLinks?["tiktok"]);
 
         var recruitingProfileLinks = JsonSerializer.Deserialize<Dictionary<string, string>>(player.RecruitingProfileLinks ?? "{}");
         Assert.Equal("https://sportsrecruits.com/athlete/alex", recruitingProfileLinks?["sportsrecruits"]);
@@ -519,10 +519,10 @@ public sealed class AccountPageTests
                 new("State", "ks"),
                 new("ZipCode", "67202"),
                 new("FacebookPageUrl", "https://facebook.com/midamserv"),
-                new("XPageUrl", "https://x.com/midamserv"),
-                new("InstagramUrl", "https://instagram.com/midamserv"),
+                new("XPageUrl", "@midamserv"),
+                new("InstagramUrl", "midamserv"),
                 new("YouTubeUrl", "https://youtube.com/@midamserv"),
-                new("TikTokUrl", "https://tiktok.com/@midamserv"),
+                new("TikTokUrl", "@midamserv"),
                 new("SelectedSportIds", sportId.ToString())
             ]));
 
@@ -555,14 +555,14 @@ public sealed class AccountPageTests
         Assert.Equal("https://x.com/midamserv", teamSocialLinks?["x"]);
         Assert.Equal("https://instagram.com/midamserv", teamSocialLinks?["instagram"]);
         Assert.Equal("https://youtube.com/@midamserv", teamSocialLinks?["youtube"]);
-        Assert.Equal("https://tiktok.com/@midamserv", teamSocialLinks?["tiktok"]);
+        Assert.Equal("https://tiktok.com/midamserv", teamSocialLinks?["tiktok"]);
 
         var organizationSocialLinks = JsonSerializer.Deserialize<Dictionary<string, string>>(organization.SocialMediaLinks ?? "{}");
         Assert.Equal("https://facebook.com/midamserv", organizationSocialLinks?["facebook"]);
         Assert.Equal("https://x.com/midamserv", organizationSocialLinks?["x"]);
         Assert.Equal("https://instagram.com/midamserv", organizationSocialLinks?["instagram"]);
         Assert.Equal("https://youtube.com/@midamserv", organizationSocialLinks?["youtube"]);
-        Assert.Equal("https://tiktok.com/@midamserv", organizationSocialLinks?["tiktok"]);
+        Assert.Equal("https://tiktok.com/midamserv", organizationSocialLinks?["tiktok"]);
     }
 
     [Fact]

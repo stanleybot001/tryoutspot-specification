@@ -76,7 +76,7 @@
 
             <div>
                 <label class="form-label">Social pages</label>
-                <p class="section-help">Add links coaches can use to quickly evaluate a player profile.</p>
+                <p class="section-help">For X, Instagram, and TikTok, enter username with or without @@.</p>
                 <div class="form-grid two-column">
                     <div class="form-field">
                         <label asp-for="FacebookPageUrl" class="form-label">Facebook page</label>
@@ -84,13 +84,13 @@
                         <span asp-validation-for="FacebookPageUrl" class="text-danger"></span>
                     </div>
                     <div class="form-field">
-                        <label asp-for="XPageUrl" class="form-label">X page</label>
-                        <input asp-for="XPageUrl" class="form-control" placeholder="https://x.com/..." />
+                        <label asp-for="XPageUrl" class="form-label">X username</label>
+                        <input asp-for="XPageUrl" class="form-control" placeholder="@@username" />
                         <span asp-validation-for="XPageUrl" class="text-danger"></span>
                     </div>
                     <div class="form-field">
-                        <label asp-for="InstagramUrl" class="form-label">Instagram</label>
-                        <input asp-for="InstagramUrl" class="form-control" placeholder="https://instagram.com/..." />
+                        <label asp-for="InstagramUrl" class="form-label">Instagram username</label>
+                        <input asp-for="InstagramUrl" class="form-control" placeholder="@@username" />
                         <span asp-validation-for="InstagramUrl" class="text-danger"></span>
                     </div>
                     <div class="form-field">
@@ -99,8 +99,8 @@
                         <span asp-validation-for="YouTubeUrl" class="text-danger"></span>
                     </div>
                     <div class="form-field">
-                        <label asp-for="TikTokUrl" class="form-label">TikTok</label>
-                        <input asp-for="TikTokUrl" class="form-control" placeholder="https://tiktok.com/..." />
+                        <label asp-for="TikTokUrl" class="form-label">TikTok username</label>
+                        <input asp-for="TikTokUrl" class="form-control" placeholder="@@username" />
                         <span asp-validation-for="TikTokUrl" class="text-danger"></span>
                     </div>
                 </div>

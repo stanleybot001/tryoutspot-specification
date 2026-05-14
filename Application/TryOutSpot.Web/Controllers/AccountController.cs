@@ -738,10 +738,10 @@ public sealed class AccountController(
         var now = DateTime.UtcNow;
         var socialMediaLinks = SerializeLinkCollection(
             ("facebook", model.FacebookPageUrl),
-            ("x", model.XPageUrl),
-            ("instagram", model.InstagramUrl),
+            ("x", NormalizeSocialHandleOrUrl(model.XPageUrl, "https://x.com/")),
+            ("instagram", NormalizeSocialHandleOrUrl(model.InstagramUrl, "https://instagram.com/")),
             ("youtube", model.YouTubeUrl),
-            ("tiktok", model.TikTokUrl));
+            ("tiktok", NormalizeSocialHandleOrUrl(model.TikTokUrl, "https://tiktok.com/")));
         var recruitingProfileLinks = SerializeLinkCollection(
             ("sportsrecruits", model.SportsRecruitsProfileUrl),
             ("fieldlevel", model.FieldLevelProfileUrl),
@@ -885,10 +885,10 @@ public sealed class AccountController(
         var now = DateTime.UtcNow;
         var socialMediaLinks = SerializeLinkCollection(
             ("facebook", model.FacebookPageUrl),
-            ("x", model.XPageUrl),
-            ("instagram", model.InstagramUrl),
+            ("x", NormalizeSocialHandleOrUrl(model.XPageUrl, "https://x.com/")),
+            ("instagram", NormalizeSocialHandleOrUrl(model.InstagramUrl, "https://instagram.com/")),
             ("youtube", model.YouTubeUrl),
-            ("tiktok", model.TikTokUrl));
+            ("tiktok", NormalizeSocialHandleOrUrl(model.TikTokUrl, "https://tiktok.com/")));
         Organization? organization = null;
         if (string.Equals(createType, "organization", StringComparison.Ordinal))
         {
@@ -2263,6 +2263,29 @@ public sealed class AccountController(
         return populatedLinks.Count == 0
             ? null
             : JsonSerializer.Serialize(populatedLinks);
+    }
+
+    private static string? NormalizeSocialHandleOrUrl(string? value, string baseUrl)
+    {
+        var normalized = NormalizeOptional(value);
+        if (normalized is null)
+        {
+            return null;
+        }
+
+        if (Uri.TryCreate(normalized, UriKind.Absolute, out var parsedUri)
+            && (parsedUri.Scheme == Uri.UriSchemeHttp || parsedUri.Scheme == Uri.UriSchemeHttps))
+        {
+            return normalized;
+        }
+
+        var handle = normalized
+            .Trim()
+            .TrimStart('@')
+            .TrimStart('/');
+        return string.IsNullOrWhiteSpace(handle)
+            ? null
+            : $"{baseUrl}{handle}";
     }
 
     private static string? NormalizeRelationship(string? relationship)
