@@ -8,6 +8,7 @@ using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Listings;
 using TryOutSpot.Web.Models.Listings;
 using TryOutSpot.Web.Security;
+using TryOutSpot.Web.Services;
 
 namespace TryOutSpot.Web.Controllers;
 
@@ -19,7 +20,9 @@ namespace TryOutSpot.Web.Controllers;
 [Produces("application/json")]
 [Route("api/player-listings")]
 [Authorize(Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
-public sealed class PlayerListingsApiController(AppDbContext dbContext) : ControllerBase
+public sealed class PlayerListingsApiController(
+    AppDbContext dbContext,
+    IZipRadiusSearchService zipRadiusSearchService) : ControllerBase
 {
     private const string CreateListingsPolicy =
         TryOutSpotAuthorizationPolicies.FeaturePolicyPrefix + TryOutSpotFeatureCodes.CreatePlayerListings;
@@ -35,6 +38,8 @@ public sealed class PlayerListingsApiController(AppDbContext dbContext) : Contro
         [FromQuery] string? listingType,
         [FromQuery] Guid? sportId,
         [FromQuery] string? zipCode,
+        [FromQuery] string? originZipCode,
+        [FromQuery] int? radiusMiles,
         [FromQuery] string? city,
         [FromQuery] string? state,
         [FromQuery] string? q,
@@ -59,11 +64,54 @@ public sealed class PlayerListingsApiController(AppDbContext dbContext) : Contro
             ModelState.AddModelError(nameof(minPrice), "Minimum price cannot exceed maximum price.");
         }
 
+        if (radiusMiles.HasValue && string.IsNullOrWhiteSpace(originZipCode))
+        {
+            ModelState.AddModelError(nameof(originZipCode), "Origin ZIP code is required when radius is provided.");
+        }
+
         string? normalizedListingType = null;
         if (!string.IsNullOrWhiteSpace(listingType))
         {
             normalizedListingType = NormalizeListingType(listingType, nameof(listingType));
         }
+
+        string? normalizedOriginZipCode = null;
+        ZipRadiusSearchResult? zipRadiusResult = null;
+        if (!string.IsNullOrWhiteSpace(originZipCode))
+        {
+            normalizedOriginZipCode = zipRadiusSearchService.NormalizeZipCode(originZipCode);
+            if (normalizedOriginZipCode is null)
+            {
+                ModelState.AddModelError(nameof(originZipCode), "Enter a valid 5-digit ZIP code.");
+            }
+            else
+            {
+                var normalizedRadiusMiles = zipRadiusSearchService.ClampRadiusMiles(radiusMiles);
+                zipRadiusResult = await zipRadiusSearchService.ResolveZipCodesWithinRadiusAsync(
+                    normalizedOriginZipCode,
+                    normalizedRadiusMiles,
+                    cancellationToken);
+
+                if (zipRadiusResult is null)
+                {
+                    ModelState.AddModelError(
+                        nameof(originZipCode),
+                        "That ZIP code is not in the geographic catalog yet.");
+                }
+                else if (zipRadiusResult.ZipCodes.Count == 0)
+                {
+                    return Ok(new PlayerListingListResponse(
+                        [],
+                        Page: 1,
+                        PageSize: Math.Clamp(pageSize, 1, 100),
+                        TotalCount: 0,
+                        TotalPages: 0,
+                        SearchOriginZipCode: zipRadiusResult.OriginZipCode,
+                        SearchRadiusMiles: zipRadiusResult.RadiusMiles));
+                }
+            }
+        }
+
         if (!ModelState.IsValid)
         {
             return ValidationProblem(ModelState);
@@ -90,10 +138,18 @@ public sealed class PlayerListingsApiController(AppDbContext dbContext) : Contro
             query = query.Where(listing => listing.SportId == sportId.Value);
         }
 
-        var normalizedZipCode = NormalizeOptional(zipCode);
+        var normalizedZipCode = zipRadiusSearchService.NormalizeZipCode(zipCode);
         if (!string.IsNullOrWhiteSpace(normalizedZipCode))
         {
             query = query.Where(listing => listing.ZipCode == normalizedZipCode);
+        }
+
+        if (zipRadiusResult is not null)
+        {
+            var radiusZipCodes = zipRadiusResult.ZipCodes;
+            query = query.Where(listing =>
+                listing.ZipCode != null
+                && radiusZipCodes.Contains(listing.ZipCode));
         }
 
         var normalizedCity = NormalizeOptional(city);
@@ -143,13 +199,24 @@ public sealed class PlayerListingsApiController(AppDbContext dbContext) : Contro
         var listings = listingEntities
             .Select(ToSummaryResponse)
             .ToArray();
+        if (zipRadiusResult is not null)
+        {
+            var distanceByZipCode = zipRadiusResult.DistanceByZipCode;
+            listings = listings
+                .Select(listing => listing.ZipCode is null || !distanceByZipCode.TryGetValue(listing.ZipCode, out var distanceMiles)
+                    ? listing
+                    : listing with { DistanceMiles = Math.Round(distanceMiles, 1) })
+                .ToArray();
+        }
 
         return Ok(new PlayerListingListResponse(
             listings,
             page,
             pageSize,
             totalCount,
-            (int)Math.Ceiling(totalCount / (double)pageSize)));
+            (int)Math.Ceiling(totalCount / (double)pageSize),
+            zipRadiusResult?.OriginZipCode,
+            zipRadiusResult?.RadiusMiles));
     }
 
     /// <summary>

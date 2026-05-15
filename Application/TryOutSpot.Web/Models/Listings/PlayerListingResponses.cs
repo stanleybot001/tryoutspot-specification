@@ -8,7 +8,9 @@ public sealed record PlayerListingListResponse(
     int Page,
     int PageSize,
     int TotalCount,
-    int TotalPages);
+    int TotalPages,
+    string? SearchOriginZipCode = null,
+    int? SearchRadiusMiles = null);
 
 /// <summary>
 /// Listing summary used by search and owner listing views.
@@ -32,7 +34,8 @@ public sealed record PlayerListingSummaryResponse(
     bool IsSearchable,
     DateTime? PublishedAt,
     DateTime? ExpiresAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    double? DistanceMiles = null);
 
 /// <summary>
 /// Single listing result.

@@ -53,6 +53,8 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
 
     public virtual DbSet<UserTeamRole> UserTeamRoles { get; set; }
 
+    public virtual DbSet<ZipCodeGeography> ZipCodeGeographies { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -465,6 +467,22 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.HasOne(d => d.Team).WithMany(p => p.UserTeamRoles).HasForeignKey(d => d.TeamId);
 
             entity.HasOne(d => d.User).WithMany(p => p.UserTeamRoles).HasForeignKey(d => d.UserId);
+        });
+
+        modelBuilder.Entity<ZipCodeGeography>(entity =>
+        {
+            entity.HasKey(e => e.ZipCode);
+
+            entity.Property(e => e.ZipCode).HasMaxLength(10);
+            entity.Property(e => e.City).HasMaxLength(100);
+            entity.Property(e => e.State).HasMaxLength(2);
+            entity.Property(e => e.Latitude).HasColumnType("numeric(9,6)");
+            entity.Property(e => e.Longitude).HasColumnType("numeric(9,6)");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+
+            entity.HasIndex(e => e.IsActive, "IX_ZipCodeGeographies_IsActive");
+            entity.HasIndex(e => new { e.State, e.City }, "IX_ZipCodeGeographies_State_City");
         });
 
         modelBuilder.Entity<IdentityRole<Guid>>().HasData(TryOutSpotRoles.SeedRoles);

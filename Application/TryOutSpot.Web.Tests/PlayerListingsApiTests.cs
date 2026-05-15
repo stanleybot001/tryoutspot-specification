@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using TryOutSpot.Web.Data;
+using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
 using TryOutSpot.Web.Listings;
 using TryOutSpot.Web.Models.Account;
@@ -109,6 +110,97 @@ public sealed class PlayerListingsApiTests
         Assert.Empty(listings.Listings);
     }
 
+    [Fact]
+    public async Task Search_ByOriginZipAndRadius_FiltersAndIncludesDistance()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        SeedZipCodeGeographies(factory,
+            new ZipCodeGeography
+            {
+                ZipCode = "67460",
+                City = "McPherson",
+                State = "KS",
+                Latitude = 38.3700m,
+                Longitude = -97.6642m,
+                IsActive = true
+            },
+            new ZipCodeGeography
+            {
+                ZipCode = "67202",
+                City = "Wichita",
+                State = "KS",
+                Latitude = 37.6872m,
+                Longitude = -97.3301m,
+                IsActive = true
+            },
+            new ZipCodeGeography
+            {
+                ZipCode = "73102",
+                City = "Oklahoma City",
+                State = "OK",
+                Latitude = 35.4676m,
+                Longitude = -97.5164m,
+                IsActive = true
+            });
+
+        var user = await factory.CreateUserAsync("listing-radius@example.com", [TryOutSpotRoles.Parent]);
+        var authorizedClient = await CreateAuthorizedClientAsync(factory, user.Email!);
+
+        var localCreateResponse = await authorizedClient.PostAsJsonAsync(
+            "/api/player-listings",
+            new CreatePlayerListingRequest
+            {
+                ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
+                Title = "Local catcher available",
+                Description = "Within the metro area.",
+                City = "McPherson",
+                State = "KS",
+                ZipCode = "67460",
+                IsPublished = true,
+                IsSearchable = true
+            });
+        Assert.Equal(HttpStatusCode.Created, localCreateResponse.StatusCode);
+
+        var distantCreateResponse = await authorizedClient.PostAsJsonAsync(
+            "/api/player-listings",
+            new CreatePlayerListingRequest
+            {
+                ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
+                Title = "Far away infielder available",
+                Description = "Outside the radius test range.",
+                City = "Oklahoma City",
+                State = "OK",
+                ZipCode = "73102",
+                IsPublished = true,
+                IsSearchable = true
+            });
+        Assert.Equal(HttpStatusCode.Created, distantCreateResponse.StatusCode);
+
+        var publicClient = factory.CreateClient();
+        var response = await publicClient.GetAsync(
+            "/api/player-listings/search?originZipCode=67460&radiusMiles=75&listingType=pickup_player");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var searchResult = await response.Content.ReadFromJsonAsync<PlayerListingListResponse>();
+        Assert.NotNull(searchResult);
+        Assert.Equal("67460", searchResult.SearchOriginZipCode);
+        Assert.Equal(75, searchResult.SearchRadiusMiles);
+        Assert.Single(searchResult.Listings);
+        Assert.NotNull(searchResult.Listings.First().DistanceMiles);
+    }
+
+    [Fact]
+    public async Task Search_WithUnknownOriginZip_ReturnsBadRequest()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var publicClient = factory.CreateClient();
+
+        var response = await publicClient.GetAsync("/api/player-listings/search?originZipCode=99999&radiusMiles=50");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     private static Guid GetActiveSportId(TryOutSpotWebApplicationFactory factory, string sportName)
     {
         using var scope = factory.Services.CreateScope();
@@ -140,5 +232,15 @@ public sealed class PlayerListingsApiTests
             token.TokenType,
             token.AccessToken);
         return client;
+    }
+
+    private static void SeedZipCodeGeographies(
+        TryOutSpotWebApplicationFactory factory,
+        params ZipCodeGeography[] geographies)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        dbContext.ZipCodeGeographies.AddRange(geographies);
+        dbContext.SaveChanges();
     }
 }
