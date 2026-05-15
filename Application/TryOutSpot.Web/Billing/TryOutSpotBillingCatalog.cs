@@ -10,7 +10,8 @@ public static class TryOutSpotBillingCatalog
         TryOutSpotFeatureCodes.CreateBasicPlayerProfiles,
         TryOutSpotFeatureCodes.ApplyToOpportunities,
         TryOutSpotFeatureCodes.BasicTeamCommunication,
-        TryOutSpotFeatureCodes.ViewApplicationStatus
+        TryOutSpotFeatureCodes.ViewApplicationStatus,
+        TryOutSpotFeatureCodes.CreatePlayerListings
     ];
 
     private static readonly BillingFeatureDefinition[] FeatureDefinitions =
@@ -39,6 +40,11 @@ public static class TryOutSpotBillingCatalog
             TryOutSpotFeatureCodes.ViewApplicationStatus,
             "Application status",
             "View registration and application status.",
+            false),
+        new(
+            TryOutSpotFeatureCodes.CreatePlayerListings,
+            "Player/parent listings",
+            "Create and manage parent or player listings such as pickup-player availability, team-search notices, and used equipment posts.",
             false),
         new(
             TryOutSpotFeatureCodes.PriorityApplicationReview,

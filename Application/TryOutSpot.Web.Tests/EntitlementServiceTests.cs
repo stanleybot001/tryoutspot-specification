@@ -50,6 +50,7 @@ public sealed class EntitlementServiceTests
         Assert.NotNull(entitlements);
         Assert.Contains(TryOutSpotFeatureCodes.BrowseOpportunities, entitlements.FeatureCodes);
         Assert.Contains(TryOutSpotFeatureCodes.ApplyToOpportunities, entitlements.FeatureCodes);
+        Assert.Contains(TryOutSpotFeatureCodes.CreatePlayerListings, entitlements.FeatureCodes);
         Assert.DoesNotContain(TryOutSpotFeatureCodes.PriorityApplicationReview, entitlements.FeatureCodes);
         Assert.DoesNotContain(TryOutSpotFeatureCodes.AdvancedPlayerSearch, entitlements.FeatureCodes);
     }

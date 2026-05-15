@@ -61,6 +61,8 @@ public partial class Player
 
     public virtual ICollection<PlayerSport> PlayerSports { get; set; } = new List<PlayerSport>();
 
+    public virtual ICollection<PlayerListing> PlayerListings { get; set; } = new List<PlayerListing>();
+
     public virtual ICollection<Registration> Registrations { get; set; } = new List<Registration>();
 
     public virtual ICollection<UserPlayerRelationship> UserPlayerRelationships { get; set; } = new List<UserPlayerRelationship>();

@@ -27,6 +27,8 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
 
     public virtual DbSet<Player> Players { get; set; }
 
+    public virtual DbSet<PlayerListing> PlayerListings { get; set; }
+
     public virtual DbSet<PlayerSport> PlayerSports { get; set; }
 
     public virtual DbSet<Post> Posts { get; set; }
@@ -191,6 +193,47 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.Weight).HasMaxLength(20);
             entity.Property(e => e.ZipCode).HasMaxLength(10);
+        });
+
+        modelBuilder.Entity<PlayerListing>(entity =>
+        {
+            entity.HasIndex(e => new { e.IsPublished, e.IsSearchable, e.IsActive, e.ListingType }, "IX_PlayerListings_Discovery");
+
+            entity.HasIndex(e => e.PlayerId, "IX_PlayerListings_PlayerId");
+
+            entity.HasIndex(e => e.SportId, "IX_PlayerListings_SportId");
+
+            entity.HasIndex(e => e.UpdatedAt, "IX_PlayerListings_UpdatedAt");
+
+            entity.HasIndex(e => e.UserId, "IX_PlayerListings_UserId");
+
+            entity.HasIndex(e => e.ZipCode, "IX_PlayerListings_ZipCode");
+
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Condition).HasMaxLength(50);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.Currency).HasMaxLength(3);
+            entity.Property(e => e.Description).HasMaxLength(4000);
+            entity.Property(e => e.IsPublished).HasDefaultValue(false);
+            entity.Property(e => e.IsSearchable).HasDefaultValue(true);
+            entity.Property(e => e.ListingType).HasMaxLength(50);
+            entity.Property(e => e.State).HasMaxLength(2);
+            entity.Property(e => e.Title).HasMaxLength(200);
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.ZipCode).HasMaxLength(10);
+            entity.Property(e => e.City).HasMaxLength(100);
+
+            entity.HasOne(d => d.Player).WithMany(p => p.PlayerListings)
+                .HasForeignKey(d => d.PlayerId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(d => d.Sport).WithMany(p => p.PlayerListings)
+                .HasForeignKey(d => d.SportId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(d => d.User).WithMany(p => p.PlayerListings)
+                .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<PlayerSport>(entity =>

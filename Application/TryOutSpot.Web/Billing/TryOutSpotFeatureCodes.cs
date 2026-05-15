@@ -7,6 +7,7 @@ public static class TryOutSpotFeatureCodes
     public const string ApplyToOpportunities = "opportunities.apply";
     public const string BasicTeamCommunication = "communication.team.basic";
     public const string ViewApplicationStatus = "registrations.status.view";
+    public const string CreatePlayerListings = "listings.player.create";
 
     public const string PriorityApplicationReview = "registrations.priority_review";
     public const string AdvancedOpportunitySearch = "opportunities.search.advanced";

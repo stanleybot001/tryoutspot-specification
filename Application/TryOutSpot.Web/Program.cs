@@ -92,6 +92,28 @@ var authenticationBuilder = builder.Services.AddAuthentication(JwtBearerDefaults
         options.AccessDeniedPath = "/account/login";
         options.ExpireTimeSpan = TimeSpan.FromDays(14);
         options.SlidingExpiration = true;
+        options.Events.OnRedirectToLogin = context =>
+        {
+            if (IsApiRequest(context.Request))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return Task.CompletedTask;
+            }
+
+            context.Response.Redirect(context.RedirectUri);
+            return Task.CompletedTask;
+        };
+        options.Events.OnRedirectToAccessDenied = context =>
+        {
+            if (IsApiRequest(context.Request))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                return Task.CompletedTask;
+            }
+
+            context.Response.Redirect(context.RedirectUri);
+            return Task.CompletedTask;
+        };
     })
     .AddJwtBearer(options =>
     {
@@ -323,6 +345,11 @@ static bool HasConfiguredValue(string? value)
     return !string.IsNullOrWhiteSpace(value)
         && !value.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)
         && !value.StartsWith("PUT_", StringComparison.OrdinalIgnoreCase);
+}
+
+static bool IsApiRequest(HttpRequest request)
+{
+    return request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase);
 }
 
 public partial class Program;

@@ -70,7 +70,8 @@ public class HomeController : Controller
                         TryOutSpotFeatureCodes.CreateBasicPlayerProfiles,
                         TryOutSpotFeatureCodes.ApplyToOpportunities,
                         TryOutSpotFeatureCodes.BasicTeamCommunication,
-                        TryOutSpotFeatureCodes.ViewApplicationStatus
+                        TryOutSpotFeatureCodes.ViewApplicationStatus,
+                        TryOutSpotFeatureCodes.CreatePlayerListings
                     ],
                     featuresByCode),
                 BuildBundle(

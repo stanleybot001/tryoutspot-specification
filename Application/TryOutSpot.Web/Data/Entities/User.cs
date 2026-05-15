@@ -61,6 +61,8 @@ public partial class User : IdentityUser<Guid>
 
     public virtual ICollection<Post> Posts { get; set; } = new List<Post>();
 
+    public virtual ICollection<PlayerListing> PlayerListings { get; set; } = new List<PlayerListing>();
+
     public virtual ICollection<Registration> Registrations { get; set; } = new List<Registration>();
 
     public virtual ICollection<Subscription> Subscriptions { get; set; } = new List<Subscription>();
