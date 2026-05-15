@@ -45,6 +45,26 @@
         </div>
     </form>
 
+    @if (Model.ShowResendVerificationPrompt)
+    {
+        <section class="form-section">
+            <h2>Need a new verification email?</h2>
+            <p class="section-help">If your account is not verified yet, resend the verification link below.</p>
+            <form asp-action="ResendVerificationEmailFromLogin" asp-controller="Account" method="post" class="stacked-form">
+                <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label class="form-label" for="resend-email">Email address</label>
+                        <input id="resend-email" name="email" type="email" class="form-control" value="@Model.Email" autocomplete="email" />
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-outline-primary">Resend verification email</button>
+                </div>
+            </form>
+        </section>
+    }
+
     <div class="account-divider"><span>or</span></div>
 
     <div class="social-login-actions">

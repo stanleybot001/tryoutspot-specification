@@ -43,6 +43,8 @@ public partial class Team
 
     public bool IsSearchable { get; set; }
 
+    public bool IsContactInfoVisible { get; set; }
+
     public bool IsElite { get; set; }
 
     public bool IsVerified { get; set; }

@@ -112,6 +112,15 @@ public sealed class StripeSubscriptionSyncService(
         subscription.UpdatedAt = now;
         subscription.IsElite = string.Equals(planCode, TryOutSpotPlanCodes.PremiumPlayer, StringComparison.Ordinal);
 
+        var hasEntitlement = TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(snapshot.Status);
+        await ApplyPlanLifecycleRulesAsync(
+            subscription.UserId,
+            planCode,
+            hasEntitlement,
+            snapshot.CancelAtPeriodEnd,
+            now,
+            cancellationToken);
+
         await dbContext.SaveChangesAsync(cancellationToken);
         return subscription;
     }
@@ -148,6 +157,208 @@ public sealed class StripeSubscriptionSyncService(
         }
 
         return null;
+    }
+
+    private async Task ApplyPlanLifecycleRulesAsync(
+        Guid userId,
+        string planCode,
+        bool hasEntitlement,
+        bool cancelAtPeriodEnd,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var normalizedPlanCode = TryOutSpotBillingCatalog.NormalizePlanCode(planCode);
+        if (normalizedPlanCode is null)
+        {
+            return;
+        }
+
+        if (normalizedPlanCode is TryOutSpotPlanCodes.TeamOffseasonHold)
+        {
+            if (hasEntitlement)
+            {
+                await ApplyTeamDirectoryHoldAsync(userId, now, cancellationToken);
+            }
+
+            return;
+        }
+
+        if (normalizedPlanCode is TryOutSpotPlanCodes.TeamBasic && hasEntitlement)
+        {
+            await RestoreTeamDirectoryVisibilityAsync(userId, now, cancellationToken);
+            return;
+        }
+
+        if (normalizedPlanCode is TryOutSpotPlanCodes.TeamProfessional or TryOutSpotPlanCodes.EnterpriseOrganization)
+        {
+            if (!hasEntitlement || cancelAtPeriodEnd)
+            {
+                await SoftDeactivateTeamAndOrganizationDataAsync(userId, now, cancellationToken);
+                return;
+            }
+
+            await RestoreTeamDirectoryVisibilityAsync(userId, now, cancellationToken);
+        }
+    }
+
+    private async Task ApplyTeamDirectoryHoldAsync(
+        Guid userId,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var teams = await dbContext.Teams
+            .Where(team => team.IsActive
+                && team.UserTeamRoles.Any(role => role.UserId == userId))
+            .ToArrayAsync(cancellationToken);
+
+        foreach (var team in teams)
+        {
+            team.IsSearchable = true;
+            team.IsContactInfoVisible = false;
+            team.UpdatedAt = now;
+        }
+
+        var organizationIds = teams
+            .Where(team => team.OrganizationId is not null)
+            .Select(team => team.OrganizationId!.Value)
+            .Distinct()
+            .ToArray();
+        if (organizationIds.Length == 0)
+        {
+            return;
+        }
+
+        var organizations = await dbContext.Organizations
+            .Where(organization => organization.IsActive && organizationIds.Contains(organization.Id))
+            .ToArrayAsync(cancellationToken);
+        foreach (var organization in organizations)
+        {
+            organization.IsSearchable = true;
+            organization.IsContactInfoVisible = false;
+            organization.UpdatedAt = now;
+        }
+    }
+
+    private async Task RestoreTeamDirectoryVisibilityAsync(
+        Guid userId,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var teams = await dbContext.Teams
+            .Where(team => team.IsActive
+                && team.UserTeamRoles.Any(role => role.UserId == userId))
+            .ToArrayAsync(cancellationToken);
+
+        foreach (var team in teams)
+        {
+            team.IsContactInfoVisible = true;
+            team.UpdatedAt = now;
+        }
+
+        var organizationIds = teams
+            .Where(team => team.OrganizationId is not null)
+            .Select(team => team.OrganizationId!.Value)
+            .Distinct()
+            .ToArray();
+        if (organizationIds.Length == 0)
+        {
+            return;
+        }
+
+        var organizations = await dbContext.Organizations
+            .Where(organization => organization.IsActive && organizationIds.Contains(organization.Id))
+            .ToArrayAsync(cancellationToken);
+        foreach (var organization in organizations)
+        {
+            organization.IsContactInfoVisible = true;
+            organization.UpdatedAt = now;
+        }
+    }
+
+    private async Task SoftDeactivateTeamAndOrganizationDataAsync(
+        Guid userId,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var teams = await dbContext.Teams
+            .Where(team => team.UserTeamRoles.Any(role => role.UserId == userId))
+            .ToArrayAsync(cancellationToken);
+        if (teams.Length == 0)
+        {
+            return;
+        }
+
+        var teamIds = teams.Select(team => team.Id).ToArray();
+        foreach (var team in teams)
+        {
+            team.IsActive = false;
+            team.IsSearchable = false;
+            team.IsContactInfoVisible = false;
+            team.WebsiteUrl = null;
+            team.PhoneNumber = null;
+            team.Email = null;
+            team.SocialMediaLinks = null;
+            team.UpdatedAt = now;
+        }
+
+        var teamRoles = await dbContext.UserTeamRoles
+            .Where(role => role.IsActive
+                && role.UserId == userId
+                && teamIds.Contains(role.TeamId))
+            .ToArrayAsync(cancellationToken);
+        foreach (var teamRole in teamRoles)
+        {
+            teamRole.IsActive = false;
+            teamRole.EndDate ??= now;
+        }
+
+        var teamSports = await dbContext.TeamSports
+            .Where(teamSport => teamSport.IsActive && teamIds.Contains(teamSport.TeamId))
+            .ToArrayAsync(cancellationToken);
+        foreach (var teamSport in teamSports)
+        {
+            teamSport.IsActive = false;
+        }
+
+        var opportunities = await dbContext.Opportunities
+            .Where(opportunity => teamIds.Contains(opportunity.TeamId)
+                && (opportunity.IsActive || opportunity.IsPublished))
+            .ToArrayAsync(cancellationToken);
+        foreach (var opportunity in opportunities)
+        {
+            opportunity.IsActive = false;
+            opportunity.IsPublished = false;
+            opportunity.ExpiresAt ??= now;
+            opportunity.ContactEmail = null;
+            opportunity.ContactPhone = null;
+            opportunity.WebsiteUrl = null;
+            opportunity.UpdatedAt = now;
+        }
+
+        var organizationIds = teams
+            .Where(team => team.OrganizationId is not null)
+            .Select(team => team.OrganizationId!.Value)
+            .Distinct()
+            .ToArray();
+        if (organizationIds.Length == 0)
+        {
+            return;
+        }
+
+        var organizations = await dbContext.Organizations
+            .Where(organization => organizationIds.Contains(organization.Id))
+            .ToArrayAsync(cancellationToken);
+        foreach (var organization in organizations)
+        {
+            organization.IsActive = false;
+            organization.IsSearchable = false;
+            organization.IsContactInfoVisible = false;
+            organization.WebsiteUrl = null;
+            organization.PhoneNumber = null;
+            organization.Email = null;
+            organization.SocialMediaLinks = null;
+            organization.UpdatedAt = now;
+        }
     }
 
     private string? ResolvePlanCode(StripeSubscriptionSnapshot snapshot)

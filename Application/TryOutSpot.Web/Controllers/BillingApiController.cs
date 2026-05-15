@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using System.Security.Claims;
 using Stripe;
 using TryOutSpot.Web.Billing;
@@ -13,6 +14,7 @@ using TryOutSpot.Web.Security;
 using TryOutSpot.Web.Services;
 using AppSubscription = TryOutSpot.Web.Data.Entities.Subscription;
 using StripeCheckoutSession = Stripe.Checkout.Session;
+using StripeInvoice = Stripe.Invoice;
 using StripeSubscription = Stripe.Subscription;
 
 namespace TryOutSpot.Web.Controllers;
@@ -201,6 +203,15 @@ public sealed class BillingApiController(
             return ValidationProblem(ModelState);
         }
 
+        if (!TryOutSpotBillingCatalog.IsBillingIntervalSupported(plan.Code, billingInterval))
+        {
+            var message = TryOutSpotBillingCatalog.RequiresAnnualCommitment(plan.Code)
+                ? "This plan requires annual billing."
+                : "This plan does not support the requested billing interval.";
+            ModelState.AddModelError(nameof(request.BillingInterval), message);
+            return ValidationProblem(ModelState);
+        }
+
         var amount = GetAmountForInterval(plan, billingInterval);
         if (amount is null)
         {
@@ -223,6 +234,7 @@ public sealed class BillingApiController(
             stripePriceId,
             scope.ScopeType,
             scope.ScopeId,
+            BuildCheckoutIdempotencyKey(user.Id, plan.Code, billingInterval, scope.ScopeType, scope.ScopeId),
             cancellationToken);
 
         var subscription = await RecordCheckoutStartedAsync(
@@ -277,6 +289,7 @@ public sealed class BillingApiController(
 
         var portalSession = await stripeBillingService.CreatePortalSessionAsync(
             stripeCustomerId,
+            BuildCustomerPortalIdempotencyKey(user.Id),
             cancellationToken);
 
         return Ok(new BillingPortalSessionResponse(portalSession.Url));
@@ -312,14 +325,26 @@ public sealed class BillingApiController(
             return BadRequest();
         }
 
+        if (await IsStripeWebhookEventProcessedAsync(stripeEvent.Id, cancellationToken))
+        {
+            logger.LogInformation(
+                "Stripe webhook event {StripeEventId} has already been processed. Skipping duplicate delivery.",
+                stripeEvent.Id);
+            return Ok();
+        }
+
         await HandleStripeEventAsync(stripeEvent, cancellationToken);
+        await RecordProcessedStripeWebhookEventAsync(stripeEvent, cancellationToken);
         return Ok();
     }
 
     private IReadOnlyCollection<BillingPlanPriceResponse> BuildPriceResponses(BillingPlanDefinition plan)
     {
         var prices = new List<BillingPlanPriceResponse>();
-        if (!plan.RequiresStripeSubscription || plan.MonthlyAmount > 0m)
+        var supportsMonthly = TryOutSpotBillingCatalog.IsBillingIntervalSupported(plan.Code, BillingIntervalCodes.Month);
+        var supportsAnnual = TryOutSpotBillingCatalog.IsBillingIntervalSupported(plan.Code, BillingIntervalCodes.Year);
+
+        if (supportsMonthly && (!plan.RequiresStripeSubscription || plan.MonthlyAmount > 0m))
         {
             prices.Add(new BillingPlanPriceResponse(
                 BillingIntervalCodes.Month,
@@ -328,7 +353,7 @@ public sealed class BillingApiController(
                 !plan.RequiresStripeSubscription || stripeBillingOptions.GetPriceId(plan.Code, BillingIntervalCodes.Month) is not null));
         }
 
-        if (plan.AnnualAmount is { } annualAmount)
+        if (supportsAnnual && plan.AnnualAmount is { } annualAmount)
         {
             prices.Add(new BillingPlanPriceResponse(
                 BillingIntervalCodes.Year,
@@ -540,12 +565,86 @@ public sealed class BillingApiController(
 
     private static decimal? GetAmountForInterval(BillingPlanDefinition plan, string billingInterval)
     {
+        if (!TryOutSpotBillingCatalog.IsBillingIntervalSupported(plan.Code, billingInterval))
+        {
+            return null;
+        }
+
         return billingInterval switch
         {
             BillingIntervalCodes.Month => plan.MonthlyAmount,
             BillingIntervalCodes.Year => plan.AnnualAmount,
             _ => null
         };
+    }
+
+    private async Task<bool> IsStripeWebhookEventProcessedAsync(
+        string stripeEventId,
+        CancellationToken cancellationToken)
+    {
+        return await dbContext.StripeWebhookEvents
+            .AsNoTracking()
+            .AnyAsync(webhookEvent => webhookEvent.StripeEventId == stripeEventId, cancellationToken);
+    }
+
+    private async Task RecordProcessedStripeWebhookEventAsync(
+        Stripe.Event stripeEvent,
+        CancellationToken cancellationToken)
+    {
+        dbContext.StripeWebhookEvents.Add(new StripeWebhookEvent
+        {
+            Id = Guid.NewGuid(),
+            StripeEventId = stripeEvent.Id,
+            EventType = stripeEvent.Type,
+            StripeObjectId = TryGetStripeObjectId(stripeEvent),
+            ProcessedAt = DateTime.UtcNow
+        });
+
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception) when (IsDuplicateStripeWebhookEvent(exception))
+        {
+            logger.LogInformation(
+                "Stripe webhook event {StripeEventId} was already recorded by another request.",
+                stripeEvent.Id);
+        }
+    }
+
+    private static bool IsDuplicateStripeWebhookEvent(DbUpdateException exception)
+    {
+        return exception.InnerException is PostgresException postgresException
+            && string.Equals(postgresException.SqlState, PostgresErrorCodes.UniqueViolation, StringComparison.Ordinal);
+    }
+
+    private static string? TryGetStripeObjectId(Stripe.Event stripeEvent)
+    {
+        return stripeEvent.Data.Object switch
+        {
+            StripeCheckoutSession checkoutSession when !string.IsNullOrWhiteSpace(checkoutSession.Id) => checkoutSession.Id,
+            StripeSubscription subscription when !string.IsNullOrWhiteSpace(subscription.Id) => subscription.Id,
+            StripeInvoice invoice when !string.IsNullOrWhiteSpace(invoice.Id) => invoice.Id,
+            _ => null
+        };
+    }
+
+    private static string BuildCheckoutIdempotencyKey(
+        Guid userId,
+        string planCode,
+        string billingInterval,
+        string scopeType,
+        Guid? scopeId)
+    {
+        var normalizedScopeId = scopeId?.ToString("N") ?? "account";
+        var key = $"checkout:{userId:N}:{planCode}:{billingInterval}:{scopeType}:{normalizedScopeId}";
+        return key.Length <= 255 ? key : key[..255];
+    }
+
+    private static string BuildCustomerPortalIdempotencyKey(Guid userId)
+    {
+        var key = $"portal:{userId:N}:{DateTime.UtcNow:yyyyMMddHHmm}";
+        return key.Length <= 255 ? key : key[..255];
     }
 
     private sealed record SubscriptionScope(string ScopeType, Guid? ScopeId);

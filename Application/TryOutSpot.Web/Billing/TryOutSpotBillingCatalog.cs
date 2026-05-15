@@ -96,6 +96,16 @@ public static class TryOutSpotBillingCatalog
             "Receive standard email support.",
             true),
         new(
+            TryOutSpotFeatureCodes.TeamDirectorySearchable,
+            "Searchable team directory listing",
+            "Keep team or organization searchable in discovery results.",
+            true),
+        new(
+            TryOutSpotFeatureCodes.TeamContactHidden,
+            "Hidden public contact details",
+            "Hide public contact links and social details while keeping directory visibility.",
+            true),
+        new(
             TryOutSpotFeatureCodes.UnlimitedOpportunityPostings,
             "Unlimited opportunity postings",
             "Post unlimited team opportunities.",
@@ -196,11 +206,11 @@ public static class TryOutSpotBillingCatalog
             TryOutSpotPlanCodes.TeamBasic,
             "Basic Team",
             "Team/Academy",
-            "Entry team subscription with a 30-day trial and limited monthly postings.",
+            "Entry team subscription with limited monthly postings.",
             29m,
             null,
             "USD",
-            30,
+            null,
             true,
             [
                 TryOutSpotFeatureCodes.PostLimitedOpportunities,
@@ -210,10 +220,24 @@ public static class TryOutSpotBillingCatalog
                 TryOutSpotFeatureCodes.EmailSupport
             ]),
         new(
+            TryOutSpotPlanCodes.TeamOffseasonHold,
+            "Team Offseason Hold",
+            "Team/Academy",
+            "Keep team listings active and searchable between seasons while public contact details stay hidden.",
+            15.99m,
+            null,
+            "USD",
+            null,
+            true,
+            [
+                TryOutSpotFeatureCodes.TeamDirectorySearchable,
+                TryOutSpotFeatureCodes.TeamContactHidden
+            ]),
+        new(
             TryOutSpotPlanCodes.TeamProfessional,
             "Professional Team",
             "Team/Academy",
-            "Professional team subscription for unlimited postings and advanced tools.",
+            "Professional team annual subscription for unlimited postings and advanced tools.",
             79m,
             799m,
             "USD",
@@ -232,7 +256,7 @@ public static class TryOutSpotBillingCatalog
             TryOutSpotPlanCodes.EnterpriseOrganization,
             "Enterprise Organization",
             "Organization",
-            "Enterprise subscription for multi-team organizations and custom workflows.",
+            "Enterprise annual subscription for multi-team organizations and custom workflows.",
             199m,
             1999m,
             "USD",
@@ -283,6 +307,8 @@ public static class TryOutSpotBillingCatalog
                 TryOutSpotPlanCodes.PremiumPlayer,
             TryOutSpotPlanCodes.TeamBasic or "basic_team" or "team_trial" or "basic" =>
                 TryOutSpotPlanCodes.TeamBasic,
+            TryOutSpotPlanCodes.TeamOffseasonHold or "offseason" or "offseason_hold" or "hold" =>
+                TryOutSpotPlanCodes.TeamOffseasonHold,
             TryOutSpotPlanCodes.TeamProfessional or "professional_team" or "professional" or "pro" =>
                 TryOutSpotPlanCodes.TeamProfessional,
             TryOutSpotPlanCodes.EnterpriseOrganization or "organization_enterprise" or "enterprise" =>
@@ -333,6 +359,12 @@ public static class TryOutSpotBillingCatalog
             || roles.Contains(TryOutSpotRoles.AcademyDirector))
         {
             planCodes.Add(TryOutSpotPlanCodes.TeamBasic);
+            planCodes.Add(TryOutSpotPlanCodes.TeamOffseasonHold);
+            planCodes.Add(TryOutSpotPlanCodes.TeamProfessional);
+        }
+
+        if (roles.Contains(TryOutSpotRoles.OrganizationAdmin))
+        {
             planCodes.Add(TryOutSpotPlanCodes.TeamProfessional);
         }
 
@@ -363,12 +395,43 @@ public static class TryOutSpotBillingCatalog
         {
             TryOutSpotPlanCodes.PremiumPlayer =>
                 normalizedScopeType is TryOutSpotSubscriptionScopeTypes.Account or TryOutSpotSubscriptionScopeTypes.Player,
-            TryOutSpotPlanCodes.TeamBasic or TryOutSpotPlanCodes.TeamProfessional =>
+            TryOutSpotPlanCodes.TeamBasic or TryOutSpotPlanCodes.TeamOffseasonHold or TryOutSpotPlanCodes.TeamProfessional =>
                 normalizedScopeType is TryOutSpotSubscriptionScopeTypes.Account or TryOutSpotSubscriptionScopeTypes.Team,
             TryOutSpotPlanCodes.EnterpriseOrganization =>
                 normalizedScopeType is TryOutSpotSubscriptionScopeTypes.Account or TryOutSpotSubscriptionScopeTypes.Organization,
             _ => false
         };
+    }
+
+    public static IReadOnlyCollection<string> GetSupportedBillingIntervals(string planCode)
+    {
+        var normalizedPlanCode = NormalizePlanCode(planCode);
+        return normalizedPlanCode switch
+        {
+            TryOutSpotPlanCodes.FreePlayerParent => [BillingIntervalCodes.Month],
+            TryOutSpotPlanCodes.PremiumPlayer => [BillingIntervalCodes.Month, BillingIntervalCodes.Year],
+            TryOutSpotPlanCodes.TeamBasic or TryOutSpotPlanCodes.TeamOffseasonHold => [BillingIntervalCodes.Month],
+            TryOutSpotPlanCodes.TeamProfessional or TryOutSpotPlanCodes.EnterpriseOrganization => [BillingIntervalCodes.Year],
+            _ => []
+        };
+    }
+
+    public static bool IsBillingIntervalSupported(string planCode, string? billingInterval)
+    {
+        var normalizedInterval = BillingIntervalCodes.Normalize(billingInterval);
+        if (normalizedInterval is null)
+        {
+            return false;
+        }
+
+        return GetSupportedBillingIntervals(planCode)
+            .Contains(normalizedInterval, StringComparer.Ordinal);
+    }
+
+    public static bool RequiresAnnualCommitment(string planCode)
+    {
+        var normalizedPlanCode = NormalizePlanCode(planCode);
+        return normalizedPlanCode is TryOutSpotPlanCodes.TeamProfessional or TryOutSpotPlanCodes.EnterpriseOrganization;
     }
 
     public static bool IsEntitlingSubscriptionStatus(string? status)

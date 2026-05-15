@@ -63,3 +63,35 @@ public sealed class FeatureAccessAuthorizationHandler(IEntitlementService entitl
         }
     }
 }
+
+public sealed class AnyFeatureAccessAuthorizationHandler(IEntitlementService entitlementService)
+    : AuthorizationHandler<AnyFeatureAccessRequirement>
+{
+    protected override async Task HandleRequirementAsync(
+        AuthorizationHandlerContext context,
+        AnyFeatureAccessRequirement requirement)
+    {
+        if (requirement.FeatureCodes.Count == 0)
+        {
+            return;
+        }
+
+        var userIdClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(userIdClaim, out var userId))
+        {
+            return;
+        }
+
+        var entitlements = await entitlementService.GetEntitlementsAsync(userId, CancellationToken.None);
+        if (entitlements is null)
+        {
+            return;
+        }
+
+        if (requirement.FeatureCodes.Any(featureCode =>
+                entitlements.FeatureCodes.Contains(featureCode, StringComparer.Ordinal)))
+        {
+            context.Succeed(requirement);
+        }
+    }
+}

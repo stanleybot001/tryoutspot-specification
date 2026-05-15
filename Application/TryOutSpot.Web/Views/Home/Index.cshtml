@@ -1,8 +1,58 @@
-﻿@{
+@{
     ViewData["Title"] = "Home Page";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<div class="startpage-wrap">
+    <a class="splash-logo" asp-controller="Home" asp-action="Index" aria-label="TryOutSpot home">
+        <img src="~/logo/TryOutSpotLogo.png" asp-append-version="true" alt="TryOutSpot" />
+    </a>
+    <section class="start-hero-shell">
+        <div class="start-hero-card">
+            <header class="start-hero-topbar">
+                <nav aria-label="Hero navigation">
+                    <a asp-controller="Account" asp-action="Login">Find Tryouts</a>
+                    <a asp-controller="Account" asp-action="Register">Create Profile</a>
+                    <a asp-controller="Account" asp-action="Register">Teams</a>
+                    <a href="/plans-and-features">Plans</a>
+                </nav>
+            </header>
+
+            <div class="start-hero-main">
+                <div class="start-hero-copy">
+                    <p class="start-kicker">Competitive Baseball and Softball</p>
+                    <h1>Play Up. Get Seen. Find Your Next Team.</h1>
+                    <p>
+                        Built for families who want high-level opportunities and for organizations
+                        looking to connect with serious athletes.
+                    </p>
+                    <div class="start-actions">
+                        <a class="btn start-btn-primary" asp-controller="Account" asp-action="Login">Find Tryouts</a>
+                        <a class="btn start-btn-secondary" asp-controller="Account" asp-action="Register">Create Profile</a>
+                    </div>
+                </div>
+                <aside class="start-feature-panel" aria-label="Featured listing">
+                    <p class="start-feature-kicker">Featured This Week</p>
+                    <h2>Dallas Elite 13U Major</h2>
+                    <p>Saturday, June 22 · 10:00 AM</p>
+                    <p>Las Colinas Sports Complex</p>
+                    <p class="start-feature-alert">Registration closes in 2 days</p>
+                </aside>
+            </div>
+
+            <div class="start-hero-rail">
+                <article>
+                    <p class="rail-label">Top Programs</p>
+                    <h3>Verified Team Profiles</h3>
+                </article>
+                <article>
+                    <p class="rail-label">Faster Decisions</p>
+                    <h3>Clear Deadlines and Open Spots</h3>
+                </article>
+                <article class="rail-accent">
+                    <p class="rail-label">Season Active</p>
+                    <h3>1,200+ Opportunities Posted</h3>
+                </article>
+            </div>
+        </div>
+    </section>
 </div>

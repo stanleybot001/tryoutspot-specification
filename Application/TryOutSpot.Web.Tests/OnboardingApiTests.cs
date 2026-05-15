@@ -100,7 +100,8 @@ public sealed class OnboardingApiTests
         Assert.Contains(TryOutSpotRoles.TeamManager, status.User.AccountTypes);
         Assert.DoesNotContain(TryOutSpotRoles.Parent, status.User.AccountTypes);
         Assert.Contains(status.RecommendedPlans, plan => plan.Code == TryOutSpotPlanCodes.TeamBasic);
-        Assert.Contains(status.Steps, step => step.Code == "add_team_or_organization" && !step.IsRequired);
+        Assert.Contains(status.Steps, step => step.Code == "choose_plan" && !step.IsRequired);
+        Assert.DoesNotContain(status.Steps, step => step.Code == "add_player_profile");
     }
 
     [Fact]

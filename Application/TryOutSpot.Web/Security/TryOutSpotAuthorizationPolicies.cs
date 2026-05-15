@@ -1,3 +1,5 @@
+using TryOutSpot.Web.Billing;
+
 namespace TryOutSpot.Web.Security;
 
 public static class TryOutSpotAuthorizationPolicies
@@ -6,7 +8,14 @@ public static class TryOutSpotAuthorizationPolicies
 
     public const string ConfirmedEmail = "TryOutSpot.ConfirmedEmail";
 
+    public const string ManagePlayerProfile = "TryOutSpot.ManagePlayerProfile";
+
+    public const string ManageTeamProfile = "TryOutSpot.ManageTeamProfile";
+
     public const string FeaturePolicyPrefix = "TryOutSpot.Feature:";
+
+    public const string BasicPlayerProfileFeaturePolicy =
+        FeaturePolicyPrefix + TryOutSpotFeatureCodes.CreateBasicPlayerProfiles;
 
     public static string Feature(string featureCode)
     {

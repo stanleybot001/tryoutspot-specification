@@ -1,4 +1,5 @@
 @model OnboardingPageModel
+@using TryOutSpot.Web.Billing
 
 @{
     ViewData["Title"] = "Account Setup";
@@ -91,7 +92,7 @@
 
     <section class="form-section">
         <h2>Recommended plan options</h2>
-        <p class="section-help">You can stay on a free path while we continue wiring Stripe checkout into the paid tiers.</p>
+        <p class="section-help">Stay on the free path or upgrade now. Paid plans redirect to Stripe checkout; free plans apply immediately.</p>
         <div class="plan-list">
             @foreach (var plan in Model.RecommendedPlans)
             {
@@ -102,7 +103,15 @@
                         <p>@plan.Description</p>
                     </div>
                     <div class="plan-price">
-                        <strong>@FormatMonthlyAmount(plan.MonthlyAmount)</strong>
+                        @if (TryOutSpotBillingCatalog.RequiresAnnualCommitment(plan.Code) && plan.AnnualAmount is not null)
+                        {
+                            <strong>@($"{plan.AnnualAmount.Value:C0}/yr")</strong>
+                            <span>Annual only</span>
+                        }
+                        else
+                        {
+                            <strong>@FormatMonthlyAmount(plan.MonthlyAmount)</strong>
+                        }
                         @if (plan.TrialDays is not null)
                         {
                             <span>@plan.TrialDays-day trial</span>

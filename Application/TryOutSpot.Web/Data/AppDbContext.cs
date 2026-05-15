@@ -37,6 +37,8 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
 
     public virtual DbSet<Subscription> Subscriptions { get; set; }
 
+    public virtual DbSet<StripeWebhookEvent> StripeWebhookEvents { get; set; }
+
     public virtual DbSet<Team> Teams { get; set; }
 
     public virtual DbSet<TeamSport> TeamSports { get; set; }
@@ -153,6 +155,7 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.City).HasMaxLength(100);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.Email).HasMaxLength(255);
+            entity.Property(e => e.IsContactInfoVisible).HasDefaultValue(true);
             entity.Property(e => e.IsSearchable).HasDefaultValue(true);
             entity.Property(e => e.LogoImageUrl).HasMaxLength(500);
             entity.Property(e => e.Name).HasMaxLength(200);
@@ -287,6 +290,17 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.HasOne(d => d.User).WithMany(p => p.Subscriptions).HasForeignKey(d => d.UserId);
         });
 
+        modelBuilder.Entity<StripeWebhookEvent>(entity =>
+        {
+            entity.HasIndex(e => e.StripeEventId, "IX_StripeWebhookEvents_StripeEventId").IsUnique();
+
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.EventType).HasMaxLength(100);
+            entity.Property(e => e.ProcessedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.StripeEventId).HasMaxLength(255);
+            entity.Property(e => e.StripeObjectId).HasMaxLength(255);
+        });
+
         modelBuilder.Entity<Team>(entity =>
         {
             entity.HasIndex(e => e.OrganizationId, "IX_Teams_OrganizationId");
@@ -296,6 +310,7 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.City).HasMaxLength(100);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.Email).HasMaxLength(255);
+            entity.Property(e => e.IsContactInfoVisible).HasDefaultValue(true);
             entity.Property(e => e.IsSearchable).HasDefaultValue(true);
             entity.Property(e => e.LogoImageUrl).HasMaxLength(500);
             entity.Property(e => e.Name).HasMaxLength(200);

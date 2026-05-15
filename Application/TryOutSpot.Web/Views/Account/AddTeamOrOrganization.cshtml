@@ -170,6 +170,23 @@
             </div>
 
             <div>
+                <label class="form-label">GameChanger</label>
+                <p class="section-help">Optional references used when your team also runs on GameChanger.</p>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="GameChangerCoachName" class="form-label">GameChanger coach</label>
+                        <input asp-for="GameChangerCoachName" class="form-control" placeholder="Coach name in GameChanger" />
+                        <span asp-validation-for="GameChangerCoachName" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="GameChangerTeamName" class="form-label">GameChanger team name</label>
+                        <input asp-for="GameChangerTeamName" class="form-control" placeholder="Team name in GameChanger" />
+                        <span asp-validation-for="GameChangerTeamName" class="text-danger"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div>
                 <label class="form-label">Sports</label>
                 @if (Model.AvailableSports.Count == 0)
                 {

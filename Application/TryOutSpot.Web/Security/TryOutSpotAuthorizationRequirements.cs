@@ -10,3 +10,11 @@ public sealed class FeatureAccessRequirement(string featureCode) : IAuthorizatio
 {
     public string FeatureCode { get; } = featureCode;
 }
+
+public sealed class AnyFeatureAccessRequirement(params string[] featureCodes) : IAuthorizationRequirement
+{
+    public IReadOnlyCollection<string> FeatureCodes { get; } = featureCodes
+        .Where(featureCode => !string.IsNullOrWhiteSpace(featureCode))
+        .Distinct(StringComparer.Ordinal)
+        .ToArray();
+}

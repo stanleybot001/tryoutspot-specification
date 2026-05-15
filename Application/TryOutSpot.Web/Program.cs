@@ -260,11 +260,24 @@ builder.Services.AddAuthorization(options =>
         TryOutSpotAuthorizationPolicyProvider.BuildAuthenticatedPolicy()
             .AddRequirements(new ConfirmedEmailRequirement())
             .Build());
+    options.AddPolicy(
+        TryOutSpotAuthorizationPolicies.ManagePlayerProfile,
+        TryOutSpotAuthorizationPolicyProvider.BuildAuthenticatedPolicy()
+            .AddRequirements(new FeatureAccessRequirement(TryOutSpotFeatureCodes.CreateBasicPlayerProfiles))
+            .Build());
+    options.AddPolicy(
+        TryOutSpotAuthorizationPolicies.ManageTeamProfile,
+        TryOutSpotAuthorizationPolicyProvider.BuildAuthenticatedPolicy()
+            .AddRequirements(new AnyFeatureAccessRequirement(
+                TryOutSpotFeatureCodes.PostLimitedOpportunities,
+                TryOutSpotFeatureCodes.UnlimitedOpportunityPostings))
+            .Build());
 });
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, TryOutSpotAuthorizationPolicyProvider>();
 builder.Services.AddScoped<IAuthorizationHandler, ActiveUserAuthorizationHandler>();
 builder.Services.AddScoped<IAuthorizationHandler, ConfirmedEmailAuthorizationHandler>();
 builder.Services.AddScoped<IAuthorizationHandler, FeatureAccessAuthorizationHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, AnyFeatureAccessAuthorizationHandler>();
 
 var app = builder.Build();
 

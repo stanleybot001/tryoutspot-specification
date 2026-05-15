@@ -1,0 +1,146 @@
+@model TryOutSpot.Web.Models.Billing.PlansFeatureMatrixPageModel
+@using TryOutSpot.Web.Billing
+
+@{
+    ViewData["Title"] = "Plans & Features";
+}
+
+<section class="account-page">
+    <div class="account-heading">
+        <p class="account-kicker">Plans and features</p>
+        <h1>Choose the plan that matches how you use TryOutSpot.</h1>
+        <p>This page shows role eligibility, plan coverage, and exactly what each upgrade unlocks.</p>
+    </div>
+
+    <section class="form-section">
+        <h2>Account Type To Plan Matrix</h2>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle plans-matrix-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Account type</th>
+                        <th scope="col">Free Player/Parent</th>
+                        <th scope="col">Premium Player</th>
+                        <th scope="col">Team Basic</th>
+                        <th scope="col">Team Offseason Hold</th>
+                        <th scope="col">Team Professional</th>
+                        <th scope="col">Enterprise Organization</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.AccountTypePlanAccess)
+                    {
+                        <tr>
+                            <th scope="row">@row.AccountType</th>
+                            <td>@(row.FreePlayerParent ? "Yes" : "No")</td>
+                            <td>@(row.PremiumPlayer ? "Yes" : "No")</td>
+                            <td>@(row.TeamBasic ? "Yes" : "No")</td>
+                            <td>@(row.TeamOffseasonHold ? "Yes" : "No")</td>
+                            <td>@(row.TeamProfessional ? "Yes" : "No")</td>
+                            <td>@(row.EnterpriseOrganization ? "Yes" : "No")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (Model.CriticalPolicyNotes.Count > 0)
+        {
+            <div class="section-help">
+                <strong>Important policy notes</strong>
+                <ul class="plan-feature-list">
+                    @foreach (var note in Model.CriticalPolicyNotes)
+                    {
+                        <li>@note</li>
+                    }
+                </ul>
+            </div>
+        }
+    </section>
+
+    <section class="form-section">
+        <h2>Feature Bundles</h2>
+        <div class="plan-list">
+            @foreach (var bundle in Model.FeatureBundles)
+            {
+                <article class="plan-row plan-row-stack">
+                    <div>
+                        <strong>@bundle.Name</strong>
+                        <span>@bundle.Scope</span>
+                        <p>@bundle.ComparedTo</p>
+                        <ul class="plan-feature-list">
+                            @foreach (var feature in bundle.Features)
+                            {
+                                <li>
+                                    <strong>@feature.Name</strong> (`@feature.Code`): @feature.Description
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                </article>
+            }
+        </div>
+    </section>
+
+    <section class="form-section">
+        <h2>Upgrade Breakdown</h2>
+        @foreach (var track in Model.PlanTracks)
+        {
+            <h3 class="plans-track-title">@track.TrackName</h3>
+            <div class="plan-list">
+                @foreach (var plan in track.Plans)
+                {
+                    <article class="plan-row plan-row-stack">
+                        <div>
+                            <strong>@plan.Name</strong>
+                            <span>@plan.Audience</span>
+                            <p>@plan.Description</p>
+                        </div>
+                        <div class="plan-price">
+                            <strong>@plan.PriceLabel</strong>
+                            @if (TryOutSpotBillingCatalog.RequiresAnnualCommitment(plan.Code))
+                            {
+                                <span>Annual only</span>
+                            }
+                            else if (plan.TrialDays is not null)
+                            {
+                                <span>@plan.TrialDays-day trial</span>
+                            }
+                        </div>
+                        <div class="plan-diff-grid">
+                            <div>
+                                <h4>What this adds over the lower plan</h4>
+                                @if (plan.AddedFeaturesComparedToPrevious.Count == 0)
+                                {
+                                    <p class="section-help">This is the base plan for this track.</p>
+                                }
+                                else
+                                {
+                                    <ul class="plan-feature-list">
+                                        @foreach (var feature in plan.AddedFeaturesComparedToPrevious)
+                                        {
+                                            <li>
+                                                <strong>@feature.Name</strong> (`@feature.Code`): @feature.Description
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+                            </div>
+                            <div>
+                                <h4>Everything included in this plan</h4>
+                                <ul class="plan-feature-list">
+                                    @foreach (var feature in plan.IncludedFeatures)
+                                    {
+                                        <li>
+                                            <strong>@feature.Name</strong> (`@feature.Code`): @feature.Description
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</section>

@@ -20,6 +20,8 @@ public static class TryOutSpotFeatureCodes
     public const string StandardRegistrationManagement = "registrations.manage.standard";
     public const string BasicTeamAnalytics = "analytics.team.basic";
     public const string EmailSupport = "support.email";
+    public const string TeamDirectorySearchable = "directory.team.searchable";
+    public const string TeamContactHidden = "directory.team.contact.hidden";
 
     public const string UnlimitedOpportunityPostings = "opportunities.post.unlimited";
     public const string AdvancedPlayerSearch = "players.search.advanced";

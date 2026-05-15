@@ -165,6 +165,13 @@ public sealed class OnboardingApiController(
             .Where(subscription => subscription.UserId == user.Id)
             .ToArrayAsync(cancellationToken);
         var hasPaidPlan = subscriptions.Any(IsActivePaidSubscription);
+        var entitlements = await entitlementService.GetEntitlementsAsync(user.Id, cancellationToken);
+        var hasTeamProfileManagementAccess = entitlements?.FeatureCodes.Contains(
+                TryOutSpotFeatureCodes.PostLimitedOpportunities,
+                StringComparer.Ordinal) == true
+            || entitlements?.FeatureCodes.Contains(
+                TryOutSpotFeatureCodes.UnlimitedOpportunityPostings,
+                StringComparer.Ordinal) == true;
 
         var hasPublicAccountType = roles.Any(role =>
             TryOutSpotRoles.PublicRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase));
@@ -198,7 +205,7 @@ public sealed class OnboardingApiController(
                 null));
         }
 
-        if (hasTeamOrOrganizationRole)
+        if (hasTeamOrOrganizationRole && hasTeamProfileManagementAccess)
         {
             steps.Add(new OnboardingStepResponse(
                 "add_team_or_organization",
@@ -214,7 +221,7 @@ public sealed class OnboardingApiController(
             steps.Add(new OnboardingStepResponse(
                 "choose_plan",
                 "Choose plan",
-                "Start free and upgrade when you need premium profile, team, or organization tools.",
+                "Start free and upgrade to unlock premium profile, team, and organization tools.",
                 IsRequired: false,
                 IsComplete: hasPaidPlan,
                 "/api/billing/plans"));

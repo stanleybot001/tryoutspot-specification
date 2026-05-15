@@ -8,6 +8,8 @@
         <p class="account-kicker">Almost done</p>
         <h1>Verify your email address.</h1>
         <p>@(TempData["StatusMessage"] ?? "We sent a verification link to your email address.")</p>
+        <p>If you do not see it within a few minutes, check your Junk or Spam folder.</p>
+        <p>If it landed there, open the message, mark it as "Not Spam," and add <strong>no-reply@tryoutspot.com</strong> to your safe senders list.</p>
         @if (!string.IsNullOrWhiteSpace(email))
         {
             <p class="account-meta">@email</p>
@@ -16,5 +18,9 @@
 
     <div class="form-actions">
         <a asp-action="Login" asp-controller="Account" class="btn btn-primary">Go to login</a>
+        <form asp-action="ResendVerificationEmail" asp-controller="Account" method="post">
+            <input type="hidden" name="email" value="@email" />
+            <button type="submit" class="btn btn-link">Resend verification email</button>
+        </form>
     </div>
 </section>

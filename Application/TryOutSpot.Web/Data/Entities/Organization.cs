@@ -37,6 +37,8 @@ public partial class Organization
 
     public bool IsSearchable { get; set; }
 
+    public bool IsContactInfoVisible { get; set; }
+
     public bool IsAcademy { get; set; }
 
     public bool IsVerified { get; set; }
