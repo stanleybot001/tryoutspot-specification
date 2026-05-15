@@ -1,0 +1,182 @@
+@model PlayerListingEditorPageModel
+
+@{
+    ViewData["Title"] = Model.IsEditMode ? "Edit Player Listing" : "Create Player Listing";
+    var submitPath = Model.IsEditMode && Model.ListingId.HasValue
+        ? Url.Action("EditPlayerListing", "Account", new { listingId = Model.ListingId.Value })
+        : Url.Action("CreatePlayerListing", "Account");
+    var selectedType = Model.AvailableListingTypes
+        .FirstOrDefault(option => string.Equals(option.Code, Model.ListingType, StringComparison.OrdinalIgnoreCase));
+}
+
+<section class="account-page compact">
+    <div class="account-heading">
+        <p class="account-kicker">Player and parent listings</p>
+        <h1>@(Model.IsEditMode ? "Edit listing" : "Create a new listing")</h1>
+        <p>Use listings to share player availability, team interest, equipment, private lesson needs, and training partner requests.</p>
+        <p class="required-note"><span class="required-marker">*</span> Required field</p>
+    </div>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    <section class="form-section">
+        <form method="post" action="@submitPath" class="stacked-form">
+            @Html.AntiForgeryToken()
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="form-grid two-column">
+                <div class="form-field">
+                    <label asp-for="ListingType" class="form-label">Listing type <span class="required-marker">*</span></label>
+                    <select asp-for="ListingType" class="form-select">
+                        @foreach (var listingType in Model.AvailableListingTypes)
+                        {
+                            <option value="@listingType.Code">@listingType.Label</option>
+                        }
+                    </select>
+                    <span asp-validation-for="ListingType" class="text-danger"></span>
+                </div>
+
+                <div class="form-field">
+                    <label asp-for="PlayerId" class="form-label">Player profile</label>
+                    <select asp-for="PlayerId" class="form-select">
+                        <option value="">No player selected</option>
+                        @foreach (var player in Model.AvailablePlayers)
+                        {
+                            <option value="@player.PlayerId">@player.DisplayName (@FormatLocation(player.City, player.State, player.ZipCode))</option>
+                        }
+                    </select>
+                    <span asp-validation-for="PlayerId" class="text-danger"></span>
+                </div>
+
+                <div class="form-field">
+                    <label asp-for="SportId" class="form-label">Sport</label>
+                    <select asp-for="SportId" class="form-select">
+                        <option value="">No sport selected</option>
+                        @foreach (var sport in Model.AvailableSports)
+                        {
+                            <option value="@sport.Id">@sport.Name</option>
+                        }
+                    </select>
+                    <span asp-validation-for="SportId" class="text-danger"></span>
+                </div>
+
+                <div class="form-field">
+                    <label asp-for="Title" class="form-label">Title <span class="required-marker">*</span></label>
+                    <input asp-for="Title" class="form-control" />
+                    <span asp-validation-for="Title" class="text-danger"></span>
+                </div>
+
+                <div class="form-field">
+                    <label asp-for="AskingPrice" class="form-label">Asking price</label>
+                    <input asp-for="AskingPrice" class="form-control" inputmode="decimal" placeholder="Example: 125.00" />
+                    <span asp-validation-for="AskingPrice" class="text-danger"></span>
+                </div>
+
+                <div class="form-field">
+                    <label asp-for="Currency" class="form-label">Currency</label>
+                    <input asp-for="Currency" class="form-control" maxlength="3" placeholder="USD" />
+                    <span asp-validation-for="Currency" class="text-danger"></span>
+                </div>
+
+                <div class="form-field">
+                    <label asp-for="Condition" class="form-label">Condition</label>
+                    <input asp-for="Condition" class="form-control" placeholder="Example: Like new, Good, Fair" />
+                    <span asp-validation-for="Condition" class="text-danger"></span>
+                </div>
+
+                <div class="form-field">
+                    <label asp-for="ExpiresAt" class="form-label">Expires on</label>
+                    <input asp-for="ExpiresAt" class="form-control" />
+                    <span asp-validation-for="ExpiresAt" class="text-danger"></span>
+                </div>
+
+                <div class="form-field">
+                    <label asp-for="City" class="form-label">City</label>
+                    <input asp-for="City" class="form-control" autocomplete="address-level2" />
+                    <span asp-validation-for="City" class="text-danger"></span>
+                </div>
+
+                <div class="form-field">
+                    <label asp-for="State" class="form-label">State</label>
+                    <input asp-for="State" class="form-control" autocomplete="address-level1" maxlength="2" />
+                    <span asp-validation-for="State" class="text-danger"></span>
+                </div>
+
+                <div class="form-field">
+                    <label asp-for="ZipCode" class="form-label">ZIP code</label>
+                    <input asp-for="ZipCode" class="form-control" autocomplete="postal-code" />
+                    <span asp-validation-for="ZipCode" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="form-field">
+                <label asp-for="Description" class="form-label">Description</label>
+                <textarea asp-for="Description" class="form-control" rows="4" placeholder="Share details that coaches or families should know before they reach out."></textarea>
+                <span asp-validation-for="Description" class="text-danger"></span>
+            </div>
+
+            @if (selectedType is not null)
+            {
+                <p class="section-help">
+                    @selectedType.Description
+                    @if (selectedType.RequiresPlayerSelection || selectedType.RequiresSportSelection)
+                    {
+                        <span>
+                            Requirements:
+                            @(selectedType.RequiresPlayerSelection ? "player required" : "player optional")
+                            ,
+                            @(selectedType.RequiresSportSelection ? "sport required" : "sport optional")
+                            .
+                        </span>
+                    }
+                </p>
+            }
+
+            <label class="sms-consent-option" for="IsSearchable">
+                <input asp-for="IsSearchable" class="form-check-input" />
+                <span>Allow this listing to appear in search results.</span>
+            </label>
+
+            <label class="sms-consent-option" for="IsPublished">
+                <input asp-for="IsPublished" class="form-check-input" />
+                <span>Publish this listing now.</span>
+            </label>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">@(Model.IsEditMode ? "Update listing" : "Create listing")</button>
+                <a class="btn btn-outline-secondary" href="/account/onboarding/player-listings">Back to listings</a>
+                <a class="btn btn-outline-secondary" href="/account/onboarding">Back to onboarding</a>
+            </div>
+        </form>
+    </section>
+</section>
+
+@functions {
+    private static string FormatLocation(string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim().ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        return parts.Count == 0 ? "Location not set" : string.Join(", ", parts);
+    }
+}
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

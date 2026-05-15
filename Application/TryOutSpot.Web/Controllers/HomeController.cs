@@ -39,6 +39,12 @@ public class HomeController : Controller
         return View();
     }
 
+    [HttpGet("/account-deletion")]
+    public IActionResult AccountDeletion()
+    {
+        return View();
+    }
+
     [HttpGet("/plans-and-features")]
     public IActionResult PlansAndFeatures()
     {

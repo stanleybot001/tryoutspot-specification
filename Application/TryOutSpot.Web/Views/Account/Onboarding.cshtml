@@ -53,11 +53,11 @@
                             {
                                 <span>Complete</span>
                             }
-                            else if (TryGetStepOpenUrl(step.Code, out var stepOpenUrl))
+                            @if (TryGetStepOpenUrl(step.Code, out var stepOpenUrl))
                             {
-                                <a class="btn btn-sm btn-outline-primary" href="@stepOpenUrl">Open</a>
+                                <a class="btn btn-sm btn-outline-primary" href="@stepOpenUrl">@(step.IsComplete ? "View" : "Open")</a>
                             }
-                            else
+                            else if (!step.IsComplete)
                             {
                                 <span>Open</span>
                             }
@@ -157,7 +157,9 @@
             "choose_account_types" => "#onboarding-account-types",
             "verify_email" => "/account/settings",
             "add_player_profile" => "/account/onboarding/add-player-profile",
+            "manage_player_listings" => "/account/onboarding/player-listings",
             "add_team_or_organization" => "/account/onboarding/add-team-or-organization",
+            "manage_team_opportunities" => "/account/onboarding/team-opportunities",
             "choose_plan" => "/account/onboarding/choose-plan",
             _ => string.Empty
         };

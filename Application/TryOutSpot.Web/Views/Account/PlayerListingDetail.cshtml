@@ -1,0 +1,162 @@
+@model PlayerListingDetailPageModel
+
+@{
+    ViewData["Title"] = Model.Title;
+}
+
+<section class="account-page">
+    <div class="account-heading">
+        <p class="account-kicker">Player listing</p>
+        <h1>@Model.Title</h1>
+        <p>@Model.ListingTypeLabel</p>
+    </div>
+
+    <section class="form-section">
+        <div class="team-summary-grid opportunity-summary-grid">
+            <div><span>Sport</span><strong>@(string.IsNullOrWhiteSpace(Model.SportName) ? "Not set" : Model.SportName)</strong></div>
+            <div><span>Price</span><strong>@FormatPrice(Model.AskingPrice, Model.Currency)</strong></div>
+            <div><span>Condition</span><strong>@(string.IsNullOrWhiteSpace(Model.Condition) ? "Not set" : Model.Condition)</strong></div>
+            <div><span>Location</span><strong>@FormatLocation(Model.City, Model.State, Model.ZipCode)</strong></div>
+            <div><span>Published</span><strong>@FormatDate(Model.PublishedAt)</strong></div>
+            <div><span>Expires</span><strong>@FormatDate(Model.ExpiresAt)</strong></div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Model.Description))
+        {
+            <p class="section-help mt-3">@Model.Description</p>
+        }
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(Model.PlayerName))
+    {
+        <section class="form-section">
+            <h2>@Model.PlayerName</h2>
+
+            @if (!string.IsNullOrWhiteSpace(Model.ProfileImageUrl))
+            {
+                <img class="listing-profile-image" src="@Model.ProfileImageUrl" alt="@Model.PlayerName profile photo" />
+            }
+
+            <div class="team-summary-grid opportunity-summary-grid mt-2">
+                <div><span>School</span><strong>@(string.IsNullOrWhiteSpace(Model.SchoolName) ? "Not set" : Model.SchoolName)</strong></div>
+                <div><span>Current team</span><strong>@(string.IsNullOrWhiteSpace(Model.CurrentTeamName) ? "Not set" : Model.CurrentTeamName)</strong></div>
+                <div><span>Graduation year</span><strong>@(Model.GraduationYear.HasValue ? Model.GraduationYear.Value.ToString() : "Not set")</strong></div>
+                <div><span>Height / weight</span><strong>@FormatSize(Model.Height, Model.Weight)</strong></div>
+                <div><span>Throws</span><strong>@(string.IsNullOrWhiteSpace(Model.ThrowsHand) ? "Not set" : Model.ThrowsHand)</strong></div>
+                <div><span>Bats</span><strong>@(string.IsNullOrWhiteSpace(Model.BatsHand) ? "Not set" : Model.BatsHand)</strong></div>
+            </div>
+
+            @if (Model.Sports.Count > 0)
+            {
+                <h3 class="mt-3">Sports and positions</h3>
+                <div class="plan-list">
+                    @foreach (var sport in Model.Sports)
+                    {
+                        <div class="plan-row plan-row-stack">
+                            <strong>@sport.SportName</strong>
+                            <span>Level: @(string.IsNullOrWhiteSpace(sport.SkillLevel) ? "Not set" : sport.SkillLevel)</span>
+                            <span>Primary position: @(string.IsNullOrWhiteSpace(sport.PrimaryPosition) ? "Not set" : sport.PrimaryPosition)</span>
+                            <span>Secondary positions: @(string.IsNullOrWhiteSpace(sport.SecondaryPositions) ? "Not set" : sport.SecondaryPositions)</span>
+                        </div>
+                    }
+                </div>
+            }
+
+            <h3 class="mt-3">Contact</h3>
+            @if (Model.IsContactPublic)
+            {
+                <div class="team-summary-grid">
+                    <div><span>Email</span><strong>@(string.IsNullOrWhiteSpace(Model.ContactEmail) ? "Not provided" : Model.ContactEmail)</strong></div>
+                    <div><span>Phone</span><strong>@(string.IsNullOrWhiteSpace(Model.ContactPhone) ? "Not provided" : Model.ContactPhone)</strong></div>
+                </div>
+            }
+            else
+            {
+                <p class="section-help">Contact details are limited to approved coach access for this player profile.</p>
+            }
+
+            @if (Model.SocialLinks.Count > 0)
+            {
+                <h3 class="mt-3">Social pages</h3>
+                <ul class="listing-link-list">
+                    @foreach (var link in Model.SocialLinks)
+                    {
+                        <li><a href="@link.Url" target="_blank" rel="noopener">@link.Label</a></li>
+                    }
+                </ul>
+            }
+
+            @if (Model.RecruitingLinks.Count > 0)
+            {
+                <h3 class="mt-3">Recruiting profiles</h3>
+                <ul class="listing-link-list">
+                    @foreach (var link in Model.RecruitingLinks)
+                    {
+                        <li><a href="@link.Url" target="_blank" rel="noopener">@link.Label</a></li>
+                    }
+                </ul>
+            }
+        </section>
+    }
+</section>
+
+@functions {
+    private static string FormatPrice(decimal? value, string? currency)
+    {
+        if (!value.HasValue)
+        {
+            return "Not listed";
+        }
+
+        var normalizedCurrency = string.IsNullOrWhiteSpace(currency)
+            ? "USD"
+            : currency.Trim().ToUpperInvariant();
+        return $"{normalizedCurrency} {value.Value:0.##}";
+    }
+
+    private static string FormatDate(DateTime? value)
+    {
+        return value?.ToLocalTime().ToString("MMM d, yyyy") ?? "Not set";
+    }
+
+    private static string FormatLocation(string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim().ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        return parts.Count == 0 ? "Not set" : string.Join(", ", parts);
+    }
+
+    private static string FormatSize(string? height, string? weight)
+    {
+        if (string.IsNullOrWhiteSpace(height) && string.IsNullOrWhiteSpace(weight))
+        {
+            return "Not set";
+        }
+
+        if (string.IsNullOrWhiteSpace(height))
+        {
+            return weight!.Trim();
+        }
+
+        if (string.IsNullOrWhiteSpace(weight))
+        {
+            return height.Trim();
+        }
+
+        return $"{height.Trim()} / {weight.Trim()}";
+    }
+}

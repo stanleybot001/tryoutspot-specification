@@ -1,0 +1,133 @@
+@model TeamOpportunityDashboardPageModel
+
+@{
+    ViewData["Title"] = "Manage Team Opportunities";
+}
+
+<section class="account-page">
+    <div class="account-heading">
+        <p class="account-kicker">Team management</p>
+        <h1>Manage your team opportunity listings.</h1>
+        <p>Use this workspace to manage your teams, open listings, and publish opportunities that players can discover.</p>
+    </div>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    @if (!Model.CanPostOpportunities)
+    {
+        <div class="account-alert">
+            Your current membership does not include opportunity posting. Upgrade to Basic Team or Professional Team to create and publish listings.
+        </div>
+    }
+
+    <section class="form-section">
+        <h2>Managed teams</h2>
+        <p class="section-help">
+            @if (Model.HasUnlimitedPosting)
+            {
+                @:Unlimited posting is available with your current membership.
+            }
+            else if (Model.HasLimitedPosting)
+            {
+                @:Basic Team supports up to @Model.BasicMonthlyPublishingLimit published opportunities per team per month.
+            }
+            else
+            {
+                @:You can review team details here. Posting is currently locked for this account.
+            }
+        </p>
+
+        @if (Model.Teams.Count == 0)
+        {
+            <p class="section-help">No managed teams were found yet. Start by adding a team or organization from onboarding.</p>
+            <div class="form-actions">
+                <a class="btn btn-primary" href="/account/onboarding/add-team-or-organization">Add team or organization</a>
+                <a class="btn btn-outline-secondary" href="/account/onboarding">Back to onboarding</a>
+            </div>
+        }
+        else
+        {
+            <div class="plan-list">
+                @foreach (var team in Model.Teams)
+                {
+                    <article class="plan-row plan-row-stack">
+                        <div class="team-row-head">
+                            <div>
+                                <strong>@team.TeamName</strong>
+                                @if (!string.IsNullOrWhiteSpace(team.OrganizationName))
+                                {
+                                    <span>@team.OrganizationName</span>
+                                }
+                            </div>
+                            <div class="team-metric-inline">
+                                <span>@team.ActiveOpportunityCount active</span>
+                                <span>@team.PublishedOpportunityCount published</span>
+                                @if (Model.HasLimitedPosting && !Model.HasUnlimitedPosting)
+                                {
+                                    <span>@team.PublishedThisMonthCount/@Model.BasicMonthlyPublishingLimit this month</span>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="team-summary-grid">
+                            <div><span>Role</span><strong>@team.Role</strong></div>
+                            <div><span>Coverage</span><strong>@team.GeographicScope</strong></div>
+                            <div><span>Team level</span><strong>@(string.IsNullOrWhiteSpace(team.TeamLevel) ? "Not set" : team.TeamLevel)</strong></div>
+                            <div><span>Location</span><strong>@FormatLocation(team.City, team.State, team.ZipCode)</strong></div>
+                            <div><span>Searchable</span><strong>@(team.IsSearchable ? "Yes" : "No")</strong></div>
+                            <div><span>Public contact</span><strong>@(team.IsContactInfoVisible ? "Visible" : "Hidden")</strong></div>
+                        </div>
+
+                        @if (team.Sports.Count > 0)
+                        {
+                            <div class="feature-code-list">
+                                @foreach (var sport in team.Sports)
+                                {
+                                    <span>@sport</span>
+                                }
+                            </div>
+                        }
+
+                        <div class="form-actions">
+                            <a class="btn btn-primary" href="/account/onboarding/team-opportunities/@team.TeamId">Open listings</a>
+                            @if (Model.CanPostOpportunities)
+                            {
+                                <a class="btn btn-outline-primary" href="/account/onboarding/team-opportunities/@team.TeamId/new">Create listing</a>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+
+            <div class="form-actions mt-3">
+                <a class="btn btn-outline-secondary" href="/account/onboarding">Back to onboarding</a>
+            </div>
+        }
+    </section>
+</section>
+
+@functions {
+    private static string FormatLocation(string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim().ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        return parts.Count == 0 ? "Not set" : string.Join(", ", parts);
+    }
+}

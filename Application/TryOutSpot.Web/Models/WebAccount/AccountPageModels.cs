@@ -476,6 +476,427 @@ public sealed class AddTeamOrOrganizationPageModel
     public IReadOnlyCollection<string> AvailableTeamRoleOptions { get; set; } = [];
 }
 
+public sealed class TeamOpportunityDashboardPageModel
+{
+    public bool CanPostOpportunities { get; set; }
+
+    public bool HasLimitedPosting { get; set; }
+
+    public bool HasUnlimitedPosting { get; set; }
+
+    public int BasicMonthlyPublishingLimit { get; set; }
+
+    public IReadOnlyCollection<ManagedTeamOpportunitySummaryPageModel> Teams { get; set; } = [];
+}
+
+public sealed class ManagedTeamOpportunitySummaryPageModel
+{
+    public Guid TeamId { get; set; }
+
+    public string TeamName { get; set; } = string.Empty;
+
+    public string? OrganizationName { get; set; }
+
+    public string Role { get; set; } = string.Empty;
+
+    public string? TeamLevel { get; set; }
+
+    public string GeographicScope { get; set; } = string.Empty;
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+
+    public string? ZipCode { get; set; }
+
+    public bool IsSearchable { get; set; }
+
+    public bool IsContactInfoVisible { get; set; }
+
+    public int ActiveOpportunityCount { get; set; }
+
+    public int PublishedOpportunityCount { get; set; }
+
+    public int PublishedThisMonthCount { get; set; }
+
+    public IReadOnlyCollection<string> Sports { get; set; } = [];
+}
+
+public sealed class TeamOpportunityListPageModel
+{
+    public ManagedTeamOpportunitySummaryPageModel Team { get; set; } = new();
+
+    public bool CanPostOpportunities { get; set; }
+
+    public bool HasLimitedPosting { get; set; }
+
+    public bool HasUnlimitedPosting { get; set; }
+
+    public int BasicMonthlyPublishingLimit { get; set; }
+
+    public int Page { get; set; }
+
+    public int PageSize { get; set; }
+
+    public int TotalCount { get; set; }
+
+    public int TotalPages { get; set; }
+
+    public IReadOnlyCollection<TeamOpportunitySummaryPageModel> Opportunities { get; set; } = [];
+}
+
+public sealed class TeamOpportunitySummaryPageModel
+{
+    public Guid OpportunityId { get; set; }
+
+    public Guid TeamId { get; set; }
+
+    public Guid SportId { get; set; }
+
+    public string SportName { get; set; } = string.Empty;
+
+    public string Type { get; set; } = string.Empty;
+
+    public string Title { get; set; } = string.Empty;
+
+    public string? Description { get; set; }
+
+    public string? CompetitionLevel { get; set; }
+
+    public string? AgeGroup { get; set; }
+
+    public decimal RegistrationFee { get; set; }
+
+    public DateTime? RegistrationDeadline { get; set; }
+
+    public DateTime? EventDate { get; set; }
+
+    public DateTime? EventEndDate { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+
+    public string? ZipCode { get; set; }
+
+    public bool IsPublished { get; set; }
+
+    public DateTime? PublishedAt { get; set; }
+
+    public DateTime? ExpiresAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+}
+
+public sealed class TeamOpportunityEditorPageModel
+{
+    public Guid TeamId { get; set; }
+
+    public Guid? OpportunityId { get; set; }
+
+    public bool IsEditMode { get; set; }
+
+    public string TeamName { get; set; } = string.Empty;
+
+    public string? OrganizationName { get; set; }
+
+    public bool CanPostOpportunities { get; set; }
+
+    public bool HasLimitedPosting { get; set; }
+
+    public bool HasUnlimitedPosting { get; set; }
+
+    public int BasicMonthlyPublishingLimit { get; set; }
+
+    public int PublishedThisMonthCount { get; set; }
+
+    [Required]
+    [MaxLength(50)]
+    [Display(Name = "Opportunity type")]
+    public string Type { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(300)]
+    [Display(Name = "Title")]
+    public string Title { get; set; } = string.Empty;
+
+    [MaxLength(4000)]
+    [Display(Name = "Description")]
+    public string? Description { get; set; }
+
+    [Required]
+    [Display(Name = "Sport")]
+    public Guid SportId { get; set; }
+
+    [MaxLength(100)]
+    [Display(Name = "Competition level")]
+    public string? CompetitionLevel { get; set; }
+
+    [MaxLength(50)]
+    [Display(Name = "Age group")]
+    public string? AgeGroup { get; set; }
+
+    [Range(typeof(decimal), "0", "9999999")]
+    [Display(Name = "Registration fee")]
+    public decimal RegistrationFee { get; set; }
+
+    [Display(Name = "Registration required")]
+    public bool RegistrationRequired { get; set; } = true;
+
+    [DataType(DataType.Date)]
+    [Display(Name = "Registration deadline")]
+    public DateTime? RegistrationDeadline { get; set; }
+
+    [DataType(DataType.Date)]
+    [Display(Name = "Event start date")]
+    public DateTime? EventDate { get; set; }
+
+    [DataType(DataType.Date)]
+    [Display(Name = "Event end date")]
+    public DateTime? EventEndDate { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Location")]
+    public string? Location { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Address")]
+    public string? Address { get; set; }
+
+    [MaxLength(100)]
+    [Display(Name = "City")]
+    public string? City { get; set; }
+
+    [MaxLength(2)]
+    [Display(Name = "State")]
+    public string? State { get; set; }
+
+    [MaxLength(10)]
+    [Display(Name = "ZIP code")]
+    public string? ZipCode { get; set; }
+
+    [EmailAddress]
+    [MaxLength(255)]
+    [Display(Name = "Contact email")]
+    public string? ContactEmail { get; set; }
+
+    [Phone]
+    [MaxLength(20)]
+    [Display(Name = "Contact phone")]
+    public string? ContactPhone { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Website URL")]
+    public string? WebsiteUrl { get; set; }
+
+    [MaxLength(2000)]
+    [Display(Name = "Required equipment")]
+    public string? RequiredEquipment { get; set; }
+
+    [MaxLength(2000)]
+    [Display(Name = "What to bring")]
+    public string? WhatToBring { get; set; }
+
+    [MaxLength(2000)]
+    [Display(Name = "Special instructions")]
+    public string? SpecialInstructions { get; set; }
+
+    [Display(Name = "Publish now")]
+    public bool IsPublished { get; set; } = true;
+
+    [DataType(DataType.Date)]
+    [Display(Name = "Expires on")]
+    public DateTime? ExpiresAt { get; set; }
+
+    public IReadOnlyCollection<SportSelectionPageItem> AvailableSports { get; set; } = [];
+
+    public IReadOnlyCollection<string> AvailableOpportunityTypes { get; set; } = [];
+}
+
+public sealed class PlayerListingListPageModel
+{
+    public bool CanCreateListings { get; set; }
+
+    public int Page { get; set; }
+
+    public int PageSize { get; set; }
+
+    public int TotalCount { get; set; }
+
+    public int TotalPages { get; set; }
+
+    public IReadOnlyCollection<ManagedPlayerSelectionPageItem> ManagedPlayers { get; set; } = [];
+
+    public IReadOnlyCollection<PlayerListingSummaryPageModel> Listings { get; set; } = [];
+}
+
+public sealed class PlayerListingSummaryPageModel
+{
+    public Guid ListingId { get; set; }
+
+    public string ListingType { get; set; } = string.Empty;
+
+    public string ListingTypeLabel { get; set; } = string.Empty;
+
+    public string Title { get; set; } = string.Empty;
+
+    public string? Description { get; set; }
+
+    public Guid? PlayerId { get; set; }
+
+    public string? PlayerName { get; set; }
+
+    public string? SportName { get; set; }
+
+    public decimal? AskingPrice { get; set; }
+
+    public string? Currency { get; set; }
+
+    public string? Condition { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+
+    public string? ZipCode { get; set; }
+
+    public bool IsPublished { get; set; }
+
+    public bool IsSearchable { get; set; }
+
+    public DateTime? PublishedAt { get; set; }
+
+    public DateTime? ExpiresAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+}
+
+public sealed class PlayerListingEditorPageModel
+{
+    public Guid? ListingId { get; set; }
+
+    public bool IsEditMode { get; set; }
+
+    [Required]
+    [MaxLength(50)]
+    [Display(Name = "Listing type")]
+    public string ListingType { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(200)]
+    [Display(Name = "Title")]
+    public string Title { get; set; } = string.Empty;
+
+    [MaxLength(4000)]
+    [Display(Name = "Description")]
+    public string? Description { get; set; }
+
+    [Display(Name = "Player profile")]
+    public Guid? PlayerId { get; set; }
+
+    [Display(Name = "Sport")]
+    public Guid? SportId { get; set; }
+
+    [Range(typeof(decimal), "0", "9999999")]
+    [Display(Name = "Asking price")]
+    public decimal? AskingPrice { get; set; }
+
+    [MaxLength(3)]
+    [Display(Name = "Currency")]
+    public string? Currency { get; set; }
+
+    [MaxLength(50)]
+    [Display(Name = "Condition")]
+    public string? Condition { get; set; }
+
+    [MaxLength(100)]
+    [Display(Name = "City")]
+    public string? City { get; set; }
+
+    [MaxLength(2)]
+    [Display(Name = "State")]
+    public string? State { get; set; }
+
+    [MaxLength(10)]
+    [Display(Name = "ZIP code")]
+    public string? ZipCode { get; set; }
+
+    [Display(Name = "Allow this listing in search")]
+    public bool IsSearchable { get; set; } = true;
+
+    [Display(Name = "Publish now")]
+    public bool IsPublished { get; set; } = true;
+
+    [DataType(DataType.Date)]
+    [Display(Name = "Expires on")]
+    public DateTime? ExpiresAt { get; set; }
+
+    public IReadOnlyCollection<PlayerListingTypeSelectionPageItem> AvailableListingTypes { get; set; } = [];
+
+    public IReadOnlyCollection<ManagedPlayerSelectionPageItem> AvailablePlayers { get; set; } = [];
+
+    public IReadOnlyCollection<SportSelectionPageItem> AvailableSports { get; set; } = [];
+}
+
+public sealed class PlayerListingDetailPageModel
+{
+    public Guid ListingId { get; set; }
+
+    public string ListingTypeLabel { get; set; } = string.Empty;
+
+    public string Title { get; set; } = string.Empty;
+
+    public string? Description { get; set; }
+
+    public string? SportName { get; set; }
+
+    public decimal? AskingPrice { get; set; }
+
+    public string? Currency { get; set; }
+
+    public string? Condition { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+
+    public string? ZipCode { get; set; }
+
+    public DateTime? PublishedAt { get; set; }
+
+    public DateTime? ExpiresAt { get; set; }
+
+    public string? PlayerName { get; set; }
+
+    public string? ProfileImageUrl { get; set; }
+
+    public string? SchoolName { get; set; }
+
+    public string? CurrentTeamName { get; set; }
+
+    public int? GraduationYear { get; set; }
+
+    public string? Height { get; set; }
+
+    public string? Weight { get; set; }
+
+    public string? ThrowsHand { get; set; }
+
+    public string? BatsHand { get; set; }
+
+    public bool IsContactPublic { get; set; }
+
+    public string? ContactEmail { get; set; }
+
+    public string? ContactPhone { get; set; }
+
+    public IReadOnlyCollection<PlayerListingSportSummaryPageItem> Sports { get; set; } = [];
+
+    public IReadOnlyCollection<ExternalProfileLinkPageItem> SocialLinks { get; set; } = [];
+
+    public IReadOnlyCollection<ExternalProfileLinkPageItem> RecruitingLinks { get; set; } = [];
+}
+
 public sealed class AccountSettingsPageModel
 {
     public ProfileSettingsPageModel Profile { get; set; } = new();
@@ -645,6 +1066,32 @@ public sealed record SportSelectionPageItem(
     Guid Id,
     string Name,
     bool IsSelected);
+
+public sealed record PlayerListingTypeSelectionPageItem(
+    string Code,
+    string Label,
+    string Description,
+    bool RequiresPlayerSelection,
+    bool RequiresSportSelection,
+    bool SupportsCondition,
+    bool SupportsAskingPrice);
+
+public sealed record ManagedPlayerSelectionPageItem(
+    Guid PlayerId,
+    string DisplayName,
+    string? City,
+    string? State,
+    string? ZipCode);
+
+public sealed record PlayerListingSportSummaryPageItem(
+    string SportName,
+    string? SkillLevel,
+    string? PrimaryPosition,
+    string? SecondaryPositions);
+
+public sealed record ExternalProfileLinkPageItem(
+    string Label,
+    string Url);
 
 public sealed class PlayerSportDetailPageModel
 {

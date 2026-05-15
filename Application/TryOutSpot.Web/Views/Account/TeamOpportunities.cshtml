@@ -1,0 +1,234 @@
+@model TeamOpportunityListPageModel
+
+@{
+    ViewData["Title"] = "Team Opportunities";
+}
+
+<section class="account-page">
+    <div class="account-heading">
+        <p class="account-kicker">Team management</p>
+        <h1>@Model.Team.TeamName opportunity listings</h1>
+        <p>Manage active listings, publish updates, and keep tryout discovery current for your team.</p>
+        @if (!string.IsNullOrWhiteSpace(Model.Team.OrganizationName))
+        {
+            <p class="section-help">Organization: @Model.Team.OrganizationName</p>
+        }
+    </div>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    @if (!Model.CanPostOpportunities)
+    {
+        <div class="account-alert">
+            Your current membership does not include opportunity posting. Upgrade to Basic Team or Professional Team to publish new listings.
+        </div>
+    }
+    else if (Model.HasLimitedPosting && !Model.HasUnlimitedPosting)
+    {
+        <div class="account-alert">
+            Basic Team allows up to @Model.BasicMonthlyPublishingLimit published opportunities per month.
+            This team has @Model.Team.PublishedThisMonthCount published this month.
+        </div>
+    }
+
+    <section class="form-section">
+        <div class="team-row-head">
+            <div>
+                <strong>@Model.Team.TeamName</strong>
+                <span>@Model.Team.Role</span>
+            </div>
+            <div class="team-metric-inline">
+                <span>@Model.Team.ActiveOpportunityCount active</span>
+                <span>@Model.Team.PublishedOpportunityCount published</span>
+                @if (Model.HasLimitedPosting && !Model.HasUnlimitedPosting)
+                {
+                    <span>@Model.Team.PublishedThisMonthCount/@Model.BasicMonthlyPublishingLimit this month</span>
+                }
+            </div>
+        </div>
+
+        <div class="team-summary-grid">
+            <div><span>Coverage</span><strong>@Model.Team.GeographicScope</strong></div>
+            <div><span>Team level</span><strong>@(string.IsNullOrWhiteSpace(Model.Team.TeamLevel) ? "Not set" : Model.Team.TeamLevel)</strong></div>
+            <div><span>Location</span><strong>@FormatLocation(Model.Team.City, Model.Team.State, Model.Team.ZipCode)</strong></div>
+            <div><span>Searchable</span><strong>@(Model.Team.IsSearchable ? "Yes" : "No")</strong></div>
+            <div><span>Public contact</span><strong>@(Model.Team.IsContactInfoVisible ? "Visible" : "Hidden")</strong></div>
+            <div><span>Listings</span><strong>@Model.TotalCount total</strong></div>
+        </div>
+
+        @if (Model.Team.Sports.Count > 0)
+        {
+            <div class="feature-code-list">
+                @foreach (var sport in Model.Team.Sports)
+                {
+                    <span>@sport</span>
+                }
+            </div>
+        }
+
+        <div class="form-actions mt-3">
+            @if (Model.CanPostOpportunities)
+            {
+                <a class="btn btn-primary" href="/account/onboarding/team-opportunities/@Model.Team.TeamId/new">Create listing</a>
+            }
+            <a class="btn btn-outline-secondary" href="/account/onboarding/team-opportunities">Back to teams</a>
+            <a class="btn btn-outline-secondary" href="/account/onboarding">Back to onboarding</a>
+        </div>
+    </section>
+
+    <section class="form-section">
+        <h2>Opportunity listings</h2>
+        @if (Model.Opportunities.Count == 0)
+        {
+            <p class="section-help">No active listings yet. Create your first listing to start recruiting players.</p>
+        }
+        else
+        {
+            <div class="plan-list">
+                @foreach (var opportunity in Model.Opportunities)
+                {
+                    <article class="plan-row plan-row-stack opportunity-row @(opportunity.IsPublished ? "published" : "draft")">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@opportunity.Title</strong>
+                                <span>@FormatOpportunityType(opportunity.Type) - @opportunity.SportName</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                <span>@(opportunity.IsPublished ? "Published" : "Unpublished")</span>
+                                <span>Updated @opportunity.UpdatedAt.ToLocalTime().ToString("MMM d, yyyy")</span>
+                            </div>
+                        </div>
+
+                        <div class="team-summary-grid opportunity-summary-grid">
+                            <div><span>Age group</span><strong>@(string.IsNullOrWhiteSpace(opportunity.AgeGroup) ? "Not set" : opportunity.AgeGroup)</strong></div>
+                            <div><span>Competition</span><strong>@(string.IsNullOrWhiteSpace(opportunity.CompetitionLevel) ? "Not set" : opportunity.CompetitionLevel)</strong></div>
+                            <div><span>Fee</span><strong>@FormatFee(opportunity.RegistrationFee)</strong></div>
+                            <div><span>Registration deadline</span><strong>@FormatDate(opportunity.RegistrationDeadline)</strong></div>
+                            <div><span>Event start</span><strong>@FormatDate(opportunity.EventDate)</strong></div>
+                            <div><span>Event end</span><strong>@FormatDate(opportunity.EventEndDate)</strong></div>
+                            <div><span>Location</span><strong>@FormatLocation(opportunity.City, opportunity.State, opportunity.ZipCode)</strong></div>
+                            <div><span>Expires</span><strong>@FormatDate(opportunity.ExpiresAt)</strong></div>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(opportunity.Description))
+                        {
+                            <p class="section-help">@opportunity.Description</p>
+                        }
+
+                        <div class="form-actions">
+                            <a class="btn btn-outline-primary" href="/account/onboarding/team-opportunities/@Model.Team.TeamId/@opportunity.OpportunityId/edit">Edit</a>
+
+                            @if (opportunity.IsPublished)
+                            {
+                                <form class="inline-form"
+                                      asp-action="SetTeamOpportunityPublication"
+                                      asp-controller="Account"
+                                      asp-route-teamId="@Model.Team.TeamId"
+                                      asp-route-opportunityId="@opportunity.OpportunityId"
+                                      method="post">
+                                    <input type="hidden" name="isPublished" value="false" />
+                                    <button type="submit" class="btn btn-outline-secondary">Unpublish</button>
+                                </form>
+                            }
+                            else if (Model.CanPostOpportunities)
+                            {
+                                <form class="inline-form"
+                                      asp-action="SetTeamOpportunityPublication"
+                                      asp-controller="Account"
+                                      asp-route-teamId="@Model.Team.TeamId"
+                                      asp-route-opportunityId="@opportunity.OpportunityId"
+                                      method="post">
+                                    <input type="hidden" name="isPublished" value="true" />
+                                    <button type="submit" class="btn btn-primary">Publish</button>
+                                </form>
+                            }
+
+                            <form class="inline-form"
+                                  asp-action="DeactivateTeamOpportunity"
+                                  asp-controller="Account"
+                                  asp-route-teamId="@Model.Team.TeamId"
+                                  asp-route-opportunityId="@opportunity.OpportunityId"
+                                  method="post">
+                                <button type="submit" class="btn btn-outline-danger">Deactivate</button>
+                            </form>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        @if (Model.TotalPages > 1)
+        {
+            <div class="form-actions mt-3">
+                @if (Model.Page > 1)
+                {
+                    <a class="btn btn-outline-secondary" href="/account/onboarding/team-opportunities/@Model.Team.TeamId?page=@(Model.Page - 1)&pageSize=@Model.PageSize">Previous</a>
+                }
+                <span class="section-help">Page @Model.Page of @Model.TotalPages (@Model.TotalCount total)</span>
+                @if (Model.Page < Model.TotalPages)
+                {
+                    <a class="btn btn-outline-secondary" href="/account/onboarding/team-opportunities/@Model.Team.TeamId?page=@(Model.Page + 1)&pageSize=@Model.PageSize">Next</a>
+                }
+            </div>
+        }
+    </section>
+</section>
+
+@functions {
+    private static string FormatOpportunityType(string type)
+    {
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            return "Opportunity";
+        }
+
+        return type
+            .Replace("_", " ", StringComparison.Ordinal)
+            .Trim()
+            .ToLowerInvariant() switch
+        {
+            "tryout" => "Tryout",
+            "roster opening" => "Roster opening",
+            "pickup player" => "Pickup player",
+            "camp" => "Camp",
+            "clinic" => "Clinic",
+            "tournament" => "Tournament",
+            "private workout" => "Private workout",
+            var fallback => char.ToUpperInvariant(fallback[0]) + fallback[1..]
+        };
+    }
+
+    private static string FormatLocation(string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim().ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        return parts.Count == 0 ? "Not set" : string.Join(", ", parts);
+    }
+
+    private static string FormatDate(DateTime? date)
+    {
+        return date?.ToLocalTime().ToString("MMM d, yyyy") ?? "Not set";
+    }
+
+    private static string FormatFee(decimal amount)
+    {
+        return amount <= 0 ? "Free" : amount.ToString("C");
+    }
+}

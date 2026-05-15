@@ -1,0 +1,231 @@
+@model TeamOpportunityEditorPageModel
+
+@{
+    ViewData["Title"] = Model.IsEditMode ? "Edit Team Opportunity" : "Create Team Opportunity";
+    var submitPath = Model.IsEditMode && Model.OpportunityId.HasValue
+        ? Url.Action("EditTeamOpportunity", "Account", new { teamId = Model.TeamId, opportunityId = Model.OpportunityId.Value })
+        : Url.Action("CreateTeamOpportunity", "Account", new { teamId = Model.TeamId });
+}
+
+<section class="account-page compact">
+    <div class="account-heading">
+        <p class="account-kicker">Team management</p>
+        <h1>@(Model.IsEditMode ? "Edit opportunity listing" : "Create opportunity listing")</h1>
+        <p>Build a listing that players can find in search and use to register with your team.</p>
+        <p class="required-note"><span class="required-marker">*</span> Required field</p>
+        <p class="section-help">
+            Team: <strong>@Model.TeamName</strong>
+            @if (!string.IsNullOrWhiteSpace(Model.OrganizationName))
+            {
+                <span> - @Model.OrganizationName</span>
+            }
+        </p>
+    </div>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    @if (!Model.CanPostOpportunities)
+    {
+        <div class="account-alert">
+            Your current membership does not include opportunity posting. Upgrade to Basic Team or Professional Team to publish listings.
+        </div>
+    }
+    else if (Model.HasLimitedPosting && !Model.HasUnlimitedPosting)
+    {
+        <div class="account-alert">
+            Basic Team usage this month: @Model.PublishedThisMonthCount/@Model.BasicMonthlyPublishingLimit published listings.
+        </div>
+    }
+
+    <section class="form-section">
+        <form method="post" action="@submitPath" class="stacked-form">
+            @Html.AntiForgeryToken()
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="form-grid two-column">
+                <div class="form-field">
+                    <label asp-for="Type" class="form-label">Opportunity type <span class="required-marker">*</span></label>
+                    <select asp-for="Type" class="form-select">
+                        @foreach (var type in Model.AvailableOpportunityTypes)
+                        {
+                            <option value="@type">@FormatOpportunityType(type)</option>
+                        }
+                    </select>
+                    <span asp-validation-for="Type" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="SportId" class="form-label">Sport <span class="required-marker">*</span></label>
+                    @if (Model.AvailableSports.Count == 0)
+                    {
+                        <select asp-for="SportId" class="form-select" disabled>
+                            <option value="">No sports assigned to this team</option>
+                        </select>
+                        <p class="section-help">Add at least one sport to the team profile before creating listings.</p>
+                    }
+                    else
+                    {
+                        <select asp-for="SportId" class="form-select">
+                            @foreach (var sport in Model.AvailableSports)
+                            {
+                                <option value="@sport.Id">@sport.Name</option>
+                            }
+                        </select>
+                    }
+                    <span asp-validation-for="SportId" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Title" class="form-label">Title <span class="required-marker">*</span></label>
+                    <input asp-for="Title" class="form-control" />
+                    <span asp-validation-for="Title" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="CompetitionLevel" class="form-label">Competition level</label>
+                    <input asp-for="CompetitionLevel" class="form-control" placeholder="Example: 12U B, Varsity, Club" />
+                    <span asp-validation-for="CompetitionLevel" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="AgeGroup" class="form-label">Age group</label>
+                    <input asp-for="AgeGroup" class="form-control" placeholder="Example: 14U, 16U, 18U" />
+                    <span asp-validation-for="AgeGroup" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="RegistrationFee" class="form-label">Registration fee</label>
+                    <input asp-for="RegistrationFee" class="form-control" inputmode="decimal" />
+                    <span asp-validation-for="RegistrationFee" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="RegistrationDeadline" class="form-label">Registration deadline</label>
+                    <input asp-for="RegistrationDeadline" class="form-control" />
+                    <span asp-validation-for="RegistrationDeadline" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="EventDate" class="form-label">Event start date</label>
+                    <input asp-for="EventDate" class="form-control" />
+                    <span asp-validation-for="EventDate" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="EventEndDate" class="form-label">Event end date</label>
+                    <input asp-for="EventEndDate" class="form-control" />
+                    <span asp-validation-for="EventEndDate" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="ExpiresAt" class="form-label">Expires on</label>
+                    <input asp-for="ExpiresAt" class="form-control" />
+                    <span asp-validation-for="ExpiresAt" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Location" class="form-label">Location</label>
+                    <input asp-for="Location" class="form-control" placeholder="Facility or field name" />
+                    <span asp-validation-for="Location" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Address" class="form-label">Address</label>
+                    <input asp-for="Address" class="form-control" placeholder="Street address" />
+                    <span asp-validation-for="Address" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="City" class="form-label">City</label>
+                    <input asp-for="City" class="form-control" autocomplete="address-level2" />
+                    <span asp-validation-for="City" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="State" class="form-label">State</label>
+                    <input asp-for="State" class="form-control" autocomplete="address-level1" maxlength="2" />
+                    <span asp-validation-for="State" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="ZipCode" class="form-label">ZIP code</label>
+                    <input asp-for="ZipCode" class="form-control" autocomplete="postal-code" />
+                    <span asp-validation-for="ZipCode" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="ContactEmail" class="form-label">Contact email</label>
+                    <input asp-for="ContactEmail" class="form-control" autocomplete="email" />
+                    <span asp-validation-for="ContactEmail" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="ContactPhone" class="form-label">Contact phone</label>
+                    <input asp-for="ContactPhone" class="form-control" autocomplete="tel" />
+                    <span asp-validation-for="ContactPhone" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="WebsiteUrl" class="form-label">Website URL</label>
+                    <input asp-for="WebsiteUrl" class="form-control" placeholder="https://..." />
+                    <span asp-validation-for="WebsiteUrl" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="form-field">
+                <label asp-for="Description" class="form-label">Description</label>
+                <textarea asp-for="Description" class="form-control" rows="4" placeholder="Describe what players should know before registering."></textarea>
+                <span asp-validation-for="Description" class="text-danger"></span>
+            </div>
+
+            <div class="form-grid">
+                <div class="form-field">
+                    <label asp-for="RequiredEquipment" class="form-label">Required equipment</label>
+                    <textarea asp-for="RequiredEquipment" class="form-control" rows="3" placeholder="Optional equipment checklist."></textarea>
+                    <span asp-validation-for="RequiredEquipment" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="WhatToBring" class="form-label">What to bring</label>
+                    <textarea asp-for="WhatToBring" class="form-control" rows="3" placeholder="Optional preparation notes."></textarea>
+                    <span asp-validation-for="WhatToBring" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="SpecialInstructions" class="form-label">Special instructions</label>
+                    <textarea asp-for="SpecialInstructions" class="form-control" rows="3" placeholder="Optional arrival, check-in, or waiver details."></textarea>
+                    <span asp-validation-for="SpecialInstructions" class="text-danger"></span>
+                </div>
+            </div>
+
+            <label class="sms-consent-option" for="RegistrationRequired">
+                <input asp-for="RegistrationRequired" class="form-check-input" />
+                <span>Registration is required before attendance.</span>
+            </label>
+
+            <label class="sms-consent-option" for="IsPublished">
+                <input asp-for="IsPublished" class="form-check-input" />
+                <span>Publish this opportunity now so it appears in discovery.</span>
+            </label>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">@(Model.IsEditMode ? "Update listing" : "Create listing")</button>
+                <a class="btn btn-outline-secondary" href="/account/onboarding/team-opportunities/@Model.TeamId">Back to listings</a>
+                <a class="btn btn-outline-secondary" href="/account/onboarding/team-opportunities">Back to teams</a>
+            </div>
+        </form>
+    </section>
+</section>
+
+@functions {
+    private static string FormatOpportunityType(string type)
+    {
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            return "Opportunity";
+        }
+
+        return type
+            .Replace("_", " ", StringComparison.Ordinal)
+            .Trim()
+            .ToLowerInvariant() switch
+        {
+            "tryout" => "Tryout",
+            "roster opening" => "Roster opening",
+            "pickup player" => "Pickup player",
+            "camp" => "Camp",
+            "clinic" => "Clinic",
+            "tournament" => "Tournament",
+            "private workout" => "Private workout",
+            var fallback => char.ToUpperInvariant(fallback[0]) + fallback[1..]
+        };
+    }
+}
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

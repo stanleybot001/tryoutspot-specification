@@ -10,6 +10,7 @@ using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
+using TryOutSpot.Web.Listings;
 using TryOutSpot.Web.Models.Billing;
 using TryOutSpot.Web.Models.WebAccount;
 using TryOutSpot.Web.Security;
@@ -26,12 +27,14 @@ public sealed class AccountController(
     IAccountEmailSender accountEmailSender,
     IAccountSmsSender accountSmsSender,
     IEntitlementService entitlementService,
+    IZipRadiusSearchService zipRadiusSearchService,
     IExternalLoginTicketService externalLoginTicketService,
     IStripeBillingService stripeBillingService,
     IStripeSubscriptionSyncService stripeSubscriptionSyncService,
     IOptions<GoogleAuthenticationOptions> googleOptions,
     IOptions<StripeBillingOptions> stripeOptions) : Controller
 {
+    private const int BasicTeamMonthlyPublishingLimit = 5;
     private readonly GoogleAuthenticationOptions googleAuthentication = googleOptions.Value;
     private readonly StripeBillingOptions stripeBillingOptions = stripeOptions.Value;
     private static readonly string[] PlayerRelationshipOptions = ["Parent", "Guardian", "Self", "Coach", "Other"];
@@ -44,6 +47,67 @@ public sealed class AccountController(
         TryOutSpotRoles.OrganizationAdmin
     ];
     private static readonly string[] TeamGeographicScopeOptions = ["Local", "Regional", "National"];
+    private static readonly string[] TeamOpportunityTypeOptions =
+    [
+        "tryout",
+        "roster_opening",
+        "pickup_player",
+        "camp",
+        "clinic",
+        "tournament",
+        "private_workout"
+    ];
+    private static readonly PlayerListingTypeSelectionPageItem[] PlayerListingTypeOptions =
+    [
+        new(
+            TryOutSpotPlayerListingTypes.PickupPlayer,
+            "Pickup player availability",
+            "Post when a player is available to fill in for games, tournaments, or weekend events.",
+            RequiresPlayerSelection: true,
+            RequiresSportSelection: true,
+            SupportsCondition: false,
+            SupportsAskingPrice: false),
+        new(
+            TryOutSpotPlayerListingTypes.LookingForTeam,
+            "Looking for a team",
+            "Share that a player is looking for a new team, coach, or roster opening.",
+            RequiresPlayerSelection: true,
+            RequiresSportSelection: true,
+            SupportsCondition: false,
+            SupportsAskingPrice: false),
+        new(
+            TryOutSpotPlayerListingTypes.UsedEquipment,
+            "Used equipment",
+            "List used gear that families can sell to others in the community.",
+            RequiresPlayerSelection: false,
+            RequiresSportSelection: false,
+            SupportsCondition: true,
+            SupportsAskingPrice: true),
+        new(
+            TryOutSpotPlayerListingTypes.WantedEquipment,
+            "Wanted equipment",
+            "Post gear requests when a player is searching for equipment to buy.",
+            RequiresPlayerSelection: false,
+            RequiresSportSelection: false,
+            SupportsCondition: false,
+            SupportsAskingPrice: true),
+        new(
+            TryOutSpotPlayerListingTypes.PrivateLessons,
+            "Private lessons",
+            "Post private lesson needs or coaching availability tied to a player and sport.",
+            RequiresPlayerSelection: true,
+            RequiresSportSelection: true,
+            SupportsCondition: false,
+            SupportsAskingPrice: true),
+        new(
+            TryOutSpotPlayerListingTypes.TrainingPartner,
+            "Training partner",
+            "Find local training partners for drills, workouts, and shared practice sessions.",
+            RequiresPlayerSelection: true,
+            RequiresSportSelection: true,
+            SupportsCondition: false,
+            SupportsAskingPrice: false)
+    ];
 
     [HttpGet("register")]
     public async Task<IActionResult> Register([FromQuery] string? returnUrl = null)
@@ -886,6 +950,324 @@ public sealed class AccountController(
 
     [Authorize(
         AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.FeaturePolicyPrefix + TryOutSpotFeatureCodes.CreatePlayerListings)]
+    [HttpGet("onboarding/player-listings")]
+    public async Task<IActionResult> ManagePlayerListings(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(ManagePlayerListings), new { page, pageSize })
+            });
+        }
+
+        var model = await BuildPlayerListingListPageModelAsync(user, page, pageSize, cancellationToken);
+        return View(model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.FeaturePolicyPrefix + TryOutSpotFeatureCodes.CreatePlayerListings)]
+    [HttpGet("onboarding/player-listings/new")]
+    public async Task<IActionResult> CreatePlayerListing(CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(CreatePlayerListing)) });
+        }
+
+        var model = await BuildPlayerListingEditorPageModelAsync(user, null, null, cancellationToken);
+        return View("EditPlayerListing", model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.FeaturePolicyPrefix + TryOutSpotFeatureCodes.CreatePlayerListings)]
+    [HttpPost("onboarding/player-listings/new")]
+    public async Task<IActionResult> CreatePlayerListing(
+        PlayerListingEditorPageModel model,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(CreatePlayerListing)) });
+        }
+
+        var preparedModel = await BuildPlayerListingEditorPageModelAsync(user, null, model, cancellationToken);
+        if (preparedModel is null)
+        {
+            TempData["StatusMessage"] = "Listing setup could not be loaded.";
+            return RedirectToAction(nameof(ManagePlayerListings));
+        }
+
+        model = preparedModel;
+        var validationContext = await ValidatePlayerListingEditorInputAsync(user, model, cancellationToken);
+        if (!ModelState.IsValid || validationContext.ListingTypeOption is null)
+        {
+            return View("EditPlayerListing", model);
+        }
+
+        var now = DateTime.UtcNow;
+        var listing = new PlayerListing
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            PlayerId = validationContext.Player?.Id,
+            SportId = model.SportId,
+            ListingType = validationContext.ListingTypeOption.Code,
+            Title = model.Title.Trim(),
+            Description = NormalizeOptional(model.Description),
+            AskingPrice = validationContext.ListingTypeOption.SupportsAskingPrice ? model.AskingPrice : null,
+            Currency = validationContext.ListingTypeOption.SupportsAskingPrice
+                ? NormalizeCurrency(model.Currency) ?? "USD"
+                : null,
+            Condition = validationContext.ListingTypeOption.SupportsCondition ? NormalizeOptional(model.Condition) : null,
+            City = NormalizeOptional(model.City) ?? validationContext.Player?.City ?? user.City,
+            State = NormalizeState(model.State) ?? validationContext.Player?.State ?? user.State,
+            ZipCode = ResolveZipCodeOrAddModelError(
+                model.ZipCode,
+                validationContext.Player?.ZipCode ?? user.ZipCode,
+                nameof(model.ZipCode)),
+            IsSearchable = model.IsSearchable,
+            IsPublished = model.IsPublished,
+            PublishedAt = model.IsPublished ? now : null,
+            ExpiresAt = NormalizeUtc(model.ExpiresAt),
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        };
+
+        if (!ModelState.IsValid)
+        {
+            return View("EditPlayerListing", model);
+        }
+
+        dbContext.PlayerListings.Add(listing);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = "Listing created.";
+        return RedirectToAction(nameof(ManagePlayerListings));
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.FeaturePolicyPrefix + TryOutSpotFeatureCodes.CreatePlayerListings)]
+    [HttpGet("onboarding/player-listings/{listingId:guid}/edit")]
+    public async Task<IActionResult> EditPlayerListing(Guid listingId, CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(EditPlayerListing), new { listingId })
+            });
+        }
+
+        var model = await BuildPlayerListingEditorPageModelAsync(user, listingId, null, cancellationToken);
+        if (model is null)
+        {
+            TempData["StatusMessage"] = "Listing was not found for this account.";
+            return RedirectToAction(nameof(ManagePlayerListings));
+        }
+
+        return View("EditPlayerListing", model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.FeaturePolicyPrefix + TryOutSpotFeatureCodes.CreatePlayerListings)]
+    [HttpPost("onboarding/player-listings/{listingId:guid}/edit")]
+    public async Task<IActionResult> EditPlayerListing(
+        Guid listingId,
+        PlayerListingEditorPageModel model,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(EditPlayerListing), new { listingId })
+            });
+        }
+
+        var listing = await dbContext.PlayerListings
+            .SingleOrDefaultAsync(currentListing =>
+                currentListing.Id == listingId
+                && currentListing.UserId == user.Id
+                && currentListing.IsActive,
+                cancellationToken);
+        if (listing is null)
+        {
+            TempData["StatusMessage"] = "Listing was not found for this account.";
+            return RedirectToAction(nameof(ManagePlayerListings));
+        }
+
+        model = await BuildPlayerListingEditorPageModelAsync(user, listingId, model, cancellationToken)
+            ?? model;
+        var validationContext = await ValidatePlayerListingEditorInputAsync(user, model, cancellationToken);
+        if (!ModelState.IsValid || validationContext.ListingTypeOption is null)
+        {
+            return View("EditPlayerListing", model);
+        }
+
+        listing.PlayerId = validationContext.Player?.Id;
+        listing.SportId = model.SportId;
+        listing.ListingType = validationContext.ListingTypeOption.Code;
+        listing.Title = model.Title.Trim();
+        listing.Description = NormalizeOptional(model.Description);
+        listing.AskingPrice = validationContext.ListingTypeOption.SupportsAskingPrice ? model.AskingPrice : null;
+        listing.Currency = validationContext.ListingTypeOption.SupportsAskingPrice
+            ? NormalizeCurrency(model.Currency) ?? "USD"
+            : null;
+        listing.Condition = validationContext.ListingTypeOption.SupportsCondition ? NormalizeOptional(model.Condition) : null;
+        listing.City = NormalizeOptional(model.City) ?? validationContext.Player?.City ?? user.City;
+        listing.State = NormalizeState(model.State) ?? validationContext.Player?.State ?? user.State;
+        listing.ZipCode = ResolveZipCodeOrAddModelError(
+            model.ZipCode,
+            validationContext.Player?.ZipCode ?? user.ZipCode,
+            nameof(model.ZipCode));
+        listing.IsSearchable = model.IsSearchable;
+        listing.IsPublished = model.IsPublished;
+        listing.PublishedAt = model.IsPublished
+            ? listing.PublishedAt ?? DateTime.UtcNow
+            : null;
+        listing.ExpiresAt = NormalizeUtc(model.ExpiresAt);
+        listing.UpdatedAt = DateTime.UtcNow;
+
+        if (!ModelState.IsValid)
+        {
+            return View("EditPlayerListing", model);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        TempData["StatusMessage"] = "Listing updated.";
+        return RedirectToAction(nameof(ManagePlayerListings));
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.FeaturePolicyPrefix + TryOutSpotFeatureCodes.CreatePlayerListings)]
+    [HttpPost("onboarding/player-listings/{listingId:guid}/publication")]
+    public async Task<IActionResult> SetPlayerListingPublication(
+        Guid listingId,
+        [FromForm] bool isPublished,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(ManagePlayerListings))
+            });
+        }
+
+        var listing = await dbContext.PlayerListings
+            .SingleOrDefaultAsync(currentListing =>
+                currentListing.Id == listingId
+                && currentListing.UserId == user.Id
+                && currentListing.IsActive,
+                cancellationToken);
+        if (listing is null)
+        {
+            TempData["StatusMessage"] = "Listing was not found for this account.";
+            return RedirectToAction(nameof(ManagePlayerListings));
+        }
+
+        if (isPublished && listing.ExpiresAt.HasValue && listing.ExpiresAt <= DateTime.UtcNow)
+        {
+            TempData["StatusMessage"] = "This listing has already expired. Extend the expiration date before publishing.";
+            return RedirectToAction(nameof(ManagePlayerListings));
+        }
+
+        var now = DateTime.UtcNow;
+        listing.IsPublished = isPublished;
+        listing.PublishedAt = isPublished
+            ? listing.PublishedAt ?? now
+            : null;
+        listing.UpdatedAt = now;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        TempData["StatusMessage"] = isPublished ? "Listing published." : "Listing unpublished.";
+        return RedirectToAction(nameof(ManagePlayerListings));
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.FeaturePolicyPrefix + TryOutSpotFeatureCodes.CreatePlayerListings)]
+    [HttpPost("onboarding/player-listings/{listingId:guid}/deactivate")]
+    public async Task<IActionResult> DeactivatePlayerListing(
+        Guid listingId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(ManagePlayerListings))
+            });
+        }
+
+        var listing = await dbContext.PlayerListings
+            .SingleOrDefaultAsync(currentListing =>
+                currentListing.Id == listingId
+                && currentListing.UserId == user.Id
+                && currentListing.IsActive,
+                cancellationToken);
+        if (listing is null)
+        {
+            TempData["StatusMessage"] = "Listing was not found for this account.";
+            return RedirectToAction(nameof(ManagePlayerListings));
+        }
+
+        listing.IsActive = false;
+        listing.IsPublished = false;
+        listing.PublishedAt = null;
+        listing.UpdatedAt = DateTime.UtcNow;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        TempData["StatusMessage"] = "Listing deactivated.";
+        return RedirectToAction(nameof(ManagePlayerListings));
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/player-listings/{listingId:guid}")]
+    public async Task<IActionResult> PlayerListingDetail(Guid listingId, CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var listing = await dbContext.PlayerListings
+            .AsNoTracking()
+            .Where(currentListing => currentListing.Id == listingId)
+            .Where(currentListing => currentListing.IsActive)
+            .Where(currentListing => currentListing.IsPublished)
+            .Where(currentListing => currentListing.IsSearchable)
+            .Where(currentListing => currentListing.ExpiresAt == null || currentListing.ExpiresAt > now)
+            .Include(currentListing => currentListing.Player)
+                .ThenInclude(player => player.PlayerSports)
+                    .ThenInclude(playerSport => playerSport.Sport)
+            .Include(currentListing => currentListing.Sport)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (listing is null)
+        {
+            return NotFound();
+        }
+
+        var model = BuildPlayerListingDetailPageModel(listing);
+        return View(model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
         Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
     [HttpGet("onboarding/add-team-or-organization")]
     public async Task<IActionResult> AddTeamOrOrganization(CancellationToken cancellationToken)
@@ -1071,6 +1453,457 @@ public sealed class AccountController(
         await dbContext.SaveChangesAsync(cancellationToken);
         TempData["StatusMessage"] = "Team setup saved.";
         return RedirectToAction(nameof(Onboarding));
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
+    [HttpGet("onboarding/team-opportunities")]
+    public async Task<IActionResult> ManageTeamOpportunities(CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(ManageTeamOpportunities)) });
+        }
+
+        var model = await BuildTeamOpportunityDashboardPageModelAsync(user, cancellationToken);
+        return View(model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
+    [HttpGet("onboarding/team-opportunities/{teamId:guid}")]
+    public async Task<IActionResult> TeamOpportunities(
+        Guid teamId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(TeamOpportunities), new { teamId, page, pageSize })
+            });
+        }
+
+        var model = await BuildTeamOpportunityListPageModelAsync(user, teamId, page, pageSize, cancellationToken);
+        if (model is null)
+        {
+            TempData["StatusMessage"] = "Team access was not found for this account.";
+            return RedirectToAction(nameof(ManageTeamOpportunities));
+        }
+
+        return View(model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
+    [HttpGet("onboarding/team-opportunities/{teamId:guid}/new")]
+    public async Task<IActionResult> CreateTeamOpportunity(Guid teamId, CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(CreateTeamOpportunity), new { teamId })
+            });
+        }
+
+        var model = await BuildTeamOpportunityEditorPageModelAsync(user, teamId, null, null, cancellationToken);
+        if (model is null)
+        {
+            TempData["StatusMessage"] = "Team access was not found for this account.";
+            return RedirectToAction(nameof(ManageTeamOpportunities));
+        }
+
+        if (!model.CanPostOpportunities)
+        {
+            TempData["StatusMessage"] = "Your current membership does not include opportunity posting.";
+            return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+        }
+
+        return View("EditTeamOpportunity", model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
+    [HttpPost("onboarding/team-opportunities/{teamId:guid}/new")]
+    public async Task<IActionResult> CreateTeamOpportunity(
+        Guid teamId,
+        TeamOpportunityEditorPageModel model,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(CreateTeamOpportunity), new { teamId })
+            });
+        }
+
+        var managedTeam = await GetManagedTeamRoleContextAsync(user.Id, teamId, cancellationToken);
+        if (managedTeam is null)
+        {
+            TempData["StatusMessage"] = "Team access was not found for this account.";
+            return RedirectToAction(nameof(ManageTeamOpportunities));
+        }
+
+        var postingAccess = await ResolveTeamPostingAccessAsync(user.Id, cancellationToken);
+        model = await BuildTeamOpportunityEditorPageModelAsync(
+            user,
+            teamId,
+            null,
+            model,
+            cancellationToken) ?? model;
+
+        if (!postingAccess.CanPostOpportunities)
+        {
+            TempData["StatusMessage"] = "Your current membership does not include opportunity posting.";
+            return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+        }
+
+        var normalizedZipCode = ResolveZipCodeOrAddModelError(
+            model.ZipCode,
+            managedTeam.Team.ZipCode,
+            nameof(model.ZipCode));
+        await ValidateTeamOpportunityEditorInputAsync(model, managedTeam.Team, cancellationToken);
+
+        if (model.IsPublished)
+        {
+            await EnsureCanPublishTeamOpportunityAsync(
+                teamId,
+                postingAccess,
+                currentlyPublished: false,
+                cancellationToken);
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return View("EditTeamOpportunity", model);
+        }
+
+        var now = DateTime.UtcNow;
+        var opportunity = new Opportunity
+        {
+            Id = Guid.NewGuid(),
+            TeamId = teamId,
+            SportId = model.SportId,
+            Type = model.Type.Trim(),
+            Title = model.Title.Trim(),
+            Description = NormalizeOptional(model.Description),
+            CompetitionLevel = NormalizeOptional(model.CompetitionLevel),
+            AgeGroup = NormalizeOptional(model.AgeGroup),
+            RegistrationRequired = model.RegistrationRequired,
+            RegistrationDeadline = NormalizeUtc(model.RegistrationDeadline),
+            RegistrationFee = model.RegistrationFee,
+            EventDate = NormalizeUtc(model.EventDate),
+            EventEndDate = NormalizeUtc(model.EventEndDate),
+            Location = NormalizeOptional(model.Location),
+            Address = NormalizeOptional(model.Address),
+            City = NormalizeOptional(model.City) ?? managedTeam.Team.City,
+            State = NormalizeState(model.State) ?? managedTeam.Team.State,
+            ZipCode = normalizedZipCode,
+            ContactEmail = NormalizeOptional(model.ContactEmail) ?? managedTeam.Team.Email,
+            ContactPhone = NormalizeOptional(model.ContactPhone) ?? managedTeam.Team.PhoneNumber,
+            WebsiteUrl = NormalizeOptional(model.WebsiteUrl) ?? managedTeam.Team.WebsiteUrl,
+            RequiredEquipment = NormalizeOptional(model.RequiredEquipment),
+            WhatToBring = NormalizeOptional(model.WhatToBring),
+            SpecialInstructions = NormalizeOptional(model.SpecialInstructions),
+            IsPublished = model.IsPublished,
+            PublishedAt = model.IsPublished ? now : null,
+            ExpiresAt = NormalizeUtc(model.ExpiresAt),
+            ViewCount = 0,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        };
+
+        dbContext.Opportunities.Add(opportunity);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = "Opportunity created.";
+        return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
+    [HttpGet("onboarding/team-opportunities/{teamId:guid}/{opportunityId:guid}/edit")]
+    public async Task<IActionResult> EditTeamOpportunity(
+        Guid teamId,
+        Guid opportunityId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(EditTeamOpportunity), new { teamId, opportunityId })
+            });
+        }
+
+        var model = await BuildTeamOpportunityEditorPageModelAsync(
+            user,
+            teamId,
+            opportunityId,
+            null,
+            cancellationToken);
+        if (model is null)
+        {
+            TempData["StatusMessage"] = "Opportunity access was not found for this account.";
+            return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+        }
+
+        if (!model.CanPostOpportunities)
+        {
+            TempData["StatusMessage"] = "Your current membership does not include opportunity posting.";
+            return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+        }
+
+        return View("EditTeamOpportunity", model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
+    [HttpPost("onboarding/team-opportunities/{teamId:guid}/{opportunityId:guid}/edit")]
+    public async Task<IActionResult> EditTeamOpportunity(
+        Guid teamId,
+        Guid opportunityId,
+        TeamOpportunityEditorPageModel model,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(EditTeamOpportunity), new { teamId, opportunityId })
+            });
+        }
+
+        var managedTeam = await GetManagedTeamRoleContextAsync(user.Id, teamId, cancellationToken);
+        if (managedTeam is null)
+        {
+            TempData["StatusMessage"] = "Team access was not found for this account.";
+            return RedirectToAction(nameof(ManageTeamOpportunities));
+        }
+
+        var postingAccess = await ResolveTeamPostingAccessAsync(user.Id, cancellationToken);
+        model = await BuildTeamOpportunityEditorPageModelAsync(
+            user,
+            teamId,
+            opportunityId,
+            model,
+            cancellationToken) ?? model;
+
+        if (!postingAccess.CanPostOpportunities)
+        {
+            TempData["StatusMessage"] = "Your current membership does not include opportunity posting.";
+            return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+        }
+
+        var opportunity = await dbContext.Opportunities
+            .SingleOrDefaultAsync(currentOpportunity =>
+                currentOpportunity.Id == opportunityId
+                && currentOpportunity.TeamId == teamId
+                && currentOpportunity.IsActive,
+                cancellationToken);
+        if (opportunity is null)
+        {
+            TempData["StatusMessage"] = "Opportunity was not found.";
+            return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+        }
+
+        var normalizedZipCode = ResolveZipCodeOrAddModelError(
+            model.ZipCode,
+            managedTeam.Team.ZipCode,
+            nameof(model.ZipCode));
+        await ValidateTeamOpportunityEditorInputAsync(model, managedTeam.Team, cancellationToken);
+
+        if (model.IsPublished)
+        {
+            await EnsureCanPublishTeamOpportunityAsync(
+                teamId,
+                postingAccess,
+                opportunity.IsPublished,
+                cancellationToken);
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return View("EditTeamOpportunity", model);
+        }
+
+        var now = DateTime.UtcNow;
+        opportunity.SportId = model.SportId;
+        opportunity.Type = model.Type.Trim();
+        opportunity.Title = model.Title.Trim();
+        opportunity.Description = NormalizeOptional(model.Description);
+        opportunity.CompetitionLevel = NormalizeOptional(model.CompetitionLevel);
+        opportunity.AgeGroup = NormalizeOptional(model.AgeGroup);
+        opportunity.RegistrationRequired = model.RegistrationRequired;
+        opportunity.RegistrationDeadline = NormalizeUtc(model.RegistrationDeadline);
+        opportunity.RegistrationFee = model.RegistrationFee;
+        opportunity.EventDate = NormalizeUtc(model.EventDate);
+        opportunity.EventEndDate = NormalizeUtc(model.EventEndDate);
+        opportunity.Location = NormalizeOptional(model.Location);
+        opportunity.Address = NormalizeOptional(model.Address);
+        opportunity.City = NormalizeOptional(model.City) ?? managedTeam.Team.City;
+        opportunity.State = NormalizeState(model.State) ?? managedTeam.Team.State;
+        opportunity.ZipCode = normalizedZipCode;
+        opportunity.ContactEmail = NormalizeOptional(model.ContactEmail) ?? managedTeam.Team.Email;
+        opportunity.ContactPhone = NormalizeOptional(model.ContactPhone) ?? managedTeam.Team.PhoneNumber;
+        opportunity.WebsiteUrl = NormalizeOptional(model.WebsiteUrl) ?? managedTeam.Team.WebsiteUrl;
+        opportunity.RequiredEquipment = NormalizeOptional(model.RequiredEquipment);
+        opportunity.WhatToBring = NormalizeOptional(model.WhatToBring);
+        opportunity.SpecialInstructions = NormalizeOptional(model.SpecialInstructions);
+        opportunity.IsPublished = model.IsPublished;
+        opportunity.PublishedAt = model.IsPublished
+            ? opportunity.PublishedAt ?? now
+            : null;
+        opportunity.ExpiresAt = NormalizeUtc(model.ExpiresAt);
+        opportunity.UpdatedAt = now;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = "Opportunity updated.";
+        return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
+    [HttpPost("onboarding/team-opportunities/{teamId:guid}/{opportunityId:guid}/publication")]
+    public async Task<IActionResult> SetTeamOpportunityPublication(
+        Guid teamId,
+        Guid opportunityId,
+        [FromForm] bool isPublished,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(TeamOpportunities), new { teamId })
+            });
+        }
+
+        var managedTeam = await GetManagedTeamRoleContextAsync(user.Id, teamId, cancellationToken);
+        if (managedTeam is null)
+        {
+            TempData["StatusMessage"] = "Team access was not found for this account.";
+            return RedirectToAction(nameof(ManageTeamOpportunities));
+        }
+
+        var opportunity = await dbContext.Opportunities
+            .SingleOrDefaultAsync(currentOpportunity =>
+                currentOpportunity.Id == opportunityId
+                && currentOpportunity.TeamId == teamId
+                && currentOpportunity.IsActive,
+                cancellationToken);
+        if (opportunity is null)
+        {
+            TempData["StatusMessage"] = "Opportunity was not found.";
+            return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+        }
+
+        if (isPublished)
+        {
+            var postingAccess = await ResolveTeamPostingAccessAsync(user.Id, cancellationToken);
+            if (!postingAccess.CanPostOpportunities)
+            {
+                TempData["StatusMessage"] = "Your current membership does not include opportunity posting.";
+                return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+            }
+
+            await EnsureCanPublishTeamOpportunityAsync(
+                teamId,
+                postingAccess,
+                opportunity.IsPublished,
+                cancellationToken);
+            if (!ModelState.IsValid)
+            {
+                var publicationError = ModelState.Values
+                    .SelectMany(entry => entry.Errors)
+                    .Select(error => error.ErrorMessage)
+                    .FirstOrDefault();
+                TempData["StatusMessage"] = string.IsNullOrWhiteSpace(publicationError)
+                    ? "Publishing could not be completed."
+                    : publicationError;
+                return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+            }
+        }
+
+        var now = DateTime.UtcNow;
+        opportunity.IsPublished = isPublished;
+        opportunity.PublishedAt = isPublished
+            ? opportunity.PublishedAt ?? now
+            : null;
+        opportunity.UpdatedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = isPublished
+            ? "Opportunity published."
+            : "Opportunity unpublished.";
+        return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
+    [HttpPost("onboarding/team-opportunities/{teamId:guid}/{opportunityId:guid}/deactivate")]
+    public async Task<IActionResult> DeactivateTeamOpportunity(
+        Guid teamId,
+        Guid opportunityId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(TeamOpportunities), new { teamId })
+            });
+        }
+
+        var managedTeam = await GetManagedTeamRoleContextAsync(user.Id, teamId, cancellationToken);
+        if (managedTeam is null)
+        {
+            TempData["StatusMessage"] = "Team access was not found for this account.";
+            return RedirectToAction(nameof(ManageTeamOpportunities));
+        }
+
+        var opportunity = await dbContext.Opportunities
+            .SingleOrDefaultAsync(currentOpportunity =>
+                currentOpportunity.Id == opportunityId
+                && currentOpportunity.TeamId == teamId
+                && currentOpportunity.IsActive,
+                cancellationToken);
+        if (opportunity is null)
+        {
+            TempData["StatusMessage"] = "Opportunity was not found.";
+            return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+        }
+
+        opportunity.IsActive = false;
+        opportunity.IsPublished = false;
+        opportunity.PublishedAt = null;
+        opportunity.UpdatedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = "Opportunity deactivated.";
+        return RedirectToAction(nameof(TeamOpportunities), new { teamId });
     }
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
@@ -1868,10 +2701,27 @@ public sealed class AccountController(
             && await dbContext.UserPlayerRelationships
                 .AsNoTracking()
                 .AnyAsync(relationship => relationship.UserId == user.Id, cancellationToken);
+        var hasPlayerListingManagementAccess = entitlements?.FeatureCodes.Contains(
+                TryOutSpotFeatureCodes.CreatePlayerListings,
+                StringComparer.Ordinal) == true;
+        var hasManagedPlayerListings = hasPlayerOrParentRole
+            && hasPlayerListingManagementAccess
+            && await dbContext.PlayerListings
+                .AsNoTracking()
+                .AnyAsync(listing => listing.UserId == user.Id && listing.IsActive, cancellationToken);
         var hasTeamRole = hasTeamOrOrganizationRole
             && await dbContext.UserTeamRoles
                 .AsNoTracking()
                 .AnyAsync(teamRole => teamRole.UserId == user.Id, cancellationToken);
+        var hasManagedTeamOpportunities = hasTeamRole
+            && await dbContext.Opportunities
+                .AsNoTracking()
+                .AnyAsync(opportunity =>
+                    opportunity.IsActive
+                    && opportunity.Team.UserTeamRoles.Any(teamRole =>
+                        teamRole.UserId == user.Id
+                        && teamRole.IsActive),
+                    cancellationToken);
         var subscriptions = await dbContext.Subscriptions
             .AsNoTracking()
             .Where(currentSubscription => currentSubscription.UserId == user.Id)
@@ -1909,6 +2759,15 @@ public sealed class AccountController(
                 "Create a player profile before registering for tryouts.",
                 false,
                 hasLinkedPlayers));
+            if (hasPlayerListingManagementAccess)
+            {
+                steps.Add(new OnboardingStepPageItem(
+                    "manage_player_listings",
+                    "Manage player listings",
+                    "Create and manage pickup, team search, equipment, lesson, and training partner listings.",
+                    false,
+                    hasManagedPlayerListings));
+            }
         }
 
         if (hasTeamOrOrganizationRole && hasTeamProfileManagementAccess)
@@ -1919,6 +2778,12 @@ public sealed class AccountController(
                 "Create or join a team or organization before posting opportunities.",
                 false,
                 hasTeamRole));
+            steps.Add(new OnboardingStepPageItem(
+                "manage_team_opportunities",
+                "Manage team opportunities",
+                "Create, edit, publish, and deactivate team listings.",
+                false,
+                hasManagedTeamOpportunities));
         }
 
         if (recommendedPlans.Any(plan => plan.RequiresStripeSubscription))
@@ -2015,6 +2880,276 @@ public sealed class AccountController(
             : model.ZipCode;
 
         return model;
+    }
+
+    private async Task<PlayerListingListPageModel> BuildPlayerListingListPageModelAsync(
+        User user,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var managedPlayers = await GetManagedPlayersAsync(user.Id, cancellationToken);
+        var query = dbContext.PlayerListings
+            .AsNoTracking()
+            .Where(listing => listing.UserId == user.Id)
+            .Where(listing => listing.IsActive);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var listings = await query
+            .Include(listing => listing.Player)
+            .Include(listing => listing.Sport)
+            .OrderByDescending(listing => listing.UpdatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToArrayAsync(cancellationToken);
+
+        return new PlayerListingListPageModel
+        {
+            CanCreateListings = true,
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount,
+            TotalPages = totalCount == 0 ? 1 : (int)Math.Ceiling(totalCount / (double)pageSize),
+            ManagedPlayers = managedPlayers,
+            Listings = listings.Select(ToPlayerListingSummaryPageModel).ToArray()
+        };
+    }
+
+    private async Task<PlayerListingEditorPageModel?> BuildPlayerListingEditorPageModelAsync(
+        User user,
+        Guid? listingId,
+        PlayerListingEditorPageModel? model,
+        CancellationToken cancellationToken)
+    {
+        PlayerListing? listing = null;
+        if (listingId.HasValue)
+        {
+            listing = await dbContext.PlayerListings
+                .AsNoTracking()
+                .Where(currentListing => currentListing.Id == listingId.Value)
+                .Where(currentListing => currentListing.UserId == user.Id)
+                .Where(currentListing => currentListing.IsActive)
+                .SingleOrDefaultAsync(cancellationToken);
+
+            if (listing is null && model is null)
+            {
+                return null;
+            }
+        }
+
+        if (listing is not null && model is null)
+        {
+            model = new PlayerListingEditorPageModel
+            {
+                ListingId = listing.Id,
+                IsEditMode = true,
+                ListingType = listing.ListingType,
+                Title = listing.Title,
+                Description = listing.Description,
+                PlayerId = listing.PlayerId,
+                SportId = listing.SportId,
+                AskingPrice = listing.AskingPrice,
+                Currency = listing.Currency,
+                Condition = listing.Condition,
+                City = listing.City,
+                State = listing.State,
+                ZipCode = listing.ZipCode,
+                IsSearchable = listing.IsSearchable,
+                IsPublished = listing.IsPublished,
+                ExpiresAt = listing.ExpiresAt
+            };
+        }
+
+        if (model is null)
+        {
+            model = new PlayerListingEditorPageModel
+            {
+                ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
+                Currency = "USD",
+                IsSearchable = true,
+                IsPublished = true,
+                City = user.City,
+                State = user.State,
+                ZipCode = user.ZipCode
+            };
+        }
+
+        model.IsEditMode = listingId.HasValue;
+        model.ListingId = listingId;
+        model.AvailableListingTypes = PlayerListingTypeOptions;
+        model.AvailablePlayers = await GetManagedPlayersAsync(user.Id, cancellationToken);
+        model.AvailableSports = await dbContext.Sports
+            .AsNoTracking()
+            .Where(sport => sport.IsActive)
+            .OrderBy(sport => sport.Name)
+            .Select(sport => new SportSelectionPageItem(
+                sport.Id,
+                sport.Name,
+                model.SportId.HasValue && model.SportId.Value == sport.Id))
+            .ToArrayAsync(cancellationToken);
+
+        var normalizedListingType = NormalizePlayerListingType(model.ListingType, nameof(model.ListingType));
+        if (normalizedListingType is not null)
+        {
+            model.ListingType = normalizedListingType;
+        }
+        else if (model.AvailableListingTypes.Count > 0)
+        {
+            model.ListingType = model.AvailableListingTypes.First().Code;
+        }
+
+        model.Currency = string.IsNullOrWhiteSpace(model.Currency)
+            ? "USD"
+            : model.Currency.Trim().ToUpperInvariant();
+        model.City = string.IsNullOrWhiteSpace(model.City) ? user.City : model.City;
+        model.State = string.IsNullOrWhiteSpace(model.State) ? user.State : model.State;
+        model.ZipCode = string.IsNullOrWhiteSpace(model.ZipCode) ? user.ZipCode : model.ZipCode;
+
+        return model;
+    }
+
+    private async Task<PlayerListingValidationContext> ValidatePlayerListingEditorInputAsync(
+        User user,
+        PlayerListingEditorPageModel model,
+        CancellationToken cancellationToken)
+    {
+        var normalizedListingType = NormalizePlayerListingType(model.ListingType, nameof(model.ListingType));
+        var listingTypeOption = normalizedListingType is null
+            ? null
+            : GetPlayerListingTypeOption(normalizedListingType);
+        if (listingTypeOption is null)
+        {
+            ModelState.AddModelError(
+                nameof(model.ListingType),
+                "Choose one of the supported listing types.");
+            return new PlayerListingValidationContext(null, null);
+        }
+
+        if (model.ExpiresAt.HasValue && NormalizeUtc(model.ExpiresAt) <= DateTime.UtcNow)
+        {
+            ModelState.AddModelError(nameof(model.ExpiresAt), "Expiration date must be in the future.");
+        }
+
+        Player? player = null;
+        if (model.PlayerId.HasValue)
+        {
+            player = await dbContext.UserPlayerRelationships
+                .AsNoTracking()
+                .Where(relationship => relationship.UserId == user.Id)
+                .Where(relationship => relationship.PlayerId == model.PlayerId.Value)
+                .Where(relationship => relationship.CanManage)
+                .Select(relationship => relationship.Player)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (player is null || !player.IsActive)
+            {
+                ModelState.AddModelError(nameof(model.PlayerId), "You can only choose players managed by this account.");
+            }
+        }
+
+        if (listingTypeOption.RequiresPlayerSelection && player is null)
+        {
+            ModelState.AddModelError(nameof(model.PlayerId), "Choose a player profile for this listing type.");
+        }
+
+        if (model.SportId.HasValue)
+        {
+            var sportExists = await dbContext.Sports
+                .AsNoTracking()
+                .AnyAsync(sport => sport.Id == model.SportId.Value && sport.IsActive, cancellationToken);
+            if (!sportExists)
+            {
+                ModelState.AddModelError(nameof(model.SportId), "Selected sport is not available.");
+            }
+        }
+        else if (listingTypeOption.RequiresSportSelection)
+        {
+            ModelState.AddModelError(nameof(model.SportId), "Choose a sport for this listing type.");
+        }
+
+        if (!listingTypeOption.SupportsCondition)
+        {
+            model.Condition = null;
+        }
+
+        if (!listingTypeOption.SupportsAskingPrice)
+        {
+            model.AskingPrice = null;
+            model.Currency = null;
+        }
+        else
+        {
+            model.Currency = string.IsNullOrWhiteSpace(model.Currency)
+                ? "USD"
+                : model.Currency.Trim().ToUpperInvariant();
+        }
+
+        return new PlayerListingValidationContext(listingTypeOption, player);
+    }
+
+    private static PlayerListingDetailPageModel BuildPlayerListingDetailPageModel(PlayerListing listing)
+    {
+        var player = listing.Player;
+        var isContactPublic = player is not null
+            && string.Equals(player.ContactVisibility, "Public", StringComparison.OrdinalIgnoreCase);
+        var sports = player?.PlayerSports
+            .Where(playerSport => playerSport.IsActive)
+            .OrderBy(playerSport => playerSport.Sport.Name)
+            .Select(playerSport => new PlayerListingSportSummaryPageItem(
+                playerSport.Sport.Name,
+                NormalizeOptional(playerSport.SkillLevel),
+                NormalizeOptional(playerSport.PrimaryPosition),
+                NormalizeOptional(playerSport.SecondaryPositions)))
+            .ToArray() ?? [];
+
+        var socialLinks = BuildPlayerExternalLinkItems(
+            player?.SocialMediaLinks,
+            ("facebook", "Facebook"),
+            ("x", "X"),
+            ("instagram", "Instagram"),
+            ("youtube", "YouTube"),
+            ("tiktok", "TikTok"),
+            ("highlight_video_1", "Highlight video 1"),
+            ("highlight_video_2", "Highlight video 2"));
+        var recruitingLinks = BuildPlayerExternalLinkItems(
+            player?.RecruitingProfileLinks,
+            ("sportsrecruits", "SportsRecruits"),
+            ("fieldlevel", "FieldLevel"),
+            ("ncsa", "NCSA"),
+            ("other", "Other recruiting profile"));
+
+        return new PlayerListingDetailPageModel
+        {
+            ListingId = listing.Id,
+            ListingTypeLabel = GetPlayerListingTypeLabel(listing.ListingType),
+            Title = listing.Title,
+            Description = listing.Description,
+            SportName = listing.Sport?.Name,
+            AskingPrice = listing.AskingPrice,
+            Currency = listing.Currency,
+            Condition = listing.Condition,
+            City = listing.City,
+            State = listing.State,
+            ZipCode = listing.ZipCode,
+            PublishedAt = listing.PublishedAt,
+            ExpiresAt = listing.ExpiresAt,
+            PlayerName = player is null ? null : $"{player.FirstName} {player.LastName}".Trim(),
+            ProfileImageUrl = player?.ProfileImageUrl,
+            SchoolName = player?.SchoolName,
+            CurrentTeamName = player?.CurrentTeamName,
+            GraduationYear = player?.GraduationYear,
+            Height = player?.Height,
+            Weight = player?.Weight,
+            ThrowsHand = player?.ThrowsHand,
+            BatsHand = player?.BatsHand,
+            IsContactPublic = isContactPublic,
+            ContactEmail = isContactPublic ? player?.ContactEmail : null,
+            ContactPhone = isContactPublic ? player?.ContactPhone : null,
+            Sports = sports,
+            SocialLinks = socialLinks,
+            RecruitingLinks = recruitingLinks
+        };
     }
 
     private async Task<ChoosePlanPageModel> BuildChoosePlanPageModelAsync(
@@ -2129,6 +3264,641 @@ public sealed class AccountController(
             ?? TeamGeographicScopeOptions[0];
 
         return model;
+    }
+
+    private async Task<TeamOpportunityDashboardPageModel> BuildTeamOpportunityDashboardPageModelAsync(
+        User user,
+        CancellationToken cancellationToken)
+    {
+        var postingAccess = await ResolveTeamPostingAccessAsync(user.Id, cancellationToken);
+        var managedTeams = await GetManagedTeamRoleContextsAsync(user.Id, cancellationToken);
+        var teamIds = managedTeams
+            .Select(managedTeam => managedTeam.Team.Id)
+            .Distinct()
+            .ToArray();
+        var publishedCountsByTeam = await GetPublishedOpportunityCountsForCurrentMonthAsync(teamIds, cancellationToken);
+
+        var teams = managedTeams
+            .Select(managedTeam =>
+            {
+                publishedCountsByTeam.TryGetValue(managedTeam.Team.Id, out var publishedThisMonthCount);
+                return ToManagedTeamOpportunitySummary(managedTeam.Team, managedTeam.Role, publishedThisMonthCount);
+            })
+            .OrderBy(team => team.TeamName)
+            .ToArray();
+
+        return new TeamOpportunityDashboardPageModel
+        {
+            CanPostOpportunities = postingAccess.CanPostOpportunities,
+            HasLimitedPosting = postingAccess.HasLimitedPosting,
+            HasUnlimitedPosting = postingAccess.HasUnlimitedPosting,
+            BasicMonthlyPublishingLimit = BasicTeamMonthlyPublishingLimit,
+            Teams = teams
+        };
+    }
+
+    private async Task<TeamOpportunityListPageModel?> BuildTeamOpportunityListPageModelAsync(
+        User user,
+        Guid teamId,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var managedTeam = await GetManagedTeamRoleContextAsync(user.Id, teamId, cancellationToken);
+        if (managedTeam is null)
+        {
+            return null;
+        }
+
+        var postingAccess = await ResolveTeamPostingAccessAsync(user.Id, cancellationToken);
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = dbContext.Opportunities
+            .AsNoTracking()
+            .Where(opportunity => opportunity.TeamId == teamId)
+            .Where(opportunity => opportunity.IsActive);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var opportunities = await query
+            .Include(opportunity => opportunity.Sport)
+            .OrderByDescending(opportunity => opportunity.UpdatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToArrayAsync(cancellationToken);
+        var publishedThisMonthCount = await GetPublishedOpportunityCountForCurrentMonthAsync(teamId, cancellationToken);
+
+        return new TeamOpportunityListPageModel
+        {
+            Team = ToManagedTeamOpportunitySummary(
+                managedTeam.Team,
+                managedTeam.Role,
+                publishedThisMonthCount),
+            CanPostOpportunities = postingAccess.CanPostOpportunities,
+            HasLimitedPosting = postingAccess.HasLimitedPosting,
+            HasUnlimitedPosting = postingAccess.HasUnlimitedPosting,
+            BasicMonthlyPublishingLimit = BasicTeamMonthlyPublishingLimit,
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount,
+            TotalPages = totalCount == 0 ? 1 : (int)Math.Ceiling(totalCount / (double)pageSize),
+            Opportunities = opportunities.Select(ToTeamOpportunitySummary).ToArray()
+        };
+    }
+
+    private async Task<TeamOpportunityEditorPageModel?> BuildTeamOpportunityEditorPageModelAsync(
+        User user,
+        Guid teamId,
+        Guid? opportunityId,
+        TeamOpportunityEditorPageModel? model,
+        CancellationToken cancellationToken)
+    {
+        var managedTeam = await GetManagedTeamRoleContextAsync(user.Id, teamId, cancellationToken);
+        if (managedTeam is null)
+        {
+            return null;
+        }
+
+        Opportunity? existingOpportunity = null;
+        if (opportunityId is not null)
+        {
+            existingOpportunity = await dbContext.Opportunities
+                .AsNoTracking()
+                .Where(opportunity =>
+                    opportunity.Id == opportunityId.Value
+                    && opportunity.TeamId == teamId
+                    && opportunity.IsActive)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (existingOpportunity is null)
+            {
+                return null;
+            }
+        }
+
+        var postingAccess = await ResolveTeamPostingAccessAsync(user.Id, cancellationToken);
+        var publishedThisMonthCount = await GetPublishedOpportunityCountForCurrentMonthAsync(teamId, cancellationToken);
+
+        if (model is null)
+        {
+            if (existingOpportunity is not null && opportunityId is not null)
+            {
+                model = new TeamOpportunityEditorPageModel
+                {
+                    TeamId = teamId,
+                    OpportunityId = opportunityId,
+                    IsEditMode = true,
+                    Type = existingOpportunity.Type,
+                    Title = existingOpportunity.Title,
+                    Description = existingOpportunity.Description,
+                    SportId = existingOpportunity.SportId,
+                    CompetitionLevel = existingOpportunity.CompetitionLevel,
+                    AgeGroup = existingOpportunity.AgeGroup,
+                    RegistrationFee = existingOpportunity.RegistrationFee,
+                    RegistrationRequired = existingOpportunity.RegistrationRequired,
+                    RegistrationDeadline = existingOpportunity.RegistrationDeadline?.Date,
+                    EventDate = existingOpportunity.EventDate?.Date,
+                    EventEndDate = existingOpportunity.EventEndDate?.Date,
+                    Location = existingOpportunity.Location,
+                    Address = existingOpportunity.Address,
+                    City = existingOpportunity.City,
+                    State = existingOpportunity.State,
+                    ZipCode = existingOpportunity.ZipCode,
+                    ContactEmail = existingOpportunity.ContactEmail,
+                    ContactPhone = existingOpportunity.ContactPhone,
+                    WebsiteUrl = existingOpportunity.WebsiteUrl,
+                    RequiredEquipment = existingOpportunity.RequiredEquipment,
+                    WhatToBring = existingOpportunity.WhatToBring,
+                    SpecialInstructions = existingOpportunity.SpecialInstructions,
+                    IsPublished = existingOpportunity.IsPublished,
+                    ExpiresAt = existingOpportunity.ExpiresAt?.Date
+                };
+            }
+            else
+            {
+                model = new TeamOpportunityEditorPageModel
+                {
+                    TeamId = teamId,
+                    ContactEmail = managedTeam.Team.Email,
+                    ContactPhone = managedTeam.Team.PhoneNumber,
+                    City = managedTeam.Team.City,
+                    State = managedTeam.Team.State,
+                    ZipCode = managedTeam.Team.ZipCode,
+                    WebsiteUrl = managedTeam.Team.WebsiteUrl,
+                    Type = TeamOpportunityTypeOptions[0],
+                    RegistrationRequired = true,
+                    IsPublished = true
+                };
+            }
+        }
+
+        var teamSportIds = managedTeam.Team.TeamSports
+            .Where(teamSport => teamSport.IsActive)
+            .Select(teamSport => teamSport.SportId)
+            .ToHashSet();
+        var availableSports = await dbContext.Sports
+            .AsNoTracking()
+            .Where(sport => sport.IsActive)
+            .Where(sport => teamSportIds.Count == 0 || teamSportIds.Contains(sport.Id))
+            .OrderBy(sport => sport.Name)
+            .Select(sport => new SportSelectionPageItem(
+                sport.Id,
+                sport.Name,
+                sport.Id == model.SportId))
+            .ToArrayAsync(cancellationToken);
+        if (availableSports.Length > 0 && model.SportId == Guid.Empty)
+        {
+            model.SportId = availableSports[0].Id;
+        }
+
+        model.TeamId = teamId;
+        model.OpportunityId = opportunityId;
+        model.IsEditMode = opportunityId is not null;
+        model.TeamName = managedTeam.Team.Name;
+        model.OrganizationName = managedTeam.Team.Organization?.Name;
+        model.CanPostOpportunities = postingAccess.CanPostOpportunities;
+        model.HasLimitedPosting = postingAccess.HasLimitedPosting;
+        model.HasUnlimitedPosting = postingAccess.HasUnlimitedPosting;
+        model.BasicMonthlyPublishingLimit = BasicTeamMonthlyPublishingLimit;
+        model.PublishedThisMonthCount = publishedThisMonthCount;
+        model.AvailableSports = availableSports;
+        model.AvailableOpportunityTypes = TeamOpportunityTypeOptions;
+
+        return model;
+    }
+
+    private async Task ValidateTeamOpportunityEditorInputAsync(
+        TeamOpportunityEditorPageModel model,
+        Team team,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(model.Type))
+        {
+            ModelState.AddModelError(nameof(model.Type), "Opportunity type is required.");
+        }
+
+        var sportExists = await dbContext.Sports
+            .AsNoTracking()
+            .AnyAsync(sport => sport.Id == model.SportId && sport.IsActive, cancellationToken);
+        if (!sportExists)
+        {
+            ModelState.AddModelError(nameof(model.SportId), "Selected sport is not available.");
+        }
+
+        var hasTeamSportRestrictions = team.TeamSports.Any(teamSport => teamSport.IsActive);
+        if (sportExists && hasTeamSportRestrictions)
+        {
+            var teamHasSport = team.TeamSports.Any(teamSport =>
+                teamSport.IsActive && teamSport.SportId == model.SportId);
+            if (!teamHasSport)
+            {
+                ModelState.AddModelError(nameof(model.SportId), "Selected sport is not assigned to this team.");
+            }
+        }
+
+        var normalizedRegistrationDeadline = NormalizeUtc(model.RegistrationDeadline);
+        var normalizedEventDate = NormalizeUtc(model.EventDate);
+        var normalizedEventEndDate = NormalizeUtc(model.EventEndDate);
+        var normalizedExpiresAt = NormalizeUtc(model.ExpiresAt);
+
+        if (normalizedEventDate.HasValue
+            && normalizedEventEndDate.HasValue
+            && normalizedEventEndDate.Value < normalizedEventDate.Value)
+        {
+            ModelState.AddModelError(
+                nameof(model.EventEndDate),
+                "Event end date cannot be earlier than event start date.");
+        }
+
+        if (normalizedRegistrationDeadline.HasValue
+            && normalizedEventDate.HasValue
+            && normalizedRegistrationDeadline.Value > normalizedEventDate.Value)
+        {
+            ModelState.AddModelError(
+                nameof(model.RegistrationDeadline),
+                "Registration deadline must be on or before the event date.");
+        }
+
+        if (normalizedExpiresAt.HasValue && normalizedExpiresAt.Value <= DateTime.UtcNow)
+        {
+            ModelState.AddModelError(
+                nameof(model.ExpiresAt),
+                "Expiration must be in the future.");
+        }
+    }
+
+    private async Task EnsureCanPublishTeamOpportunityAsync(
+        Guid teamId,
+        TeamPostingAccess postingAccess,
+        bool currentlyPublished,
+        CancellationToken cancellationToken)
+    {
+        if (currentlyPublished || postingAccess.HasUnlimitedPosting)
+        {
+            return;
+        }
+
+        if (!postingAccess.HasLimitedPosting)
+        {
+            ModelState.AddModelError(
+                nameof(TeamOpportunityEditorPageModel.IsPublished),
+                "Your current membership does not include opportunity posting.");
+            return;
+        }
+
+        var publishedThisMonthCount = await GetPublishedOpportunityCountForCurrentMonthAsync(teamId, cancellationToken);
+        if (publishedThisMonthCount >= BasicTeamMonthlyPublishingLimit)
+        {
+            ModelState.AddModelError(
+                nameof(TeamOpportunityEditorPageModel.IsPublished),
+                $"Basic Team includes up to {BasicTeamMonthlyPublishingLimit} published opportunities per month. Upgrade to Professional Team for unlimited postings.");
+        }
+    }
+
+    private async Task<TeamPostingAccess> ResolveTeamPostingAccessAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var entitlements = await entitlementService.GetEntitlementsAsync(userId, cancellationToken);
+        var featureCodes = entitlements?.FeatureCodes ?? [];
+        return new TeamPostingAccess(
+            featureCodes.Contains(TryOutSpotFeatureCodes.PostLimitedOpportunities, StringComparer.Ordinal),
+            featureCodes.Contains(TryOutSpotFeatureCodes.UnlimitedOpportunityPostings, StringComparer.Ordinal));
+    }
+
+    private string? ResolveZipCodeOrAddModelError(
+        string? requestedZipCode,
+        string? fallbackZipCode,
+        string modelStateKey)
+    {
+        var normalizedRequestedZipCode = zipRadiusSearchService.NormalizeZipCode(requestedZipCode);
+        if (!string.IsNullOrWhiteSpace(normalizedRequestedZipCode))
+        {
+            return normalizedRequestedZipCode;
+        }
+
+        var normalizedFallbackZipCode = zipRadiusSearchService.NormalizeZipCode(fallbackZipCode);
+        if (!string.IsNullOrWhiteSpace(normalizedFallbackZipCode))
+        {
+            return normalizedFallbackZipCode;
+        }
+
+        ModelState.AddModelError(modelStateKey, "ZIP code is required and must be a valid 5-digit ZIP.");
+        return null;
+    }
+
+    private async Task<IReadOnlyCollection<ManagedTeamRoleContext>> GetManagedTeamRoleContextsAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var managedTeams = await dbContext.UserTeamRoles
+            .AsNoTracking()
+            .Where(teamRole => teamRole.UserId == userId)
+            .Where(teamRole => teamRole.IsActive)
+            .Where(teamRole => teamRole.Team.IsActive)
+            .Include(teamRole => teamRole.Team)
+                .ThenInclude(team => team.Organization)
+            .Include(teamRole => teamRole.Team)
+                .ThenInclude(team => team.TeamSports)
+                    .ThenInclude(teamSport => teamSport.Sport)
+            .Include(teamRole => teamRole.Team)
+                .ThenInclude(team => team.Opportunities)
+            .ToArrayAsync(cancellationToken);
+
+        return managedTeams
+            .Select(teamRole => new ManagedTeamRoleContext(teamRole.Team, teamRole.Role))
+            .ToArray();
+    }
+
+    private async Task<ManagedTeamRoleContext?> GetManagedTeamRoleContextAsync(
+        Guid userId,
+        Guid teamId,
+        CancellationToken cancellationToken)
+    {
+        var managedTeam = await dbContext.UserTeamRoles
+            .AsNoTracking()
+            .Where(teamRole => teamRole.UserId == userId)
+            .Where(teamRole => teamRole.TeamId == teamId)
+            .Where(teamRole => teamRole.IsActive)
+            .Where(teamRole => teamRole.Team.IsActive)
+            .Include(teamRole => teamRole.Team)
+                .ThenInclude(team => team.Organization)
+            .Include(teamRole => teamRole.Team)
+                .ThenInclude(team => team.TeamSports)
+                    .ThenInclude(teamSport => teamSport.Sport)
+            .Include(teamRole => teamRole.Team)
+                .ThenInclude(team => team.Opportunities)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return managedTeam is null
+            ? null
+            : new ManagedTeamRoleContext(managedTeam.Team, managedTeam.Role);
+    }
+
+    private async Task<Dictionary<Guid, int>> GetPublishedOpportunityCountsForCurrentMonthAsync(
+        IReadOnlyCollection<Guid> teamIds,
+        CancellationToken cancellationToken)
+    {
+        if (teamIds.Count == 0)
+        {
+            return [];
+        }
+
+        var (monthStart, monthEnd) = GetCurrentMonthRangeUtc();
+        return await dbContext.Opportunities
+            .AsNoTracking()
+            .Where(opportunity => teamIds.Contains(opportunity.TeamId))
+            .Where(opportunity => opportunity.IsActive)
+            .Where(opportunity => opportunity.IsPublished)
+            .Where(opportunity => opportunity.PublishedAt != null
+                && opportunity.PublishedAt >= monthStart
+                && opportunity.PublishedAt < monthEnd)
+            .GroupBy(opportunity => opportunity.TeamId)
+            .Select(group => new
+            {
+                TeamId = group.Key,
+                Count = group.Count()
+            })
+            .ToDictionaryAsync(group => group.TeamId, group => group.Count, cancellationToken);
+    }
+
+    private async Task<int> GetPublishedOpportunityCountForCurrentMonthAsync(
+        Guid teamId,
+        CancellationToken cancellationToken)
+    {
+        var counts = await GetPublishedOpportunityCountsForCurrentMonthAsync([teamId], cancellationToken);
+        return counts.TryGetValue(teamId, out var count) ? count : 0;
+    }
+
+    private static (DateTime MonthStart, DateTime MonthEnd) GetCurrentMonthRangeUtc()
+    {
+        var now = DateTime.UtcNow;
+        var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        return (monthStart, monthStart.AddMonths(1));
+    }
+
+    private static ManagedTeamOpportunitySummaryPageModel ToManagedTeamOpportunitySummary(
+        Team team,
+        string role,
+        int publishedThisMonthCount)
+    {
+        var activeOpportunities = team.Opportunities
+            .Where(opportunity => opportunity.IsActive)
+            .ToArray();
+        var sports = team.TeamSports
+            .Where(teamSport => teamSport.IsActive)
+            .Select(teamSport => teamSport.Sport.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(sport => sport)
+            .ToArray();
+
+        return new ManagedTeamOpportunitySummaryPageModel
+        {
+            TeamId = team.Id,
+            TeamName = team.Name,
+            OrganizationName = team.Organization?.Name,
+            Role = role,
+            TeamLevel = team.TeamLevel,
+            GeographicScope = team.GeographicScope,
+            City = team.City,
+            State = team.State,
+            ZipCode = team.ZipCode,
+            IsSearchable = team.IsSearchable,
+            IsContactInfoVisible = team.IsContactInfoVisible,
+            ActiveOpportunityCount = activeOpportunities.Length,
+            PublishedOpportunityCount = activeOpportunities.Count(opportunity => opportunity.IsPublished),
+            PublishedThisMonthCount = publishedThisMonthCount,
+            Sports = sports
+        };
+    }
+
+    private static TeamOpportunitySummaryPageModel ToTeamOpportunitySummary(Opportunity opportunity)
+    {
+        return new TeamOpportunitySummaryPageModel
+        {
+            OpportunityId = opportunity.Id,
+            TeamId = opportunity.TeamId,
+            SportId = opportunity.SportId,
+            SportName = opportunity.Sport.Name,
+            Type = opportunity.Type,
+            Title = opportunity.Title,
+            Description = opportunity.Description,
+            CompetitionLevel = opportunity.CompetitionLevel,
+            AgeGroup = opportunity.AgeGroup,
+            RegistrationFee = opportunity.RegistrationFee,
+            RegistrationDeadline = opportunity.RegistrationDeadline,
+            EventDate = opportunity.EventDate,
+            EventEndDate = opportunity.EventEndDate,
+            City = opportunity.City,
+            State = opportunity.State,
+            ZipCode = opportunity.ZipCode,
+            IsPublished = opportunity.IsPublished,
+            PublishedAt = opportunity.PublishedAt,
+            ExpiresAt = opportunity.ExpiresAt,
+            UpdatedAt = opportunity.UpdatedAt
+        };
+    }
+
+    private static PlayerListingSummaryPageModel ToPlayerListingSummaryPageModel(PlayerListing listing)
+    {
+        return new PlayerListingSummaryPageModel
+        {
+            ListingId = listing.Id,
+            ListingType = listing.ListingType,
+            ListingTypeLabel = GetPlayerListingTypeLabel(listing.ListingType),
+            Title = listing.Title,
+            Description = listing.Description,
+            PlayerId = listing.PlayerId,
+            PlayerName = listing.Player == null ? null : $"{listing.Player.FirstName} {listing.Player.LastName}".Trim(),
+            SportName = listing.Sport?.Name,
+            AskingPrice = listing.AskingPrice,
+            Currency = listing.Currency,
+            Condition = listing.Condition,
+            City = listing.City,
+            State = listing.State,
+            ZipCode = listing.ZipCode,
+            IsPublished = listing.IsPublished,
+            IsSearchable = listing.IsSearchable,
+            PublishedAt = listing.PublishedAt,
+            ExpiresAt = listing.ExpiresAt,
+            UpdatedAt = listing.UpdatedAt
+        };
+    }
+
+    private static string GetPlayerListingTypeLabel(string? listingType)
+    {
+        var option = GetPlayerListingTypeOption(listingType);
+        if (option is not null)
+        {
+            return option.Label;
+        }
+
+        var fallback = string.IsNullOrWhiteSpace(listingType) ? "Listing" : listingType.Trim();
+        fallback = fallback.Replace("_", " ", StringComparison.Ordinal);
+        return string.IsNullOrWhiteSpace(fallback)
+            ? "Listing"
+            : $"{char.ToUpperInvariant(fallback[0])}{fallback[1..]}";
+    }
+
+    private static PlayerListingTypeSelectionPageItem? GetPlayerListingTypeOption(string? listingType)
+    {
+        if (string.IsNullOrWhiteSpace(listingType))
+        {
+            return null;
+        }
+
+        return PlayerListingTypeOptions.FirstOrDefault(option =>
+            string.Equals(option.Code, listingType.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string? NormalizePlayerListingType(string? listingType, string modelStateKey)
+    {
+        var normalized = TryOutSpotPlayerListingTypes.Normalize(listingType);
+        if (normalized is null)
+        {
+            ModelState.AddModelError(
+                modelStateKey,
+                $"'{listingType}' is not a supported listing type. Supported values: {string.Join(", ", TryOutSpotPlayerListingTypes.Values)}.");
+        }
+
+        return normalized;
+    }
+
+    private async Task<IReadOnlyCollection<ManagedPlayerSelectionPageItem>> GetManagedPlayersAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var managedPlayers = await dbContext.UserPlayerRelationships
+            .AsNoTracking()
+            .Where(relationship => relationship.UserId == userId)
+            .Where(relationship => relationship.CanManage)
+            .Where(relationship => relationship.Player.IsActive)
+            .Select(relationship => relationship.Player)
+            .Distinct()
+            .OrderBy(player => player.LastName)
+            .ThenBy(player => player.FirstName)
+            .ToArrayAsync(cancellationToken);
+
+        return managedPlayers
+            .Select(player => new ManagedPlayerSelectionPageItem(
+                player.Id,
+                $"{player.FirstName} {player.LastName}".Trim(),
+                player.City,
+                player.State,
+                player.ZipCode))
+            .ToArray();
+    }
+
+    private static IReadOnlyCollection<ExternalProfileLinkPageItem> BuildPlayerExternalLinkItems(
+        string? serializedLinks,
+        params (string Key, string Label)[] labelPairs)
+    {
+        if (string.IsNullOrWhiteSpace(serializedLinks))
+        {
+            return [];
+        }
+
+        try
+        {
+            var parsedLinks = JsonSerializer.Deserialize<Dictionary<string, string>>(serializedLinks);
+            if (parsedLinks is null || parsedLinks.Count == 0)
+            {
+                return [];
+            }
+
+            var labelsByKey = labelPairs.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Label,
+                StringComparer.OrdinalIgnoreCase);
+            var orderedKeys = labelPairs
+                .Select(pair => pair.Key)
+                .ToArray();
+
+            var links = new List<ExternalProfileLinkPageItem>();
+            foreach (var key in orderedKeys)
+            {
+                if (!parsedLinks.TryGetValue(key, out var linkValue))
+                {
+                    continue;
+                }
+
+                if (!TryNormalizeAbsoluteLink(linkValue, out var normalizedLink))
+                {
+                    continue;
+                }
+
+                var label = labelsByKey.TryGetValue(key, out var configuredLabel)
+                    ? configuredLabel
+                    : key;
+                links.Add(new ExternalProfileLinkPageItem(label, normalizedLink));
+            }
+
+            return links;
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static bool TryNormalizeAbsoluteLink(string? value, out string normalizedLink)
+    {
+        normalizedLink = string.Empty;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var trimmed = value.Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        normalizedLink = uri.AbsoluteUri;
+        return true;
     }
 
     private async Task<IReadOnlyCollection<Subscription>> GetActivePaidAccountMembershipsAsync(
@@ -2980,6 +4750,22 @@ public sealed class AccountController(
         return value.ToLocalTime().ToString("MMM d, yyyy h:mm tt");
     }
 
+    private static DateTime? NormalizeUtc(DateTime? value)
+    {
+        if (!value.HasValue)
+        {
+            return null;
+        }
+
+        var normalized = value.Value;
+        return normalized.Kind switch
+        {
+            DateTimeKind.Utc => normalized,
+            DateTimeKind.Local => normalized.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(normalized, DateTimeKind.Utc)
+        };
+    }
+
     private static DateTime NormalizeUtcDate(DateTime value)
     {
         return DateTime.SpecifyKind(value.Date, DateTimeKind.Utc);
@@ -2989,4 +4775,26 @@ public sealed class AccountController(
     {
         return string.IsNullOrWhiteSpace(state) ? null : state.Trim().ToUpperInvariant();
     }
+
+    private static string? NormalizeCurrency(string? currency)
+    {
+        if (string.IsNullOrWhiteSpace(currency))
+        {
+            return null;
+        }
+
+        var normalized = currency.Trim().ToUpperInvariant();
+        return normalized.Length > 3 ? normalized[..3] : normalized;
+    }
+
+    private sealed record PlayerListingValidationContext(
+        PlayerListingTypeSelectionPageItem? ListingTypeOption,
+        Player? Player);
+
+    private sealed record TeamPostingAccess(bool HasLimitedPosting, bool HasUnlimitedPosting)
+    {
+        public bool CanPostOpportunities => HasLimitedPosting || HasUnlimitedPosting;
+    }
+
+    private sealed record ManagedTeamRoleContext(Team Team, string Role);
 }

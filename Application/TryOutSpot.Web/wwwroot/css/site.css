@@ -482,6 +482,102 @@ body.splash-page {
   grid-template-columns: 1fr;
 }
 
+.team-row-head,
+.opportunity-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.team-row-head strong,
+.opportunity-row-head strong {
+  display: block;
+}
+
+.team-row-head span,
+.opportunity-row-head span {
+  color: #64748b;
+}
+
+.team-metric-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
+
+.team-metric-inline span {
+  border: 1px solid #d7dee8;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.83rem;
+  color: #475569;
+  background: #f8fafc;
+}
+
+.team-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-top: 0.9rem;
+}
+
+.team-summary-grid > div {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  background: #f8fafc;
+}
+
+.team-summary-grid span {
+  display: block;
+  color: #64748b;
+  font-size: 0.83rem;
+}
+
+.team-summary-grid strong {
+  display: block;
+  margin-top: 0.15rem;
+  color: #0f172a;
+}
+
+.listing-profile-image {
+  width: 120px;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid #d7dee8;
+  background: #f8fafc;
+}
+
+.listing-link-list {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.listing-link-list li {
+  margin: 0.25rem 0;
+}
+
+.opportunity-row {
+  border-color: #d7dee8;
+}
+
+.opportunity-row.published {
+  border-color: #b8decf;
+  background: #f8fffb;
+}
+
+.opportunity-row.draft {
+  border-color: #e2e8f0;
+  background: #ffffff;
+}
+
+.opportunity-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .plans-track-title {
   margin-top: 1.2rem;
   margin-bottom: 0.65rem;
@@ -536,6 +632,21 @@ body.splash-page {
   .step-status,
   .plan-price {
     text-align: left;
+  }
+
+  .team-row-head,
+  .opportunity-row-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .team-metric-inline {
+    justify-content: flex-start;
+  }
+
+  .team-summary-grid,
+  .opportunity-summary-grid {
+    grid-template-columns: 1fr;
   }
 
   .plan-diff-grid {
