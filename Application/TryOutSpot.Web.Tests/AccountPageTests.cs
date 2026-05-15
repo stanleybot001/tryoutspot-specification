@@ -88,6 +88,21 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task RegisterConfirmationPage_ShowsSpamAndSafeSenderGuidance()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/account/register-confirmation?email=test@example.com");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Junk or Spam folder", html);
+        Assert.Contains("Not Spam", html);
+        Assert.Contains("no-reply@tryoutspot.com", html);
+    }
+
+    [Fact]
     public async Task RegisterPost_WithCompleteFields_CreatesUserAndRedirectsToConfirmation()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -141,6 +156,96 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task RegisterConfirmationPost_ResendsVerificationEmail_ForUnverifiedAccount()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var email = $"resend-web-{Guid.NewGuid():N}@example.com";
+        await factory.CreateUserAsync(email, [TryOutSpotRoles.Parent], emailConfirmed: false);
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(
+            client,
+            $"/account/register-confirmation?email={Uri.EscapeDataString(email)}");
+
+        var response = await client.PostAsync(
+            "/account/resend-verification",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("email", email)
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.StartsWith("/account/register-confirmation", response.Headers.Location?.ToString());
+
+        var emailSender = factory.Services.GetRequiredService<TestAccountEmailSender>();
+        Assert.True(emailSender.TryGetEmailConfirmationToken(email, out _));
+    }
+
+    [Fact]
+    public async Task LoginPost_WithUnverifiedEmail_ShowsResendVerificationPrompt()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var email = $"login-unverified-{Guid.NewGuid():N}@example.com";
+        await factory.CreateUserAsync(email, [TryOutSpotRoles.Parent], emailConfirmed: false);
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/login");
+        var response = await client.PostAsync(
+            "/account/login",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("Email", email),
+                new("Password", "Tryout2026"),
+                new("RememberMe", "true")
+            ]));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Email verification is required before login.", html);
+        Assert.Contains("Need a new verification email?", html);
+        Assert.Contains("/account/login/resend-verification", html);
+    }
+
+    [Fact]
+    public async Task LoginResendVerificationPost_ResendsVerificationEmail_ForUnverifiedAccount()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var email = $"resend-login-{Guid.NewGuid():N}@example.com";
+        await factory.CreateUserAsync(email, [TryOutSpotRoles.Parent], emailConfirmed: false);
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/login");
+        var response = await client.PostAsync(
+            "/account/login/resend-verification",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("email", email),
+                new("returnUrl", "/account/onboarding")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.StartsWith("/account/login", response.Headers.Location?.ToString());
+
+        var emailSender = factory.Services.GetRequiredService<TestAccountEmailSender>();
+        Assert.True(emailSender.TryGetEmailConfirmationToken(email, out _));
+    }
+
+    [Fact]
     public async Task Onboarding_RequiresWebCookieAndRendersAfterLogin()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -180,7 +285,7 @@ public sealed class AccountPageTests
     }
 
     [Fact]
-    public async Task Onboarding_WithCoachRole_ShowsTeamOrOrganizationStepLink()
+    public async Task Onboarding_WithCoachRole_RequiresPlanBeforeTeamSetup()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
         await factory.CreateUserAsync("web-onboarding-coach@example.com", [TryOutSpotRoles.Coach]);
@@ -194,8 +299,8 @@ public sealed class AccountPageTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Add team or organization", html);
-        Assert.Contains("href=\"/account/onboarding/add-team-or-organization\"", html);
+        Assert.DoesNotContain("href=\"/account/onboarding/add-team-or-organization\"", html);
+        Assert.Contains("href=\"/account/onboarding/choose-plan\"", html);
     }
 
     [Fact]
@@ -226,6 +331,28 @@ public sealed class AccountPageTests
         Assert.Contains("name=\"accountTypes\"", html);
         Assert.Contains("name=\"SmsConsent.SmsConsentAccepted\"", html);
         Assert.Contains("Membership access", html);
+        Assert.Contains("Choose or change plan", html);
+    }
+
+    [Fact]
+    public async Task Logout_PostWithoutAntiforgeryToken_SignsOutAndRedirectsToLogin()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        await factory.CreateUserAsync("logout-page@example.com", [TryOutSpotRoles.Parent]);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        await LoginWebUserAsync(client, "logout-page@example.com");
+
+        var logoutResponse = await client.PostAsync("/account/logout", new FormUrlEncodedContent([]));
+        Assert.Equal(HttpStatusCode.Redirect, logoutResponse.StatusCode);
+        Assert.Equal("/account/login", logoutResponse.Headers.Location?.ToString());
+
+        var onboardingResponse = await client.GetAsync("/account/onboarding");
+        Assert.Equal(HttpStatusCode.Redirect, onboardingResponse.StatusCode);
+        Assert.Contains("/account/login", onboardingResponse.Headers.Location?.ToString());
     }
 
     [Fact]
@@ -493,6 +620,7 @@ public sealed class AccountPageTests
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
         var user = await factory.CreateUserAsync("onboarding-team-setup@example.com", [TryOutSpotRoles.Coach]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.TeamBasic, "trialing");
 
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -538,6 +666,8 @@ public sealed class AccountPageTests
                 new("InstagramUrl", "midamserv"),
                 new("YouTubeUrl", "https://youtube.com/@midamserv"),
                 new("TikTokUrl", "@midamserv"),
+                new("GameChangerCoachName", "Coach Whitfield"),
+                new("GameChangerTeamName", "Midamserv Thunder 14U"),
                 new("SelectedSportIds", sportId.ToString())
             ]));
 
@@ -576,6 +706,8 @@ public sealed class AccountPageTests
         Assert.Equal("https://instagram.com/midamserv", teamSocialLinks?["instagram"]);
         Assert.Equal("https://youtube.com/@midamserv", teamSocialLinks?["youtube"]);
         Assert.Equal("https://tiktok.com/midamserv", teamSocialLinks?["tiktok"]);
+        Assert.Equal("Coach Whitfield", teamSocialLinks?["gamechanger_coach"]);
+        Assert.Equal("Midamserv Thunder 14U", teamSocialLinks?["gamechanger_team_name"]);
         Assert.Equal("https://www.youtube.com/watch?v=thunder123", teamSocialLinks?["highlight_video_1"]);
         Assert.Equal("https://www.hudl.com/video/thunder456", teamSocialLinks?["highlight_video_2"]);
 
@@ -585,6 +717,8 @@ public sealed class AccountPageTests
         Assert.Equal("https://instagram.com/midamserv", organizationSocialLinks?["instagram"]);
         Assert.Equal("https://youtube.com/@midamserv", organizationSocialLinks?["youtube"]);
         Assert.Equal("https://tiktok.com/midamserv", organizationSocialLinks?["tiktok"]);
+        Assert.Equal("Coach Whitfield", organizationSocialLinks?["gamechanger_coach"]);
+        Assert.Equal("Midamserv Thunder 14U", organizationSocialLinks?["gamechanger_team_name"]);
         Assert.Equal("https://www.youtube.com/watch?v=thunder123", organizationSocialLinks?["highlight_video_1"]);
         Assert.Equal("https://www.hudl.com/video/thunder456", organizationSocialLinks?["highlight_video_2"]);
     }
@@ -624,6 +758,46 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task ChoosePlanPost_DowngradeToFree_SchedulesStripeCancellationAtPeriodEnd()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync("onboarding-plan-downgrade@example.com", [TryOutSpotRoles.Parent]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.PremiumPlayer, "active");
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/onboarding/choose-plan");
+        var response = await client.PostAsync(
+            "/account/onboarding/choose-plan",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("PlanCode", TryOutSpotPlanCodes.FreePlayerParent),
+                new("BillingInterval", BillingIntervalCodes.Month)
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/account/settings", response.Headers.Location?.ToString());
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var subscriptions = await dbContext.Subscriptions
+            .Where(current => current.UserId == user.Id)
+            .ToArrayAsync();
+
+        var paidSubscription = Assert.Single(subscriptions, current => current.PlanType == TryOutSpotPlanCodes.PremiumPlayer);
+        Assert.Equal("active", paidSubscription.Status);
+        Assert.True(paidSubscription.CancelAtPeriodEnd);
+        Assert.NotNull(paidSubscription.CurrentPeriodEnd);
+
+        var freeSubscription = Assert.Single(subscriptions, current => current.PlanType == TryOutSpotPlanCodes.FreePlayerParent);
+        Assert.Equal("plan_selected", freeSubscription.Status);
+    }
+
+    [Fact]
     public async Task ChoosePlanPost_WithPaidPlanAndStripeConfigured_StartsCheckout()
     {
         await using var factory = CreateFactoryWithStripe();
@@ -656,6 +830,113 @@ public sealed class AccountPageTests
         Assert.Equal("price_premium_month", subscription.StripePriceId);
     }
 
+    [Fact]
+    public async Task Onboarding_WithPendingPaidCheckout_KeepsChoosePlanStepOpen()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync("onboarding-plan-pending@example.com", [TryOutSpotRoles.Parent]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.PremiumPlayer, "checkout_started");
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        await LoginWebUserAsync(client, user.Email!);
+        var response = await client.GetAsync("/account/onboarding");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("<strong>Choose plan</strong>", html);
+        Assert.Contains("href=\"/account/onboarding/choose-plan\">Open</a>", html);
+    }
+
+    [Fact]
+    public async Task OpenBillingPortal_WithStripeCustomer_RedirectsToStripePortal()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync("settings-portal@example.com", [TryOutSpotRoles.Parent]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.PremiumPlayer, "active");
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/settings");
+        var response = await client.PostAsync(
+            "/account/settings/open-billing-portal",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken)
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("https://billing.stripe.test/session", response.Headers.Location?.ToString());
+    }
+
+    [Fact]
+    public async Task CancelMembershipPost_WithActivePaidMembership_SchedulesStripeCancellationAtPeriodEnd()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync("settings-cancel-paid@example.com", [TryOutSpotRoles.Parent]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.PremiumPlayer, "active");
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/settings");
+        var response = await client.PostAsync(
+            "/account/settings/cancel-membership",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken)
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/account/settings", response.Headers.Location?.ToString());
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var subscription = await dbContext.Subscriptions.SingleAsync(current =>
+            current.UserId == user.Id && current.PlanType == TryOutSpotPlanCodes.PremiumPlayer);
+        Assert.True(subscription.CancelAtPeriodEnd);
+    }
+
+    [Fact]
+    public async Task ChoosePlanPost_WithAnnualOnlyPlanAndMonthlyInterval_ShowsValidationError()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync("onboarding-plan-annual-only@example.com", [TryOutSpotRoles.Coach]);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/onboarding/choose-plan");
+        var response = await client.PostAsync(
+            "/account/onboarding/choose-plan",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("PlanCode", TryOutSpotPlanCodes.TeamProfessional),
+                new("BillingInterval", BillingIntervalCodes.Month)
+            ]));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("requires annual billing", html, StringComparison.OrdinalIgnoreCase);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var subscriptions = await dbContext.Subscriptions
+            .Where(subscription => subscription.UserId == user.Id)
+            .ToArrayAsync();
+        Assert.Empty(subscriptions);
+    }
+
     private static async Task<string> GetAntiForgeryTokenAsync(HttpClient client, string path)
     {
         var response = await client.GetAsync(path);
@@ -685,6 +966,38 @@ public sealed class AccountPageTests
             ]));
 
         Assert.Equal(HttpStatusCode.Redirect, loginResponse.StatusCode);
+    }
+
+    private static async Task AddSubscriptionAsync(
+        TryOutSpotWebApplicationFactory factory,
+        Guid userId,
+        string planType,
+        string status)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+
+        dbContext.Subscriptions.Add(new TryOutSpot.Web.Data.Entities.Subscription
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            PlanType = planType,
+            Status = status,
+            ScopeType = TryOutSpotSubscriptionScopeTypes.Account,
+            ScopeId = null,
+            StripeCustomerId = $"cus_{Guid.NewGuid():N}",
+            StripeSubscriptionId = $"sub_{Guid.NewGuid():N}",
+            CurrentPeriodStart = now,
+            CurrentPeriodEnd = now.AddMonths(1),
+            Amount = 29m,
+            Currency = "USD",
+            BillingInterval = BillingIntervalCodes.Month,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+
+        await dbContext.SaveChangesAsync();
     }
 
     private static WebApplicationFactory<Program> CreateFactoryWithGoogleConfiguration()
@@ -756,6 +1069,7 @@ public sealed class AccountPageTests
             string stripePriceId,
             string scopeType,
             Guid? scopeId,
+            string? idempotencyKey,
             CancellationToken cancellationToken)
         {
             return Task.FromResult(new StripeCheckoutSessionResult(
@@ -766,9 +1080,35 @@ public sealed class AccountPageTests
 
         public Task<StripeBillingPortalSessionResult> CreatePortalSessionAsync(
             string stripeCustomerId,
+            string? idempotencyKey,
             CancellationToken cancellationToken)
         {
             return Task.FromResult(new StripeBillingPortalSessionResult("https://billing.stripe.test/session"));
+        }
+
+        public Task<StripeSubscriptionSnapshot?> ScheduleCancellationAtPeriodEndAsync(
+            string stripeSubscriptionId,
+            string? idempotencyKey,
+            CancellationToken cancellationToken)
+        {
+            var now = DateTime.UtcNow;
+            return Task.FromResult<StripeSubscriptionSnapshot?>(new StripeSubscriptionSnapshot(
+                stripeSubscriptionId,
+                "cus_test_checkout",
+                null,
+                TryOutSpotPlanCodes.PremiumPlayer,
+                "price_premium_month",
+                "active",
+                now,
+                now.AddMonths(1),
+                null,
+                9.99m,
+                "usd",
+                BillingIntervalCodes.Month,
+                TryOutSpotSubscriptionScopeTypes.Account,
+                null,
+                true,
+                null));
         }
 
         public Task<Stripe.Subscription?> GetSubscriptionAsync(

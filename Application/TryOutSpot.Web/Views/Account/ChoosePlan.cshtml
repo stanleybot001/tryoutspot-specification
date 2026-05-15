@@ -1,7 +1,10 @@
 @model ChoosePlanPageModel
+@using TryOutSpot.Web.Billing
 
 @{
     ViewData["Title"] = "Choose Plan";
+    var selectedPlan = Model.AvailablePlans.FirstOrDefault(plan =>
+        string.Equals(plan.Code, Model.PlanCode, StringComparison.Ordinal));
 }
 
 <section class="account-page compact">
@@ -32,14 +35,22 @@
                             <p>@plan.Description</p>
                         </div>
                         <div class="plan-price">
-                            <strong>@FormatMonthlyAmount(plan.MonthlyAmount)</strong>
-                            @if (plan.AnnualAmount is not null)
+                            @if (TryOutSpotBillingCatalog.RequiresAnnualCommitment(plan.Code) && plan.AnnualAmount is not null)
                             {
-                                <span>@($"{plan.AnnualAmount.Value:C0}/yr")</span>
+                                <strong>@($"{plan.AnnualAmount.Value:C0}/yr")</strong>
+                                <span>Annual only</span>
                             }
-                            else if (!plan.RequiresStripeSubscription)
+                            else
                             {
-                                <span>No payment required</span>
+                                <strong>@FormatMonthlyAmount(plan.MonthlyAmount)</strong>
+                                @if (plan.AnnualAmount is not null)
+                                {
+                                    <span>@($"{plan.AnnualAmount.Value:C0}/yr")</span>
+                                }
+                                else if (!plan.RequiresStripeSubscription)
+                                {
+                                    <span>No payment required</span>
+                                }
                             }
 
                             @if (plan.TrialDays is not null)
@@ -56,25 +67,43 @@
             <div class="form-field">
                 <label asp-for="BillingInterval" class="form-label">Billing interval</label>
                 <div class="form-actions">
-                    <label class="account-check">
-                        <input class="form-check-input" type="radio" name="BillingInterval" value="month" checked="@string.Equals(Model.BillingInterval, "month", StringComparison.Ordinal)" />
-                        <span>Monthly</span>
-                    </label>
-                    <label class="account-check">
-                        <input class="form-check-input" type="radio" name="BillingInterval" value="year" checked="@string.Equals(Model.BillingInterval, "year", StringComparison.Ordinal)" />
-                        <span>Annual</span>
-                    </label>
+                    @if (Model.AvailableBillingIntervals.Contains(BillingIntervalCodes.Month, StringComparer.Ordinal))
+                    {
+                        <label class="account-check">
+                            <input class="form-check-input" type="radio" name="BillingInterval" value="@BillingIntervalCodes.Month" checked="@string.Equals(Model.BillingInterval, BillingIntervalCodes.Month, StringComparison.Ordinal)" />
+                            <span>Monthly</span>
+                        </label>
+                    }
+                    @if (Model.AvailableBillingIntervals.Contains(BillingIntervalCodes.Year, StringComparer.Ordinal))
+                    {
+                        <label class="account-check">
+                            <input class="form-check-input" type="radio" name="BillingInterval" value="@BillingIntervalCodes.Year" checked="@string.Equals(Model.BillingInterval, BillingIntervalCodes.Year, StringComparison.Ordinal)" />
+                            <span>Annual</span>
+                        </label>
+                    }
                 </div>
+                @if (Model.SelectedPlanRequiresAnnualBilling)
+                {
+                    <p class="section-help">This membership requires annual billing to keep team or organization access active.</p>
+                }
                 <span asp-validation-for="BillingInterval" class="text-danger"></span>
             </div>
 
-            @if (!Model.StripeIsConfigured)
+            @if (selectedPlan is not null && !selectedPlan.RequiresStripeSubscription)
+            {
+                <p class="section-help">This is a free plan. No payment is collected. If you are currently paid, Stripe cancellation is scheduled for period end and paid access continues until that date.</p>
+            }
+            else if (selectedPlan is not null && Model.CheckoutAvailableForSelection)
+            {
+                <p class="section-help">After you save, you will be redirected to secure Stripe checkout to complete payment.</p>
+            }
+            else if (!Model.StripeIsConfigured)
             {
                 <p class="section-help">Stripe checkout is not configured yet. Your selection will be saved and checkout can be completed later.</p>
             }
             else if (!Model.CheckoutAvailableForSelection)
             {
-                <p class="section-help">Checkout availability depends on the selected plan and billing interval.</p>
+                <p class="section-help">Checkout is not available for this plan and billing interval yet. Pick a supported interval or contact support.</p>
             }
 
             <div class="form-actions">

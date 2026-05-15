@@ -1,4 +1,5 @@
 @model AccountSettingsPageModel
+@using TryOutSpot.Web.Billing
 
 @{
     ViewData["Title"] = "Account Settings";
@@ -239,7 +240,74 @@
 
         <section class="form-section settings-wide">
             <h2>Membership access</h2>
-            <p class="section-help">Stripe checkout and webhooks are the next project item. These plan and feature codes are already what authorization checks will use.</p>
+            <p class="section-help">Paid plans redirect to Stripe checkout when selected. Upgrades are enabled after Stripe confirms payment. Downgrades and cancellations schedule Stripe period-end cancellation so access stays active through the paid term.</p>
+            @if (Model.MembershipSummaries.Count > 0)
+            {
+                var primaryMembership = Model.MembershipSummaries.First();
+                <div class="plan-list membership-summary-list">
+                    <div class="plan-row">
+                        <div>
+                            <strong>Current membership: @primaryMembership.PlanName</strong>
+                            <span>@primaryMembership.Scope scope</span>
+                            <p>Status: @primaryMembership.Status</p>
+                            @if (primaryMembership.CurrentPeriodEnd is not null)
+                            {
+                                var periodEndLabel = primaryMembership.CancelAtPeriodEnd
+                                    ? "Access ends"
+                                    : "Next billing date";
+                                <p>@periodEndLabel: @FormatLocalDate(primaryMembership.CurrentPeriodEnd.Value)</p>
+                            }
+                            else
+                            {
+                                <p>Last updated: @FormatLocalDate(primaryMembership.UpdatedAt)</p>
+                            }
+                        </div>
+                        <div class="plan-price">
+                            <strong>@primaryMembership.Price</strong>
+                            <span>@primaryMembership.BillingInterval</span>
+                            @if (primaryMembership.CancelAtPeriodEnd)
+                            {
+                                <span>Cancels at period end</span>
+                            }
+                            else if (primaryMembership.HasActiveEntitlement)
+                            {
+                                <span>Active entitlement</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+            <div class="form-actions">
+                <a class="btn btn-primary" href="/account/onboarding/choose-plan">Choose or change plan</a>
+                @if (Model.HasStripeCustomer)
+                {
+                    <form asp-action="OpenBillingPortal" asp-controller="Account" method="post" class="inline-form">
+                        <button type="submit" class="btn btn-outline-primary">Manage billing in Stripe</button>
+                    </form>
+                }
+                @if (Model.CanCancelPaidMembership)
+                {
+                    <form asp-action="CancelMembership" asp-controller="Account" method="post" class="inline-form">
+                        <button type="submit" class="btn btn-outline-danger">Cancel paid membership</button>
+                    </form>
+                }
+            </div>
+            @if (!Model.StripeCheckoutConfigured)
+            {
+                <p class="section-help">Stripe checkout is not configured on this environment yet, so paid upgrades cannot be completed here.</p>
+            }
+            else if (!Model.HasStripeCustomer)
+            {
+                <p class="section-help">No Stripe billing profile is linked yet. Pick a paid plan to start checkout.</p>
+            }
+            else if (Model.HasPendingPaidPlanSelection)
+            {
+                <p class="section-help">You have a pending paid selection. Finish checkout in Stripe to unlock the upgrade.</p>
+            }
+            @if (Model.HasScheduledPaidCancellation && Model.ScheduledPaidCancellationAt is not null)
+            {
+                <p class="section-help">Paid cancellation is already scheduled. Premium access remains until @FormatLocalDate(Model.ScheduledPaidCancellationAt.Value).</p>
+            }
             <div class="plan-list">
                 @foreach (var plan in Model.RecommendedPlans)
                 {
@@ -250,7 +318,15 @@
                             <p>@plan.Description</p>
                         </div>
                         <div class="plan-price">
-                            <strong>@FormatMonthlyAmount(plan.MonthlyAmount)</strong>
+                            @if (TryOutSpotBillingCatalog.RequiresAnnualCommitment(plan.Code) && plan.AnnualAmount is not null)
+                            {
+                                <strong>@($"{plan.AnnualAmount.Value:C0}/yr")</strong>
+                                <span>Annual only</span>
+                            }
+                            else
+                            {
+                                <strong>@FormatMonthlyAmount(plan.MonthlyAmount)</strong>
+                            }
                             @if (plan.TrialDays is not null)
                             {
                                 <span>@plan.TrialDays-day trial</span>
@@ -284,6 +360,11 @@
     private static string FormatMonthlyAmount(decimal monthlyAmount)
     {
         return monthlyAmount <= 0 ? "Free" : $"{monthlyAmount:C0}/mo";
+    }
+
+    private static string FormatLocalDate(DateTime value)
+    {
+        return value.ToLocalTime().ToString("MMM d, yyyy h:mm tt");
     }
 }
 

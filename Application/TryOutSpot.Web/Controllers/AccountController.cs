@@ -28,6 +28,7 @@ public sealed class AccountController(
     IEntitlementService entitlementService,
     IExternalLoginTicketService externalLoginTicketService,
     IStripeBillingService stripeBillingService,
+    IStripeSubscriptionSyncService stripeSubscriptionSyncService,
     IOptions<GoogleAuthenticationOptions> googleOptions,
     IOptions<StripeBillingOptions> stripeOptions) : Controller
 {
@@ -121,9 +122,39 @@ public sealed class AccountController(
         return View();
     }
 
+    [HttpPost("resend-verification")]
+    public async Task<IActionResult> ResendVerificationEmail(
+        [FromForm] string? email,
+        CancellationToken cancellationToken)
+    {
+        var normalizedEmail = string.IsNullOrWhiteSpace(email) ? null : email.Trim();
+        await SendVerificationEmailIfEligibleAsync(normalizedEmail, cancellationToken);
+
+        TempData["StatusMessage"] = "If an active unverified account exists for that email address, verification instructions were sent.";
+        return RedirectToAction(nameof(RegisterConfirmation), new { email = normalizedEmail });
+    }
+
+    [HttpPost("login/resend-verification")]
+    public async Task<IActionResult> ResendVerificationEmailFromLogin(
+        [FromForm] string? email,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken)
+    {
+        var normalizedEmail = string.IsNullOrWhiteSpace(email) ? null : email.Trim();
+        await SendVerificationEmailIfEligibleAsync(normalizedEmail, cancellationToken);
+
+        TempData["StatusMessage"] = "If an active unverified account exists for that email address, verification instructions were sent.";
+        return RedirectToAction(nameof(Login), new
+        {
+            returnUrl,
+            email = normalizedEmail
+        });
+    }
+
     [HttpGet("login")]
     public async Task<IActionResult> Login(
         [FromQuery] string? returnUrl = null,
+        [FromQuery] string? email = null,
         [FromQuery] string? externalLoginStatus = null)
     {
         if (string.Equals(externalLoginStatus, "failed", StringComparison.OrdinalIgnoreCase))
@@ -133,7 +164,8 @@ public sealed class AccountController(
 
         var model = new LoginPageModel
         {
-            ReturnUrl = returnUrl
+            ReturnUrl = returnUrl,
+            Email = string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim()
         };
         await PopulateExternalProviderAvailabilityAsync(model);
         return View(model);
@@ -169,6 +201,7 @@ public sealed class AccountController(
         if (signInResult.IsNotAllowed)
         {
             ModelState.AddModelError(string.Empty, "Email verification is required before login.");
+            model.ShowResendVerificationPrompt = true;
             return View(model);
         }
 
@@ -189,6 +222,7 @@ public sealed class AccountController(
     }
 
     [HttpPost("logout")]
+    [IgnoreAntiforgeryToken]
     public async Task<IActionResult> Logout()
     {
         await HttpContext.SignOutAsync(TryOutSpotAuthenticationSchemes.WebCookie);
@@ -676,7 +710,9 @@ public sealed class AccountController(
         return RedirectToAction(nameof(Onboarding));
     }
 
-    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManagePlayerProfile)]
     [HttpGet("onboarding/add-player-profile")]
     public async Task<IActionResult> AddPlayerProfile(CancellationToken cancellationToken)
     {
@@ -701,7 +737,9 @@ public sealed class AccountController(
         return View(model);
     }
 
-    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManagePlayerProfile)]
     [HttpPost("onboarding/add-player-profile")]
     public async Task<IActionResult> AddPlayerProfile(
         AddPlayerProfilePageModel model,
@@ -846,7 +884,9 @@ public sealed class AccountController(
         return RedirectToAction(nameof(Onboarding));
     }
 
-    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
     [HttpGet("onboarding/add-team-or-organization")]
     public async Task<IActionResult> AddTeamOrOrganization(CancellationToken cancellationToken)
     {
@@ -877,7 +917,9 @@ public sealed class AccountController(
         return View(model);
     }
 
-    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
     [HttpPost("onboarding/add-team-or-organization")]
     public async Task<IActionResult> AddTeamOrOrganization(
         AddTeamOrOrganizationPageModel model,
@@ -945,6 +987,8 @@ public sealed class AccountController(
             ("instagram", NormalizeSocialHandleOrUrl(model.InstagramUrl, "https://instagram.com/")),
             ("youtube", model.YouTubeUrl),
             ("tiktok", NormalizeSocialHandleOrUrl(model.TikTokUrl, "https://tiktok.com/")),
+            ("gamechanger_coach", NormalizeOptional(model.GameChangerCoachName)),
+            ("gamechanger_team_name", NormalizeOptional(model.GameChangerTeamName)),
             ("highlight_video_1", model.HighlightVideoUrl1),
             ("highlight_video_2", model.HighlightVideoUrl2));
         Organization? organization = null;
@@ -963,6 +1007,7 @@ public sealed class AccountController(
                 Email = NormalizeOptional(model.ContactEmail),
                 SocialMediaLinks = socialMediaLinks,
                 IsSearchable = model.IsSearchable,
+                IsContactInfoVisible = true,
                 IsAcademy = string.Equals(teamRole, TryOutSpotRoles.AcademyDirector, StringComparison.Ordinal),
                 IsVerified = false,
                 CreatedAt = now,
@@ -989,6 +1034,7 @@ public sealed class AccountController(
             Email = NormalizeOptional(model.ContactEmail),
             SocialMediaLinks = socialMediaLinks,
             IsSearchable = model.IsSearchable,
+            IsContactInfoVisible = true,
             IsElite = false,
             IsVerified = false,
             CreatedAt = now,
@@ -1079,6 +1125,15 @@ public sealed class AccountController(
             return View(await BuildChoosePlanPageModelAsync(user, model, cancellationToken));
         }
 
+        if (!TryOutSpotBillingCatalog.IsBillingIntervalSupported(selectedPlan.Code, billingInterval))
+        {
+            var message = TryOutSpotBillingCatalog.RequiresAnnualCommitment(selectedPlan.Code)
+                ? "This plan requires annual billing."
+                : "This plan does not offer the selected billing interval.";
+            ModelState.AddModelError(nameof(model.BillingInterval), message);
+            return View(await BuildChoosePlanPageModelAsync(user, model, cancellationToken));
+        }
+
         var amount = billingInterval switch
         {
             BillingIntervalCodes.Month => selectedPlan.MonthlyAmount,
@@ -1111,10 +1166,70 @@ public sealed class AccountController(
 
         if (!selectedPlan.RequiresStripeSubscription)
         {
+            var activePaidMemberships = await GetActivePaidAccountMembershipsAsync(user.Id, cancellationToken);
+            var cancelablePaidMemberships = activePaidMemberships
+                .Where(subscription => !subscription.CancelAtPeriodEnd)
+                .Where(subscription => !string.IsNullOrWhiteSpace(subscription.StripeSubscriptionId))
+                .ToArray();
+            if (activePaidMemberships.Count > 0)
+            {
+                if (cancelablePaidMemberships.Length > 0 && !stripeBillingOptions.IsConfigured)
+                {
+                    ModelState.AddModelError(
+                        nameof(model.PlanCode),
+                        "Stripe billing is not configured, so the existing paid membership could not be scheduled for cancellation.");
+                    return View(await BuildChoosePlanPageModelAsync(user, model, cancellationToken));
+                }
+
+                try
+                {
+                    var cancellationPeriodEnd = cancelablePaidMemberships.Length == 0
+                        ? activePaidMemberships
+                            .Where(subscription => subscription.CurrentPeriodEnd is not null)
+                            .Select(subscription => subscription.CurrentPeriodEnd)
+                            .OrderBy(date => date)
+                            .FirstOrDefault()
+                        : await SchedulePaidMembershipCancellationAtPeriodEndAsync(
+                            user.Id,
+                            cancelablePaidMemberships,
+                            cancellationToken);
+
+                    subscription.Status = "plan_selected";
+                    subscription.CurrentPeriodStart = null;
+                    subscription.CurrentPeriodEnd = null;
+                    subscription.TrialEnd = null;
+                    subscription.StripeCustomerId = null;
+                    subscription.StripeSubscriptionId = null;
+                    subscription.StripePriceId = null;
+                    subscription.IsElite = false;
+                    await dbContext.SaveChangesAsync(cancellationToken);
+
+                    TempData["StatusMessage"] = cancelablePaidMemberships.Length == 0
+                        ? cancellationPeriodEnd is null
+                            ? "Your paid plan is already scheduled to end. Your account will move to free automatically when the current billing period closes."
+                            : $"Your paid plan is already scheduled to end on {FormatDisplayDate(cancellationPeriodEnd.Value)}. Your account will move to free automatically."
+                        : cancellationPeriodEnd is null
+                            ? "Downgrade scheduled. Your paid plan will remain active until the current Stripe billing period ends, then move to free."
+                            : $"Downgrade scheduled. Your paid plan remains active until {FormatDisplayDate(cancellationPeriodEnd.Value)}, then moves to free.";
+                    return RedirectToAction(nameof(Settings));
+                }
+                catch (InvalidOperationException)
+                {
+                    ModelState.AddModelError(
+                        nameof(model.PlanCode),
+                        "We could not reach Stripe to schedule your cancellation. Try again or use the Stripe billing portal.");
+                    return View(await BuildChoosePlanPageModelAsync(user, model, cancellationToken));
+                }
+            }
+
             subscription.Status = "active";
             subscription.CurrentPeriodStart = now;
             subscription.CurrentPeriodEnd = null;
             subscription.TrialEnd = null;
+            subscription.StripeCustomerId = null;
+            subscription.StripeSubscriptionId = null;
+            subscription.StripePriceId = null;
+            subscription.IsElite = false;
             await dbContext.SaveChangesAsync(cancellationToken);
 
             TempData["StatusMessage"] = $"{selectedPlan.Name} selected.";
@@ -1147,6 +1262,12 @@ public sealed class AccountController(
             stripePriceId,
             TryOutSpotSubscriptionScopeTypes.Account,
             null,
+            BuildCheckoutIdempotencyKey(
+                user.Id,
+                selectedPlan.Code,
+                billingInterval,
+                TryOutSpotSubscriptionScopeTypes.Account,
+                null),
             cancellationToken);
 
         subscription.Status = "checkout_started";
@@ -1159,7 +1280,10 @@ public sealed class AccountController(
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
     [HttpGet("settings")]
-    public async Task<IActionResult> Settings(CancellationToken cancellationToken)
+    public async Task<IActionResult> Settings(
+        [FromQuery] string? billing,
+        [FromQuery(Name = "session_id")] string? stripeCheckoutSessionId,
+        CancellationToken cancellationToken)
     {
         var user = await GetCurrentWebUserAsync();
         if (user is null)
@@ -1167,7 +1291,116 @@ public sealed class AccountController(
             return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Settings)) });
         }
 
+        if (string.Equals(billing, "success", StringComparison.OrdinalIgnoreCase))
+        {
+            var sessionSuffix = string.IsNullOrWhiteSpace(stripeCheckoutSessionId)
+                ? string.Empty
+                : $" (session {TrimCheckoutSessionIdForDisplay(stripeCheckoutSessionId)})";
+            TempData["StatusMessage"] = $"Checkout completed successfully{sessionSuffix}.";
+        }
+        else if (string.Equals(billing, "cancelled", StringComparison.OrdinalIgnoreCase))
+        {
+            TempData["StatusMessage"] = "Checkout was cancelled. Your membership has not changed.";
+        }
+
         return View(await BuildAccountSettingsPageModelAsync(user, cancellationToken));
+    }
+
+    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [HttpPost("settings/open-billing-portal")]
+    public async Task<IActionResult> OpenBillingPortal(CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Settings)) });
+        }
+
+        if (!stripeBillingOptions.IsConfigured)
+        {
+            TempData["StatusMessage"] = "Stripe billing is not configured yet.";
+            return RedirectToAction(nameof(Settings));
+        }
+
+        var stripeCustomerId = await ResolveExistingStripeCustomerIdAsync(user.Id, cancellationToken);
+        if (string.IsNullOrWhiteSpace(stripeCustomerId))
+        {
+            TempData["StatusMessage"] = "No paid subscription billing profile is linked yet. Choose a paid plan first.";
+            return RedirectToAction(nameof(ChoosePlan));
+        }
+
+        try
+        {
+            var portalSession = await stripeBillingService.CreatePortalSessionAsync(
+                stripeCustomerId,
+                BuildCustomerPortalIdempotencyKey(user.Id),
+                cancellationToken);
+            return Redirect(portalSession.Url);
+        }
+        catch (InvalidOperationException)
+        {
+            TempData["StatusMessage"] = "Stripe billing portal is not available right now. Please try again.";
+            return RedirectToAction(nameof(Settings));
+        }
+    }
+
+    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [HttpPost("settings/cancel-membership")]
+    public async Task<IActionResult> CancelMembership(CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Settings)) });
+        }
+
+        var activePaidMemberships = await GetActivePaidAccountMembershipsAsync(user.Id, cancellationToken);
+        if (activePaidMemberships.Count == 0)
+        {
+            TempData["StatusMessage"] = "No active paid membership is available to cancel.";
+            return RedirectToAction(nameof(Settings));
+        }
+
+        var cancelablePaidMemberships = activePaidMemberships
+            .Where(subscription => !subscription.CancelAtPeriodEnd)
+            .Where(subscription => !string.IsNullOrWhiteSpace(subscription.StripeSubscriptionId))
+            .ToArray();
+        if (cancelablePaidMemberships.Length == 0)
+        {
+            var alreadyScheduledAt = activePaidMemberships
+                .Where(subscription => subscription.CurrentPeriodEnd is not null)
+                .Select(subscription => subscription.CurrentPeriodEnd)
+                .OrderBy(date => date)
+                .FirstOrDefault();
+            TempData["StatusMessage"] = alreadyScheduledAt is null
+                ? "Your paid cancellation is already scheduled."
+                : $"Your paid cancellation is already scheduled for {FormatDisplayDate(alreadyScheduledAt.Value)}.";
+            return RedirectToAction(nameof(Settings));
+        }
+
+        if (!stripeBillingOptions.IsConfigured)
+        {
+            TempData["StatusMessage"] = "Stripe billing is not configured right now. Use the Stripe billing portal or contact support.";
+            return RedirectToAction(nameof(Settings));
+        }
+
+        try
+        {
+            var cancellationPeriodEnd = await SchedulePaidMembershipCancellationAtPeriodEndAsync(
+                user.Id,
+                cancelablePaidMemberships,
+                cancellationToken);
+
+            TempData["StatusMessage"] = cancellationPeriodEnd is null
+                ? "Cancellation scheduled. Paid access remains active until the end of your current billing period."
+                : $"Cancellation scheduled. Paid access remains active until {FormatDisplayDate(cancellationPeriodEnd.Value)}.";
+        }
+        catch (InvalidOperationException)
+        {
+            TempData["StatusMessage"] = "Stripe billing was unavailable, so cancellation could not be scheduled. Please try again.";
+        }
+
+        return RedirectToAction(nameof(Settings));
     }
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
@@ -1644,7 +1877,13 @@ public sealed class AccountController(
             .Where(currentSubscription => currentSubscription.UserId == user.Id)
             .ToArrayAsync(cancellationToken);
         var recommendedPlans = GetPlansForAccountTypes(roles);
-        var hasPlanSelection = HasSelectedAnyRecommendedPlan(subscriptions, recommendedPlans);
+        var hasCompletedPlanSelection = HasEntitlingRecommendedPlanSubscription(subscriptions, recommendedPlans);
+        var hasTeamProfileManagementAccess = entitlements?.FeatureCodes.Contains(
+                TryOutSpotFeatureCodes.PostLimitedOpportunities,
+                StringComparer.Ordinal) == true
+            || entitlements?.FeatureCodes.Contains(
+                TryOutSpotFeatureCodes.UnlimitedOpportunityPostings,
+                StringComparer.Ordinal) == true;
 
         var steps = new List<OnboardingStepPageItem>
         {
@@ -1672,7 +1911,7 @@ public sealed class AccountController(
                 hasLinkedPlayers));
         }
 
-        if (hasTeamOrOrganizationRole)
+        if (hasTeamOrOrganizationRole && hasTeamProfileManagementAccess)
         {
             steps.Add(new OnboardingStepPageItem(
                 "add_team_or_organization",
@@ -1687,9 +1926,9 @@ public sealed class AccountController(
             steps.Add(new OnboardingStepPageItem(
                 "choose_plan",
                 "Choose plan",
-                "Start free and upgrade when premium tools are needed.",
+                "Stay free or choose a paid tier. Paid upgrades complete after secure Stripe checkout.",
                 false,
-                hasPlanSelection));
+                hasCompletedPlanSelection));
         }
 
         return new OnboardingPageModel
@@ -1810,9 +2049,29 @@ public sealed class AccountController(
         model.BillingInterval = BillingIntervalCodes.Normalize(model.BillingInterval) ?? BillingIntervalCodes.Month;
         var selectedPlan = availablePlans
             .FirstOrDefault(plan => string.Equals(plan.Code, model.PlanCode, StringComparison.Ordinal));
+        var availableBillingIntervals = selectedPlan is null
+            ? [BillingIntervalCodes.Month]
+            : TryOutSpotBillingCatalog.GetSupportedBillingIntervals(selectedPlan.Code);
+
+        if (availableBillingIntervals.Count == 0)
+        {
+            availableBillingIntervals = [BillingIntervalCodes.Month];
+        }
+
+        if (!availableBillingIntervals.Contains(model.BillingInterval, StringComparer.Ordinal))
+        {
+            model.BillingInterval = availableBillingIntervals.Contains(BillingIntervalCodes.Year, StringComparer.Ordinal)
+                ? BillingIntervalCodes.Year
+                : availableBillingIntervals.First();
+        }
+
+        model.AvailableBillingIntervals = availableBillingIntervals;
+        model.SelectedPlanRequiresAnnualBilling = selectedPlan is not null
+            && TryOutSpotBillingCatalog.RequiresAnnualCommitment(selectedPlan.Code);
         model.CheckoutAvailableForSelection = selectedPlan is not null
             && selectedPlan.RequiresStripeSubscription
             && stripeBillingOptions.IsConfigured
+            && TryOutSpotBillingCatalog.IsBillingIntervalSupported(selectedPlan.Code, model.BillingInterval)
             && stripeBillingOptions.GetPriceId(selectedPlan.Code, model.BillingInterval) is not null;
 
         return model;
@@ -1872,6 +2131,62 @@ public sealed class AccountController(
         return model;
     }
 
+    private async Task<IReadOnlyCollection<Subscription>> GetActivePaidAccountMembershipsAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var subscriptions = await dbContext.Subscriptions
+            .Where(subscription => subscription.UserId == userId
+                && subscription.ScopeType == TryOutSpotSubscriptionScopeTypes.Account
+                && subscription.StripeSubscriptionId != null
+                && subscription.StripeSubscriptionId != string.Empty)
+            .OrderByDescending(subscription => subscription.UpdatedAt)
+            .ToArrayAsync(cancellationToken);
+
+        return subscriptions
+            .Where(IsActivePaidSubscription)
+            .ToArray();
+    }
+
+    private async Task<DateTime?> SchedulePaidMembershipCancellationAtPeriodEndAsync(
+        Guid userId,
+        IReadOnlyCollection<Subscription> cancelablePaidMemberships,
+        CancellationToken cancellationToken)
+    {
+        DateTime? earliestPeriodEnd = null;
+
+        var membershipsByStripeSubscription = cancelablePaidMemberships
+            .Where(subscription => !string.IsNullOrWhiteSpace(subscription.StripeSubscriptionId))
+            .GroupBy(subscription => subscription.StripeSubscriptionId!, StringComparer.Ordinal)
+            .Select(group => group.OrderByDescending(subscription => subscription.UpdatedAt).First())
+            .ToArray();
+
+        foreach (var membership in membershipsByStripeSubscription)
+        {
+            var stripeSubscriptionId = membership.StripeSubscriptionId!;
+            var snapshot = await stripeBillingService.ScheduleCancellationAtPeriodEndAsync(
+                stripeSubscriptionId,
+                BuildCancelMembershipIdempotencyKey(userId, stripeSubscriptionId),
+                cancellationToken);
+
+            if (snapshot is null)
+            {
+                throw new InvalidOperationException(
+                    $"Stripe did not return subscription details for '{stripeSubscriptionId}'.");
+            }
+
+            await stripeSubscriptionSyncService.ApplyStripeSubscriptionAsync(snapshot, cancellationToken);
+
+            if (snapshot.CurrentPeriodEnd is not null
+                && (earliestPeriodEnd is null || snapshot.CurrentPeriodEnd < earliestPeriodEnd))
+            {
+                earliestPeriodEnd = snapshot.CurrentPeriodEnd;
+            }
+        }
+
+        return earliestPeriodEnd;
+    }
+
     private async Task<Subscription> FindOrCreateAccountScopeSubscriptionAsync(
         User user,
         string planCode,
@@ -1911,18 +2226,21 @@ public sealed class AccountController(
         Guid userId,
         CancellationToken cancellationToken)
     {
-        return await dbContext.Subscriptions
+        var subscriptions = await dbContext.Subscriptions
             .AsNoTracking()
             .Where(subscription => subscription.UserId == userId)
             .Where(subscription => subscription.StripeCustomerId != null && subscription.StripeCustomerId != string.Empty)
+            .ToListAsync(cancellationToken);
+
+        return subscriptions
             .OrderByDescending(subscription =>
                 TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status))
             .ThenByDescending(subscription => subscription.UpdatedAt)
             .Select(subscription => subscription.StripeCustomerId)
-            .FirstOrDefaultAsync(cancellationToken);
+            .FirstOrDefault();
     }
 
-    private static bool HasSelectedAnyRecommendedPlan(
+    private static bool HasEntitlingRecommendedPlanSubscription(
         IEnumerable<Subscription> subscriptions,
         IReadOnlyCollection<BillingPlanResponse> recommendedPlans)
     {
@@ -1933,7 +2251,9 @@ public sealed class AccountController(
         return subscriptions.Any(subscription =>
         {
             var normalizedPlanCode = TryOutSpotBillingCatalog.NormalizePlanCode(subscription.PlanType);
-            return normalizedPlanCode is not null && planCodes.Contains(normalizedPlanCode);
+            return normalizedPlanCode is not null
+                && planCodes.Contains(normalizedPlanCode)
+                && TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status);
         });
     }
 
@@ -1952,6 +2272,29 @@ public sealed class AccountController(
             .OrderByDescending(currentSubscription => currentSubscription.UpdatedAt)
             .ToArrayAsync(cancellationToken);
         var activePaidSubscriptions = subscriptions.Where(IsActivePaidSubscription).ToArray();
+        var cancelablePaidMemberships = activePaidSubscriptions
+            .Where(subscription =>
+                !subscription.CancelAtPeriodEnd
+                && !string.IsNullOrWhiteSpace(subscription.StripeSubscriptionId))
+            .ToArray();
+        var scheduledPaidCancellationAt = activePaidSubscriptions
+            .Where(subscription => subscription.CancelAtPeriodEnd && subscription.CurrentPeriodEnd is not null)
+            .Select(subscription => subscription.CurrentPeriodEnd)
+            .OrderBy(date => date)
+            .FirstOrDefault();
+        var hasStripeCustomer = subscriptions.Any(subscription =>
+            !string.IsNullOrWhiteSpace(subscription.StripeCustomerId));
+        var hasPendingPaidPlanSelection = activePaidSubscriptions.Length == 0 && subscriptions.Any(subscription =>
+        {
+            var plan = TryOutSpotBillingCatalog.GetPlan(subscription.PlanType);
+            if (plan?.RequiresStripeSubscription != true)
+            {
+                return false;
+            }
+
+            return string.Equals(subscription.Status, "plan_selected", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(subscription.Status, "checkout_started", StringComparison.OrdinalIgnoreCase);
+        });
         var hasLocalPassword = await userManager.HasPasswordAsync(user);
 
         return new AccountSettingsPageModel
@@ -1994,7 +2337,14 @@ public sealed class AccountController(
             CurrentPlanName = FormatCurrentPlanName(activePaidSubscriptions),
             CurrentPlanStatus = FormatCurrentPlanStatus(activePaidSubscriptions),
             RecommendedPlans = GetPlansForAccountTypes(roles),
-            FeatureCodes = entitlements?.FeatureCodes ?? []
+            FeatureCodes = entitlements?.FeatureCodes ?? [],
+            StripeCheckoutConfigured = stripeBillingOptions.IsConfigured,
+            HasStripeCustomer = hasStripeCustomer,
+            HasPendingPaidPlanSelection = hasPendingPaidPlanSelection,
+            MembershipSummaries = BuildMembershipSummaries(subscriptions),
+            CanCancelPaidMembership = cancelablePaidMemberships.Length > 0 && stripeBillingOptions.IsConfigured,
+            HasScheduledPaidCancellation = scheduledPaidCancellationAt is not null,
+            ScheduledPaidCancellationAt = scheduledPaidCancellationAt
         };
     }
 
@@ -2273,6 +2623,23 @@ public sealed class AccountController(
         user.SmsConsentSource = source;
     }
 
+    private async Task SendVerificationEmailIfEligibleAsync(string? normalizedEmail, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(normalizedEmail))
+        {
+            return;
+        }
+
+        var user = await userManager.FindByEmailAsync(normalizedEmail);
+        if (user is not { IsActive: true, EmailConfirmed: false })
+        {
+            return;
+        }
+
+        var confirmationToken = await userManager.GenerateEmailConfirmationTokenAsync(user);
+        await accountEmailSender.SendEmailConfirmationTokenAsync(user, confirmationToken, cancellationToken);
+    }
+
     private static bool HasAnyRole(IReadOnlyCollection<string> roles, params string[] candidates)
     {
         return roles.Any(role => candidates.Contains(role, StringComparer.OrdinalIgnoreCase));
@@ -2318,6 +2685,132 @@ public sealed class AccountController(
             .OrderBy(planName => planName)
             .ToArray();
         return string.Join(", ", planNames);
+    }
+
+    private static IReadOnlyCollection<AccountMembershipSummaryItem> BuildMembershipSummaries(
+        IReadOnlyCollection<Subscription> subscriptions)
+    {
+        return subscriptions
+            .OrderByDescending(subscription => TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status))
+            .ThenByDescending(subscription => subscription.UpdatedAt)
+            .Select(ToMembershipSummaryItem)
+            .ToArray();
+    }
+
+    private static AccountMembershipSummaryItem ToMembershipSummaryItem(Subscription subscription)
+    {
+        var normalizedPlanCode = TryOutSpotBillingCatalog.NormalizePlanCode(subscription.PlanType);
+        var plan = normalizedPlanCode is null
+            ? null
+            : TryOutSpotBillingCatalog.GetPlan(normalizedPlanCode);
+        var hasActiveEntitlement = TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status);
+
+        return new AccountMembershipSummaryItem(
+            plan?.Name ?? subscription.PlanType,
+            FormatSubscriptionStatus(subscription.Status),
+            FormatBillingIntervalDisplay(subscription.BillingInterval),
+            FormatSubscriptionAmountDisplay(subscription, plan),
+            FormatScopeDisplay(subscription.ScopeType),
+            hasActiveEntitlement,
+            subscription.CurrentPeriodStart,
+            subscription.CurrentPeriodEnd,
+            subscription.CancelAtPeriodEnd,
+            subscription.UpdatedAt);
+    }
+
+    private static string FormatSubscriptionStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return "Unknown";
+        }
+
+        return status.Trim() switch
+        {
+            "active" => "Active",
+            "trialing" => "Trialing",
+            "past_due" => "Past due",
+            "canceled" => "Canceled",
+            "cancelled" => "Canceled",
+            "incomplete" => "Incomplete",
+            "incomplete_expired" => "Incomplete expired",
+            "unpaid" => "Unpaid",
+            "plan_selected" => "Plan selected",
+            "checkout_started" => "Checkout started",
+            var current => string.Join(' ', current.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(part => char.ToUpperInvariant(part[0]) + part[1..]))
+        };
+    }
+
+    private static string FormatBillingIntervalDisplay(string? billingInterval)
+    {
+        return BillingIntervalCodes.Normalize(billingInterval) switch
+        {
+            BillingIntervalCodes.Month => "Monthly",
+            BillingIntervalCodes.Year => "Annual",
+            _ => "N/A"
+        };
+    }
+
+    private static string FormatSubscriptionAmountDisplay(Subscription subscription, BillingPlanDefinition? plan)
+    {
+        var requiresStripeSubscription = plan?.RequiresStripeSubscription == true;
+        if (!requiresStripeSubscription)
+        {
+            return "Free";
+        }
+
+        var intervalSuffix = BillingIntervalCodes.Normalize(subscription.BillingInterval) switch
+        {
+            BillingIntervalCodes.Month => "/mo",
+            BillingIntervalCodes.Year => "/yr",
+            _ => string.Empty
+        };
+
+        if (subscription.Amount is { } amount && amount > 0)
+        {
+            return $"{amount:C2}{intervalSuffix}";
+        }
+
+        if (plan is not null)
+        {
+            var fallbackAmount = BillingIntervalCodes.Normalize(subscription.BillingInterval) switch
+            {
+                BillingIntervalCodes.Month => plan.MonthlyAmount,
+                BillingIntervalCodes.Year => plan.AnnualAmount,
+                _ => plan.MonthlyAmount
+            };
+
+            if (fallbackAmount is { } configuredAmount && configuredAmount > 0)
+            {
+                return $"{configuredAmount:C2}{intervalSuffix}";
+            }
+        }
+
+        return "Paid (amount pending)";
+    }
+
+    private static string FormatScopeDisplay(string? scopeType)
+    {
+        return TryOutSpotSubscriptionScopeTypes.Normalize(scopeType) switch
+        {
+            TryOutSpotSubscriptionScopeTypes.Account => "Account",
+            TryOutSpotSubscriptionScopeTypes.Player => "Player",
+            TryOutSpotSubscriptionScopeTypes.Team => "Team",
+            TryOutSpotSubscriptionScopeTypes.Organization => "Organization",
+            _ => "Account"
+        };
+    }
+
+    private static string TrimCheckoutSessionIdForDisplay(string sessionId)
+    {
+        var trimmed = sessionId.Trim();
+        if (trimmed.Length <= 16)
+        {
+            return trimmed;
+        }
+
+        return $"{trimmed[..8]}...{trimmed[^6..]}";
     }
 
     private static string GetProviderDisplayName(string provider)
@@ -2456,6 +2949,35 @@ public sealed class AccountController(
 
         return TeamGeographicScopeOptions.FirstOrDefault(
             option => string.Equals(option, geographicScope.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string BuildCheckoutIdempotencyKey(
+        Guid userId,
+        string planCode,
+        string billingInterval,
+        string scopeType,
+        Guid? scopeId)
+    {
+        var normalizedScopeId = scopeId?.ToString("N") ?? "account";
+        var key = $"checkout:{userId:N}:{planCode}:{billingInterval}:{scopeType}:{normalizedScopeId}";
+        return key.Length <= 255 ? key : key[..255];
+    }
+
+    private static string BuildCustomerPortalIdempotencyKey(Guid userId)
+    {
+        var key = $"portal:{userId:N}";
+        return key.Length <= 255 ? key : key[..255];
+    }
+
+    private static string BuildCancelMembershipIdempotencyKey(Guid userId, string stripeSubscriptionId)
+    {
+        var key = $"cancel:{userId:N}:{stripeSubscriptionId.Trim()}";
+        return key.Length <= 255 ? key : key[..255];
+    }
+
+    private static string FormatDisplayDate(DateTime value)
+    {
+        return value.ToLocalTime().ToString("MMM d, yyyy h:mm tt");
     }
 
     private static DateTime NormalizeUtcDate(DateTime value)

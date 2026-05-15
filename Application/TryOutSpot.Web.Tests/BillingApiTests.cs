@@ -120,7 +120,7 @@ public sealed class BillingApiTests
 
         var teamResponse = await client.PostAsJsonAsync(
             "/api/billing/checkout-session",
-            new CreateCheckoutSessionRequest(TryOutSpotPlanCodes.TeamProfessional, BillingIntervalCodes.Month));
+            new CreateCheckoutSessionRequest(TryOutSpotPlanCodes.TeamProfessional, BillingIntervalCodes.Year));
 
         Assert.Equal(HttpStatusCode.OK, teamResponse.StatusCode);
     }
@@ -223,15 +223,51 @@ public sealed class BillingApiTests
 
         var teamResponse = await client.PostAsJsonAsync(
             "/api/billing/checkout-session",
-            new CreateCheckoutSessionRequest(TryOutSpotPlanCodes.TeamProfessional, BillingIntervalCodes.Month));
+            new CreateCheckoutSessionRequest(TryOutSpotPlanCodes.TeamProfessional, BillingIntervalCodes.Year));
 
         Assert.Equal(HttpStatusCode.OK, teamResponse.StatusCode);
 
         var enterpriseResponse = await client.PostAsJsonAsync(
             "/api/billing/checkout-session",
-            new CreateCheckoutSessionRequest(TryOutSpotPlanCodes.EnterpriseOrganization, BillingIntervalCodes.Month));
+            new CreateCheckoutSessionRequest(TryOutSpotPlanCodes.EnterpriseOrganization, BillingIntervalCodes.Year));
 
         Assert.Equal(HttpStatusCode.OK, enterpriseResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateCheckoutSession_WithOrganizationAdmin_AllowsTeamProfessionalAndEnterprisePlans()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync(
+            "checkout-organization-admin@example.com",
+            [TryOutSpotRoles.OrganizationAdmin]);
+        var client = await CreateAuthorizedClientAsync(factory, user.Email!);
+
+        var teamProfessionalResponse = await client.PostAsJsonAsync(
+            "/api/billing/checkout-session",
+            new CreateCheckoutSessionRequest(TryOutSpotPlanCodes.TeamProfessional, BillingIntervalCodes.Year));
+        Assert.Equal(HttpStatusCode.OK, teamProfessionalResponse.StatusCode);
+
+        var enterpriseResponse = await client.PostAsJsonAsync(
+            "/api/billing/checkout-session",
+            new CreateCheckoutSessionRequest(TryOutSpotPlanCodes.EnterpriseOrganization, BillingIntervalCodes.Year));
+        Assert.Equal(HttpStatusCode.OK, enterpriseResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateCheckoutSession_WithTeamProfessionalMonthlyInterval_ReturnsBadRequest()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync(
+            "checkout-team-pro-monthly-not-allowed@example.com",
+            [TryOutSpotRoles.Coach]);
+        var client = await CreateAuthorizedClientAsync(factory, user.Email!);
+
+        var response = await client.PostAsJsonAsync(
+            "/api/billing/checkout-session",
+            new CreateCheckoutSessionRequest(TryOutSpotPlanCodes.TeamProfessional, BillingIntervalCodes.Month));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -295,6 +331,240 @@ public sealed class BillingApiTests
         Assert.DoesNotContain(TryOutSpotFeatureCodes.AdvancedPlayerSearch, canceledEntitlements.FeatureCodes);
     }
 
+    [Fact]
+    public async Task StripeSubscriptionSync_OffseasonHold_LeavesListingSearchableButHidesContact()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync("offseason-hold@example.com", [TryOutSpotRoles.Coach]);
+        var now = DateTime.UtcNow;
+        Guid teamId;
+
+        using (var setupScope = factory.Services.CreateScope())
+        {
+            var dbContext = setupScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var organization = new Organization
+            {
+                Id = Guid.NewGuid(),
+                Name = "Midamserv Club",
+                Email = "club@example.com",
+                PhoneNumber = "620-555-1010",
+                SocialMediaLinks = "{\"facebook\":\"https://facebook.com/midamserv\"}",
+                IsSearchable = false,
+                IsContactInfoVisible = true,
+                IsActive = true,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+
+            teamId = Guid.NewGuid();
+            dbContext.Organizations.Add(organization);
+            dbContext.Teams.Add(new Team
+            {
+                Id = teamId,
+                OrganizationId = organization.Id,
+                Name = "Midamserv Thunder",
+                Email = "coach@example.com",
+                PhoneNumber = "620-555-2020",
+                SocialMediaLinks = "{\"instagram\":\"https://instagram.com/midamserv\"}",
+                IsSearchable = false,
+                IsContactInfoVisible = true,
+                IsActive = true,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+            dbContext.UserTeamRoles.Add(new UserTeamRole
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                TeamId = teamId,
+                Role = TryOutSpotRoles.Coach,
+                StartDate = now,
+                IsActive = true,
+                CreatedAt = now
+            });
+
+            await dbContext.SaveChangesAsync();
+        }
+
+        using var scope = factory.Services.CreateScope();
+        var syncService = scope.ServiceProvider.GetRequiredService<IStripeSubscriptionSyncService>();
+        await syncService.ApplyStripeSubscriptionAsync(
+            new StripeSubscriptionSnapshot(
+                "sub_team_hold",
+                "cus_team_hold",
+                user.Id,
+                TryOutSpotPlanCodes.TeamOffseasonHold,
+                "price_team_offseason_hold_month",
+                "active",
+                now,
+                now.AddMonths(1),
+                null,
+                15.99m,
+                "usd",
+                BillingIntervalCodes.Month,
+                TryOutSpotSubscriptionScopeTypes.Account,
+                null,
+                false,
+                null),
+            CancellationToken.None);
+
+        var verifyDb = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var team = await verifyDb.Teams.SingleAsync(currentTeam => currentTeam.Id == teamId);
+        var organizationAfterHold = await verifyDb.Organizations.SingleAsync(currentOrganization => currentOrganization.Id == team.OrganizationId);
+
+        Assert.True(team.IsActive);
+        Assert.True(team.IsSearchable);
+        Assert.False(team.IsContactInfoVisible);
+        Assert.True(organizationAfterHold.IsActive);
+        Assert.True(organizationAfterHold.IsSearchable);
+        Assert.False(organizationAfterHold.IsContactInfoVisible);
+    }
+
+    [Fact]
+    public async Task StripeSubscriptionSync_EnterpriseCancellation_SoftDeletesTeamAndOrganizationData()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync("enterprise-cancel@example.com", [TryOutSpotRoles.OrganizationAdmin]);
+        var now = DateTime.UtcNow;
+        Guid teamId;
+        Guid organizationId;
+        Guid opportunityId;
+
+        using (var setupScope = factory.Services.CreateScope())
+        {
+            var dbContext = setupScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var baseballSportId = await dbContext.Sports
+                .Where(sport => sport.IsActive && sport.Name == "Baseball")
+                .Select(sport => sport.Id)
+                .SingleAsync();
+
+            organizationId = Guid.NewGuid();
+            teamId = Guid.NewGuid();
+            opportunityId = Guid.NewGuid();
+
+            dbContext.Organizations.Add(new Organization
+            {
+                Id = organizationId,
+                Name = "Midamserv Organization",
+                Email = "org@example.com",
+                PhoneNumber = "620-555-3030",
+                WebsiteUrl = "https://midamserv.test",
+                SocialMediaLinks = "{\"facebook\":\"https://facebook.com/midamserv\"}",
+                IsSearchable = true,
+                IsContactInfoVisible = true,
+                IsActive = true,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+            dbContext.Teams.Add(new Team
+            {
+                Id = teamId,
+                OrganizationId = organizationId,
+                Name = "Midamserv Thunder Elite",
+                Email = "team@example.com",
+                PhoneNumber = "620-555-4040",
+                WebsiteUrl = "https://team.midamserv.test",
+                SocialMediaLinks = "{\"instagram\":\"https://instagram.com/midamserv\"}",
+                IsSearchable = true,
+                IsContactInfoVisible = true,
+                IsActive = true,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+            dbContext.UserTeamRoles.Add(new UserTeamRole
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                TeamId = teamId,
+                Role = TryOutSpotRoles.OrganizationAdmin,
+                StartDate = now,
+                IsActive = true,
+                CreatedAt = now
+            });
+            dbContext.TeamSports.Add(new TeamSport
+            {
+                Id = Guid.NewGuid(),
+                TeamId = teamId,
+                SportId = baseballSportId,
+                IsActive = true,
+                CreatedAt = now
+            });
+            dbContext.Opportunities.Add(new Opportunity
+            {
+                Id = opportunityId,
+                TeamId = teamId,
+                SportId = baseballSportId,
+                Type = "Tryout",
+                Title = "Spring roster tryout",
+                ContactEmail = "opportunity@example.com",
+                ContactPhone = "620-555-5050",
+                WebsiteUrl = "https://midamserv.test/tryout",
+                IsPublished = true,
+                IsActive = true,
+                RegistrationRequired = true,
+                RegistrationFee = 0m,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+
+            await dbContext.SaveChangesAsync();
+        }
+
+        using var scope = factory.Services.CreateScope();
+        var syncService = scope.ServiceProvider.GetRequiredService<IStripeSubscriptionSyncService>();
+        await syncService.ApplyStripeSubscriptionAsync(
+            new StripeSubscriptionSnapshot(
+                "sub_enterprise",
+                "cus_enterprise",
+                user.Id,
+                TryOutSpotPlanCodes.EnterpriseOrganization,
+                "price_enterprise_year",
+                "active",
+                now,
+                now.AddYears(1),
+                null,
+                1999m,
+                "usd",
+                BillingIntervalCodes.Year,
+                TryOutSpotSubscriptionScopeTypes.Account,
+                null,
+                true,
+                null),
+            CancellationToken.None);
+
+        var verifyDb = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var team = await verifyDb.Teams.SingleAsync(currentTeam => currentTeam.Id == teamId);
+        var organization = await verifyDb.Organizations.SingleAsync(currentOrganization => currentOrganization.Id == organizationId);
+        var role = await verifyDb.UserTeamRoles.SingleAsync(currentRole => currentRole.TeamId == teamId && currentRole.UserId == user.Id);
+        var teamSport = await verifyDb.TeamSports.SingleAsync(currentTeamSport => currentTeamSport.TeamId == teamId);
+        var opportunity = await verifyDb.Opportunities.SingleAsync(currentOpportunity => currentOpportunity.Id == opportunityId);
+
+        Assert.False(team.IsActive);
+        Assert.False(team.IsSearchable);
+        Assert.False(team.IsContactInfoVisible);
+        Assert.Null(team.Email);
+        Assert.Null(team.PhoneNumber);
+        Assert.Null(team.WebsiteUrl);
+        Assert.Null(team.SocialMediaLinks);
+
+        Assert.False(organization.IsActive);
+        Assert.False(organization.IsSearchable);
+        Assert.False(organization.IsContactInfoVisible);
+        Assert.Null(organization.Email);
+        Assert.Null(organization.PhoneNumber);
+        Assert.Null(organization.WebsiteUrl);
+        Assert.Null(organization.SocialMediaLinks);
+
+        Assert.False(role.IsActive);
+        Assert.NotNull(role.EndDate);
+        Assert.False(teamSport.IsActive);
+        Assert.False(opportunity.IsActive);
+        Assert.False(opportunity.IsPublished);
+        Assert.Null(opportunity.ContactEmail);
+        Assert.Null(opportunity.ContactPhone);
+        Assert.Null(opportunity.WebsiteUrl);
+    }
+
     private static TryOutSpotWebApplicationFactory CreateFactoryWithStripe()
     {
         return new TryOutSpotWebApplicationFactory(services =>
@@ -319,14 +589,18 @@ public sealed class BillingApiTests
                     {
                         MonthlyPriceId = "price_team_basic_month"
                     },
+                    [TryOutSpotPlanCodes.TeamOffseasonHold] = new()
+                    {
+                        MonthlyPriceId = "price_team_offseason_hold_month"
+                    },
                     [TryOutSpotPlanCodes.TeamProfessional] = new()
                     {
-                        MonthlyPriceId = "price_team_professional_month",
+                        MonthlyPriceId = string.Empty,
                         AnnualPriceId = "price_team_professional_year"
                     },
                     [TryOutSpotPlanCodes.EnterpriseOrganization] = new()
                     {
-                        MonthlyPriceId = "price_enterprise_month",
+                        MonthlyPriceId = string.Empty,
                         AnnualPriceId = "price_enterprise_year"
                     }
                 };
@@ -367,6 +641,7 @@ public sealed class BillingApiTests
             string stripePriceId,
             string scopeType,
             Guid? scopeId,
+            string? idempotencyKey,
             CancellationToken cancellationToken)
         {
             return Task.FromResult(new StripeCheckoutSessionResult(
@@ -377,9 +652,35 @@ public sealed class BillingApiTests
 
         public Task<StripeBillingPortalSessionResult> CreatePortalSessionAsync(
             string stripeCustomerId,
+            string? idempotencyKey,
             CancellationToken cancellationToken)
         {
             return Task.FromResult(new StripeBillingPortalSessionResult("https://billing.stripe.test/session"));
+        }
+
+        public Task<StripeSubscriptionSnapshot?> ScheduleCancellationAtPeriodEndAsync(
+            string stripeSubscriptionId,
+            string? idempotencyKey,
+            CancellationToken cancellationToken)
+        {
+            var now = DateTime.UtcNow;
+            return Task.FromResult<StripeSubscriptionSnapshot?>(new StripeSubscriptionSnapshot(
+                stripeSubscriptionId,
+                "cus_test_checkout",
+                null,
+                TryOutSpotPlanCodes.PremiumPlayer,
+                "price_premium_month",
+                "active",
+                now,
+                now.AddMonths(1),
+                null,
+                9.99m,
+                "usd",
+                BillingIntervalCodes.Month,
+                TryOutSpotSubscriptionScopeTypes.Account,
+                null,
+                true,
+                null));
         }
 
         public Task<Stripe.Subscription?> GetSubscriptionAsync(

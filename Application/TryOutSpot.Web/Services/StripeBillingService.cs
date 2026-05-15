@@ -21,10 +21,17 @@ public interface IStripeBillingService
         string stripePriceId,
         string scopeType,
         Guid? scopeId,
+        string? idempotencyKey,
         CancellationToken cancellationToken);
 
     Task<StripeBillingPortalSessionResult> CreatePortalSessionAsync(
         string stripeCustomerId,
+        string? idempotencyKey,
+        CancellationToken cancellationToken);
+
+    Task<StripeSubscriptionSnapshot?> ScheduleCancellationAtPeriodEndAsync(
+        string stripeSubscriptionId,
+        string? idempotencyKey,
         CancellationToken cancellationToken);
 
     Task<Stripe.Subscription?> GetSubscriptionAsync(string stripeSubscriptionId, CancellationToken cancellationToken);
@@ -53,6 +60,7 @@ public sealed class StripeBillingService(IOptions<StripeBillingOptions> options)
         string stripePriceId,
         string scopeType,
         Guid? scopeId,
+        string? idempotencyKey,
         CancellationToken cancellationToken)
     {
         EnsureStripeApiIsConfigured();
@@ -90,7 +98,7 @@ public sealed class StripeBillingService(IOptions<StripeBillingOptions> options)
         var sessionService = new CheckoutSessionService();
         var session = await sessionService.CreateAsync(
             createOptions,
-            BuildRequestOptions(),
+            BuildRequestOptions(idempotencyKey),
             cancellationToken);
 
         if (string.IsNullOrWhiteSpace(session.Url))
@@ -103,6 +111,7 @@ public sealed class StripeBillingService(IOptions<StripeBillingOptions> options)
 
     public async Task<StripeBillingPortalSessionResult> CreatePortalSessionAsync(
         string stripeCustomerId,
+        string? idempotencyKey,
         CancellationToken cancellationToken)
     {
         EnsureStripeApiIsConfigured();
@@ -114,7 +123,7 @@ public sealed class StripeBillingService(IOptions<StripeBillingOptions> options)
                 Customer = stripeCustomerId,
                 ReturnUrl = stripeOptions.PortalReturnUrl
             },
-            BuildRequestOptions(),
+            BuildRequestOptions(idempotencyKey),
             cancellationToken);
 
         if (string.IsNullOrWhiteSpace(session.Url))
@@ -140,6 +149,33 @@ public sealed class StripeBillingService(IOptions<StripeBillingOptions> options)
             },
             BuildRequestOptions(),
             cancellationToken);
+    }
+
+    public async Task<StripeSubscriptionSnapshot?> ScheduleCancellationAtPeriodEndAsync(
+        string stripeSubscriptionId,
+        string? idempotencyKey,
+        CancellationToken cancellationToken)
+    {
+        EnsureStripeApiIsConfigured();
+
+        if (string.IsNullOrWhiteSpace(stripeSubscriptionId))
+        {
+            throw new ArgumentException("Stripe subscription id is required.", nameof(stripeSubscriptionId));
+        }
+
+        var subscriptionService = new SubscriptionService();
+        var updatedSubscription = await subscriptionService.UpdateAsync(
+            stripeSubscriptionId.Trim(),
+            new SubscriptionUpdateOptions
+            {
+                CancelAtPeriodEnd = true
+            },
+            BuildRequestOptions(idempotencyKey),
+            cancellationToken);
+
+        return updatedSubscription is null
+            ? null
+            : StripeSubscriptionSnapshotFactory.FromStripeSubscription(updatedSubscription);
     }
 
     public Event ConstructWebhookEvent(string payload, string signatureHeader)
@@ -216,9 +252,15 @@ public sealed class StripeBillingService(IOptions<StripeBillingOptions> options)
         return metadata;
     }
 
-    private RequestOptions BuildRequestOptions()
+    private RequestOptions BuildRequestOptions(string? idempotencyKey = null)
     {
-        return new RequestOptions { ApiKey = stripeOptions.SecretKey };
+        return new RequestOptions
+        {
+            ApiKey = stripeOptions.SecretKey,
+            IdempotencyKey = string.IsNullOrWhiteSpace(idempotencyKey)
+                ? null
+                : idempotencyKey.Trim()
+        };
     }
 
     private void EnsureStripeApiIsConfigured()

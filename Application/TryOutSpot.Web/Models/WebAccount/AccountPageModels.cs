@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Models.Billing;
 
 namespace TryOutSpot.Web.Models.WebAccount;
@@ -83,6 +84,8 @@ public sealed class LoginPageModel
     public bool RememberMe { get; set; } = true;
 
     public string? ReturnUrl { get; set; }
+
+    public bool ShowResendVerificationPrompt { get; set; }
 
     public bool GoogleIsConfigured { get; set; }
 
@@ -359,6 +362,10 @@ public sealed class ChoosePlanPageModel
 
     public bool CheckoutAvailableForSelection { get; set; }
 
+    public IReadOnlyCollection<string> AvailableBillingIntervals { get; set; } = [BillingIntervalCodes.Month];
+
+    public bool SelectedPlanRequiresAnnualBilling { get; set; }
+
     public IReadOnlyCollection<BillingPlanResponse> AvailablePlans { get; set; } = [];
 }
 
@@ -452,6 +459,14 @@ public sealed class AddTeamOrOrganizationPageModel
     [Display(Name = "TikTok username")]
     public string? TikTokUrl { get; set; }
 
+    [MaxLength(200)]
+    [Display(Name = "GameChanger coach")]
+    public string? GameChangerCoachName { get; set; }
+
+    [MaxLength(200)]
+    [Display(Name = "GameChanger team name")]
+    public string? GameChangerTeamName { get; set; }
+
     public List<Guid> SelectedSportIds { get; set; } = [];
 
     public IReadOnlyCollection<SportSelectionPageItem> AvailableSports { get; set; } = [];
@@ -482,6 +497,20 @@ public sealed class AccountSettingsPageModel
     public string? CurrentPlanStatus { get; set; }
 
     public IReadOnlyCollection<string> FeatureCodes { get; set; } = [];
+
+    public bool StripeCheckoutConfigured { get; set; }
+
+    public bool HasStripeCustomer { get; set; }
+
+    public bool HasPendingPaidPlanSelection { get; set; }
+
+    public IReadOnlyCollection<AccountMembershipSummaryItem> MembershipSummaries { get; set; } = [];
+
+    public bool CanCancelPaidMembership { get; set; }
+
+    public bool HasScheduledPaidCancellation { get; set; }
+
+    public DateTime? ScheduledPaidCancellationAt { get; set; }
 }
 
 public sealed class ProfileSettingsPageModel
@@ -585,6 +614,18 @@ public sealed class SmsConsentSettingsPageModel
     [Display(Name = "Phone number")]
     public string? PhoneNumber { get; set; }
 }
+
+public sealed record AccountMembershipSummaryItem(
+    string PlanName,
+    string Status,
+    string BillingInterval,
+    string Price,
+    string Scope,
+    bool HasActiveEntitlement,
+    DateTime? CurrentPeriodStart,
+    DateTime? CurrentPeriodEnd,
+    bool CancelAtPeriodEnd,
+    DateTime UpdatedAt);
 
 public sealed record AccountTypeSelectionItem(
     string Name,
