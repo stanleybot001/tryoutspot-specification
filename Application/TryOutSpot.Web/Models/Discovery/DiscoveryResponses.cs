@@ -105,4 +105,5 @@ public sealed record OpportunityDiscoverySummaryResponse(
     string? ContactEmail,
     string? ContactPhone,
     string? WebsiteUrl,
+    string? PdfUrl,
     double? DistanceMiles = null);

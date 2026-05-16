@@ -51,6 +51,12 @@ public partial class Opportunity
 
     public string? WebsiteUrl { get; set; }
 
+    public string? PdfUrl { get; set; }
+
+    public string? UploadedPdfObjectKey { get; set; }
+
+    public string? UploadedPdfFileName { get; set; }
+
     public string? RequiredEquipment { get; set; }
 
     public string? WhatToBring { get; set; }

@@ -219,6 +219,7 @@ public sealed class TeamListingsApiController(
             ContactEmail = NormalizeOptional(request.ContactEmail) ?? managedTeam.Team.Email,
             ContactPhone = NormalizeOptional(request.ContactPhone) ?? managedTeam.Team.PhoneNumber,
             WebsiteUrl = NormalizeOptional(request.WebsiteUrl) ?? managedTeam.Team.WebsiteUrl,
+            PdfUrl = NormalizeOptional(request.PdfUrl),
             RequiredEquipment = NormalizeOptional(request.RequiredEquipment),
             WhatToBring = NormalizeOptional(request.WhatToBring),
             SpecialInstructions = NormalizeOptional(request.SpecialInstructions),
@@ -322,6 +323,7 @@ public sealed class TeamListingsApiController(
         opportunity.ContactEmail = NormalizeOptional(request.ContactEmail) ?? managedTeam.Team.Email;
         opportunity.ContactPhone = NormalizeOptional(request.ContactPhone) ?? managedTeam.Team.PhoneNumber;
         opportunity.WebsiteUrl = NormalizeOptional(request.WebsiteUrl) ?? managedTeam.Team.WebsiteUrl;
+        opportunity.PdfUrl = NormalizeOptional(request.PdfUrl);
         opportunity.RequiredEquipment = NormalizeOptional(request.RequiredEquipment);
         opportunity.WhatToBring = NormalizeOptional(request.WhatToBring);
         opportunity.SpecialInstructions = NormalizeOptional(request.SpecialInstructions);
@@ -655,6 +657,8 @@ public sealed class TeamListingsApiController(
             opportunity.City,
             opportunity.State,
             opportunity.ZipCode,
+            opportunity.WebsiteUrl,
+            opportunity.PdfUrl,
             opportunity.IsPublished,
             opportunity.PublishedAt,
             opportunity.ExpiresAt,
@@ -686,6 +690,7 @@ public sealed class TeamListingsApiController(
             opportunity.ContactEmail,
             opportunity.ContactPhone,
             opportunity.WebsiteUrl,
+            opportunity.PdfUrl,
             opportunity.RequiredEquipment,
             opportunity.WhatToBring,
             opportunity.SpecialInstructions,

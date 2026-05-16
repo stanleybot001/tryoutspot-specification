@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +18,8 @@ using TryOutSpot.Web.Security;
 using TryOutSpot.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+const long ListingPdfMaxUploadBytes = 10L * 1024L * 1024L;
+const long MultipartRequestLimitBytes = ListingPdfMaxUploadBytes + (2L * 1024L * 1024L);
 if (builder.Environment.IsDevelopment())
 {
     builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
@@ -36,6 +39,18 @@ builder.Host.UseSerilog((context, services, loggerConfiguration) =>
 // Add services to the container.
 builder.Services.AddControllersWithViews();
 builder.Services.AddOpenApi();
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = MultipartRequestLimitBytes;
+});
+builder.Services.Configure<IISServerOptions>(options =>
+{
+    options.MaxRequestBodySize = MultipartRequestLimitBytes;
+});
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = MultipartRequestLimitBytes;
+});
 builder.Services.Configure<JwtTokenOptions>(builder.Configuration.GetSection(JwtTokenOptions.SectionName));
 builder.Services.Configure<SocialLoginOptions>(builder.Configuration.GetSection(SocialLoginOptions.SectionName));
 builder.Services.Configure<GoogleAuthenticationOptions>(builder.Configuration.GetSection(GoogleAuthenticationOptions.SectionName));
@@ -44,6 +59,7 @@ builder.Services.Configure<ResendEmailOptions>(builder.Configuration.GetSection(
 builder.Services.Configure<AccountSmsOptions>(builder.Configuration.GetSection(AccountSmsOptions.SectionName));
 builder.Services.Configure<TwilioSmsOptions>(builder.Configuration.GetSection(TwilioSmsOptions.SectionName));
 builder.Services.Configure<StripeBillingOptions>(builder.Configuration.GetSection(StripeBillingOptions.SectionName));
+builder.Services.Configure<R2StorageOptions>(builder.Configuration.GetSection(R2StorageOptions.SectionName));
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -78,19 +94,31 @@ builder.Services.AddIdentityCore<User>(options =>
     .AddSignInManager()
     .AddDefaultTokenProviders();
 var jwtOptions = builder.Configuration.GetSection(JwtTokenOptions.SectionName).Get<JwtTokenOptions>() ?? new JwtTokenOptions();
+var webCookieDomain = builder.Configuration["Authentication:CookieDomain"];
 var authenticationBuilder = builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddCookie(IdentityConstants.ExternalScheme, options =>
     {
         options.Cookie.Name = "TryOutSpot.ExternalLogin";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.Cookie.SameSite = SameSiteMode.Lax;
         options.ExpireTimeSpan = TimeSpan.FromMinutes(10);
         options.SlidingExpiration = false;
     })
     .AddCookie(TryOutSpotAuthenticationSchemes.WebCookie, options =>
     {
         options.Cookie.Name = "TryOutSpot.Web";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        if (!string.IsNullOrWhiteSpace(webCookieDomain))
+        {
+            options.Cookie.Domain = webCookieDomain.Trim();
+        }
         options.LoginPath = "/account/login";
         options.AccessDeniedPath = "/account/login";
         options.ExpireTimeSpan = TimeSpan.FromDays(14);
+        options.Cookie.MaxAge = TimeSpan.FromDays(14);
         options.SlidingExpiration = true;
         options.Events.OnRedirectToLogin = context =>
         {
@@ -271,6 +299,7 @@ builder.Services.AddScoped<IEntitlementService, EntitlementService>();
 builder.Services.AddScoped<IZipRadiusSearchService, ZipRadiusSearchService>();
 builder.Services.AddScoped<IStripeBillingService, StripeBillingService>();
 builder.Services.AddScoped<IStripeSubscriptionSyncService, StripeSubscriptionSyncService>();
+builder.Services.AddScoped<IPdfStorageService, R2PdfStorageService>();
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(
@@ -304,6 +333,16 @@ builder.Services.AddScoped<IAuthorizationHandler, AnyFeatureAccessAuthorizationH
 
 var app = builder.Build();
 
+var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("TryOutSpot.Startup");
+var r2Options = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<R2StorageOptions>>().Value;
+startupLogger.LogInformation(
+    "R2 configuration loaded. Endpoint={Endpoint} Bucket={BucketName} AccountIdConfigured={HasAccountId} AccessKeyConfigured={HasAccessKey} SecretConfigured={HasSecret}",
+    string.IsNullOrWhiteSpace(r2Options.Endpoint) ? "(missing)" : r2Options.Endpoint,
+    string.IsNullOrWhiteSpace(r2Options.BucketName) ? "(missing)" : r2Options.BucketName,
+    !string.IsNullOrWhiteSpace(r2Options.AccountId),
+    !string.IsNullOrWhiteSpace(r2Options.AccessKeyId),
+    !string.IsNullOrWhiteSpace(r2Options.SecretAccessKey));
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -319,6 +358,15 @@ app.UseForwardedHeaders();
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
+    app.UseStatusCodePages(async context =>
+    {
+        if (context.HttpContext.Response.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        {
+            context.HttpContext.Response.ContentType = "text/plain; charset=utf-8";
+            await context.HttpContext.Response.WriteAsync(
+                "File upload is too large. Upload PDF files up to 10 MB.");
+        }
+    });
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }

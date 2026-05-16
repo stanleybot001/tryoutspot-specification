@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TryOutSpot.Web.Data;
@@ -11,9 +12,11 @@ using TryOutSpot.Web.Data;
 namespace TryOutSpot.Web.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260516160443_AddR2PdfFields")]
+    partial class AddR2PdfFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -246,6 +249,56 @@ namespace TryOutSpot.Web.Data.Migrations
                     b.HasIndex(new[] { "UserId" }, "IX_Comments_UserId");
 
                     b.ToTable("Comments");
+                });
+
+            modelBuilder.Entity("TryOutSpot.Web.Data.Entities.ListingDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)");
+
+                    b.Property<long>("FileSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("ListingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ListingType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<Guid>("UploadedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex(new[] { "ListingType", "ListingId", "IsActive" }, "IX_ListingDocuments_ListingType_ListingId_IsActive");
+
+                    b.HasIndex(new[] { "UploadedByUserId" }, "IX_ListingDocuments_UploadedByUserId");
+
+                    b.ToTable("ListingDocuments");
                 });
 
             modelBuilder.Entity("TryOutSpot.Web.Data.Entities.Medium", b =>
@@ -1750,6 +1803,15 @@ namespace TryOutSpot.Web.Data.Migrations
                     b.Navigation("Post");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TryOutSpot.Web.Data.Entities.ListingDocument", b =>
+                {
+                    b.HasOne("TryOutSpot.Web.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UploadedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("TryOutSpot.Web.Data.Entities.Medium", b =>

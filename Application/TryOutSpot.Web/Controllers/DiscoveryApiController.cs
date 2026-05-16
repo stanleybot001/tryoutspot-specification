@@ -546,6 +546,11 @@ public sealed class DiscoveryApiController(
         var contactEmail = isContactInfoVisible ? opportunity.ContactEmail : null;
         var contactPhone = isContactInfoVisible ? opportunity.ContactPhone : null;
         var websiteUrl = isContactInfoVisible ? opportunity.WebsiteUrl : null;
+        var pdfUrl = isContactInfoVisible
+            ? string.IsNullOrWhiteSpace(opportunity.UploadedPdfObjectKey)
+                ? opportunity.PdfUrl
+                : $"/listing-documents/opportunities/{opportunity.Id}"
+            : null;
         var effectiveZipCode = opportunity.ZipCode ?? opportunity.Team.ZipCode;
         var distanceMiles = ResolveDistanceMiles(effectiveZipCode, distanceByZipCode);
 
@@ -573,6 +578,7 @@ public sealed class DiscoveryApiController(
             contactEmail,
             contactPhone,
             websiteUrl,
+            pdfUrl,
             distanceMiles);
     }
 

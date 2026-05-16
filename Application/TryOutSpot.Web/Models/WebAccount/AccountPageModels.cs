@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Models.Billing;
 
@@ -210,6 +211,12 @@ public sealed class OnboardingPageModel
 
 public sealed class AddPlayerProfilePageModel
 {
+    public Guid? PlayerId { get; set; }
+
+    public bool IsEditMode { get; set; }
+
+    public string? ReturnUrl { get; set; }
+
     [Required]
     [MaxLength(100)]
     [Display(Name = "Player first name")]
@@ -346,6 +353,44 @@ public sealed class AddPlayerProfilePageModel
     public IReadOnlyCollection<string> AvailableContactVisibilityOptions { get; set; } = [];
 
     public IReadOnlyCollection<string> AvailableRelationshipOptions { get; set; } = [];
+}
+
+public sealed class ManagePlayerProfilesPageModel
+{
+    public IReadOnlyCollection<PlayerProfileSummaryPageModel> Profiles { get; set; } = [];
+}
+
+public sealed class PlayerProfileSummaryPageModel
+{
+    public Guid PlayerId { get; set; }
+
+    public string FullName { get; set; } = string.Empty;
+
+    public DateTime DateOfBirth { get; set; }
+
+    public string Relationship { get; set; } = string.Empty;
+
+    public bool CanManage { get; set; }
+
+    public bool IsSearchable { get; set; }
+
+    public string ContactVisibility { get; set; } = string.Empty;
+
+    public string? ContactEmail { get; set; }
+
+    public string? ContactPhone { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+
+    public string? ZipCode { get; set; }
+
+    public string[] Sports { get; set; } = [];
+
+    public int ActiveListingCount { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
 }
 
 public sealed class ChoosePlanPageModel
@@ -579,6 +624,14 @@ public sealed class TeamOpportunitySummaryPageModel
 
     public string? ZipCode { get; set; }
 
+    public string? WebsiteUrl { get; set; }
+
+    public string? PdfUrl { get; set; }
+
+    public string? UploadedPdfUrl { get; set; }
+
+    public string? UploadedPdfFileName { get; set; }
+
     public bool IsPublished { get; set; }
 
     public DateTime? PublishedAt { get; set; }
@@ -689,6 +742,22 @@ public sealed class TeamOpportunityEditorPageModel
     [Display(Name = "Website URL")]
     public string? WebsiteUrl { get; set; }
 
+    [MaxLength(500)]
+    [Display(Name = "PDF link")]
+    public string? PdfUrl { get; set; }
+
+    [Display(Name = "Upload PDF flyer")]
+    public IFormFile? PdfUpload { get; set; }
+
+    [Display(Name = "Remove uploaded PDF")]
+    public bool RemoveUploadedPdf { get; set; }
+
+    public bool HasUploadedPdf { get; set; }
+
+    public string? UploadedPdfFileName { get; set; }
+
+    public string? UploadedPdfUrl { get; set; }
+
     [MaxLength(2000)]
     [Display(Name = "Required equipment")]
     public string? RequiredEquipment { get; set; }
@@ -759,6 +828,10 @@ public sealed class PlayerListingSummaryPageModel
     public string? State { get; set; }
 
     public string? ZipCode { get; set; }
+
+    public string? UploadedPdfUrl { get; set; }
+
+    public string? UploadedPdfFileName { get; set; }
 
     public bool IsPublished { get; set; }
 
@@ -831,11 +904,28 @@ public sealed class PlayerListingEditorPageModel
     [Display(Name = "Expires on")]
     public DateTime? ExpiresAt { get; set; }
 
+    [Display(Name = "Upload PDF flyer")]
+    public IFormFile? PdfUpload { get; set; }
+
+    [Display(Name = "Remove uploaded PDF")]
+    public bool RemoveUploadedPdf { get; set; }
+
+    public bool HasUploadedPdf { get; set; }
+
+    public string? UploadedPdfFileName { get; set; }
+
+    public string? UploadedPdfUrl { get; set; }
+
+    [Display(Name = "Show selected profile links")]
+    public List<string> VisibleSocialLinkKeys { get; set; } = [];
+
     public IReadOnlyCollection<PlayerListingTypeSelectionPageItem> AvailableListingTypes { get; set; } = [];
 
     public IReadOnlyCollection<ManagedPlayerSelectionPageItem> AvailablePlayers { get; set; } = [];
 
     public IReadOnlyCollection<SportSelectionPageItem> AvailableSports { get; set; } = [];
+
+    public IReadOnlyCollection<PlayerListingVisibilityOptionPageItem> AvailableSocialDisplayOptions { get; set; } = [];
 }
 
 public sealed class PlayerListingDetailPageModel
@@ -894,7 +984,76 @@ public sealed class PlayerListingDetailPageModel
 
     public IReadOnlyCollection<ExternalProfileLinkPageItem> SocialLinks { get; set; } = [];
 
+    public IReadOnlyCollection<ExternalProfileLinkPageItem> ProfileVideoLinks { get; set; } = [];
+
     public IReadOnlyCollection<ExternalProfileLinkPageItem> RecruitingLinks { get; set; } = [];
+
+    public string? PdfUrl { get; set; }
+
+    public string? PdfFileName { get; set; }
+}
+
+public sealed class TeamOpportunityDetailPageModel
+{
+    public Guid OpportunityId { get; set; }
+
+    public Guid TeamId { get; set; }
+
+    public string TeamName { get; set; } = string.Empty;
+
+    public string? OrganizationName { get; set; }
+
+    public string SportName { get; set; } = string.Empty;
+
+    public string Type { get; set; } = string.Empty;
+
+    public string Title { get; set; } = string.Empty;
+
+    public string? Description { get; set; }
+
+    public string? CompetitionLevel { get; set; }
+
+    public string? AgeGroup { get; set; }
+
+    public bool RegistrationRequired { get; set; } = true;
+
+    public decimal RegistrationFee { get; set; }
+
+    public DateTime? RegistrationDeadline { get; set; }
+
+    public DateTime? EventDate { get; set; }
+
+    public DateTime? EventEndDate { get; set; }
+
+    public DateTime? PublishedAt { get; set; }
+
+    public DateTime? ExpiresAt { get; set; }
+
+    public string? Location { get; set; }
+
+    public string? Address { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+
+    public string? ZipCode { get; set; }
+
+    public bool IsContactInfoVisible { get; set; }
+
+    public string? ContactEmail { get; set; }
+
+    public string? ContactPhone { get; set; }
+
+    public string? WebsiteUrl { get; set; }
+
+    public string? PdfUrl { get; set; }
+
+    public string? RequiredEquipment { get; set; }
+
+    public string? WhatToBring { get; set; }
+
+    public string? SpecialInstructions { get; set; }
 }
 
 public sealed class AccountSettingsPageModel
@@ -1092,6 +1251,10 @@ public sealed record PlayerListingSportSummaryPageItem(
 public sealed record ExternalProfileLinkPageItem(
     string Label,
     string Url);
+
+public sealed record PlayerListingVisibilityOptionPageItem(
+    string Key,
+    string Label);
 
 public sealed class PlayerSportDetailPageModel
 {

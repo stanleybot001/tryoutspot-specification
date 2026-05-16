@@ -64,6 +64,9 @@ public sealed class CreateTeamOpportunityRequest
     [MaxLength(500)]
     public string? WebsiteUrl { get; set; }
 
+    [MaxLength(500)]
+    public string? PdfUrl { get; set; }
+
     [MaxLength(2000)]
     public string? RequiredEquipment { get; set; }
 
@@ -139,6 +142,9 @@ public sealed class UpdateTeamOpportunityRequest
 
     [MaxLength(500)]
     public string? WebsiteUrl { get; set; }
+
+    [MaxLength(500)]
+    public string? PdfUrl { get; set; }
 
     [MaxLength(2000)]
     public string? RequiredEquipment { get; set; }

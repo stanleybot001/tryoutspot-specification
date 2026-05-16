@@ -332,6 +332,7 @@ public sealed class StripeSubscriptionSyncService(
             opportunity.ContactEmail = null;
             opportunity.ContactPhone = null;
             opportunity.WebsiteUrl = null;
+            opportunity.PdfUrl = null;
             opportunity.UpdatedAt = now;
         }
 

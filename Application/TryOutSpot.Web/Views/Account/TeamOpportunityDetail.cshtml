@@ -1,0 +1,210 @@
+@model TeamOpportunityDetailPageModel
+
+@{
+    ViewData["Title"] = Model.Title;
+}
+
+<section class="account-page">
+    <div class="account-heading">
+        <p class="account-kicker">Team opportunity</p>
+        <h1>@Model.Title</h1>
+        <p>@FormatOpportunityType(Model.Type) - @Model.SportName</p>
+        <p class="section-help">
+            Team: <strong>@Model.TeamName</strong>
+            @if (!string.IsNullOrWhiteSpace(Model.OrganizationName))
+            {
+                <span> - @Model.OrganizationName</span>
+            }
+        </p>
+    </div>
+
+    <section class="form-section">
+        <div class="team-summary-grid opportunity-summary-grid">
+            @if (!string.IsNullOrWhiteSpace(Model.CompetitionLevel))
+            {
+                <div><span>Competition level</span><strong>@Model.CompetitionLevel</strong></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.AgeGroup))
+            {
+                <div><span>Age group</span><strong>@Model.AgeGroup</strong></div>
+            }
+            @if (Model.RegistrationFee > 0 || Model.RegistrationRequired)
+            {
+                <div><span>Registration fee</span><strong>@FormatFee(Model.RegistrationFee)</strong></div>
+            }
+            @if (!Model.RegistrationRequired)
+            {
+                <div><span>Registration required</span><strong>No</strong></div>
+            }
+            @if (Model.RegistrationDeadline.HasValue)
+            {
+                <div><span>Registration deadline</span><strong>@FormatDate(Model.RegistrationDeadline)</strong></div>
+            }
+            @if (Model.EventDate.HasValue)
+            {
+                <div><span>Event start</span><strong>@FormatDate(Model.EventDate)</strong></div>
+            }
+            @if (Model.EventEndDate.HasValue)
+            {
+                <div><span>Event end</span><strong>@FormatDate(Model.EventEndDate)</strong></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.Location))
+            {
+                <div><span>Location</span><strong>@Model.Location</strong></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.Address))
+            {
+                <div><span>Address</span><strong>@Model.Address</strong></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.City) || !string.IsNullOrWhiteSpace(Model.State) || !string.IsNullOrWhiteSpace(Model.ZipCode))
+            {
+                <div><span>City/State/ZIP</span><strong>@FormatLocation(Model.City, Model.State, Model.ZipCode)</strong></div>
+            }
+            @if (Model.PublishedAt.HasValue)
+            {
+                <div><span>Published</span><strong>@FormatDate(Model.PublishedAt)</strong></div>
+            }
+            @if (Model.ExpiresAt.HasValue)
+            {
+                <div><span>Expires</span><strong>@FormatDate(Model.ExpiresAt)</strong></div>
+            }
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Model.Description))
+        {
+            <p class="section-help mt-3">@Model.Description</p>
+        }
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(Model.RequiredEquipment)
+        || !string.IsNullOrWhiteSpace(Model.WhatToBring)
+        || !string.IsNullOrWhiteSpace(Model.SpecialInstructions))
+    {
+        <section class="form-section">
+            <h2>Preparation details</h2>
+            @if (!string.IsNullOrWhiteSpace(Model.RequiredEquipment))
+            {
+                <p><strong>Required equipment</strong></p>
+                <p class="section-help">@Model.RequiredEquipment</p>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.WhatToBring))
+            {
+                <p><strong>What to bring</strong></p>
+                <p class="section-help">@Model.WhatToBring</p>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.SpecialInstructions))
+            {
+                <p><strong>Special instructions</strong></p>
+                <p class="section-help">@Model.SpecialInstructions</p>
+            }
+        </section>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.ContactEmail)
+        || !string.IsNullOrWhiteSpace(Model.ContactPhone)
+        || !string.IsNullOrWhiteSpace(Model.WebsiteUrl)
+        || !string.IsNullOrWhiteSpace(Model.PdfUrl))
+    {
+        <section class="form-section">
+            <h2>Contact and links</h2>
+            <div class="team-summary-grid">
+                @if (!string.IsNullOrWhiteSpace(Model.ContactEmail))
+                {
+                    <div><span>Contact email</span><strong>@Model.ContactEmail</strong></div>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.ContactPhone))
+                {
+                    <div><span>Contact phone</span><strong>@Model.ContactPhone</strong></div>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.WebsiteUrl))
+                {
+                    <div><span>Website</span><strong><a href="@Model.WebsiteUrl" target="_blank" rel="noopener">Open website</a></strong></div>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.PdfUrl))
+                {
+                    <div><span>PDF flyer</span><strong><a href="@Model.PdfUrl" target="_blank" rel="noopener">Open PDF</a></strong></div>
+                }
+            </div>
+        </section>
+    }
+    else if (!Model.IsContactInfoVisible)
+    {
+        <section class="form-section">
+            <h2>Contact and links</h2>
+            <p class="section-help">This team has chosen to keep contact details and external links private.</p>
+        </section>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.PdfUrl))
+    {
+        <section class="form-section">
+            <h2>Flyer preview</h2>
+            <div class="listing-pdf-embed">
+                <iframe
+                    src="@Model.PdfUrl"
+                    title="Opportunity flyer PDF"
+                    loading="lazy">
+                </iframe>
+            </div>
+            <p class="section-help">
+                If the preview does not load in your browser, <a href="@Model.PdfUrl" target="_blank" rel="noopener">open the PDF in a new tab</a>.
+            </p>
+        </section>
+    }
+</section>
+
+@functions {
+    private static string FormatOpportunityType(string type)
+    {
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            return "Opportunity";
+        }
+
+        return type
+            .Replace("_", " ", StringComparison.Ordinal)
+            .Trim()
+            .ToLowerInvariant() switch
+        {
+            "tryout" => "Tryout",
+            "roster opening" => "Roster opening",
+            "pickup player" => "Pickup player",
+            "camp" => "Camp",
+            "clinic" => "Clinic",
+            "tournament" => "Tournament",
+            "private workout" => "Private workout",
+            var fallback => char.ToUpperInvariant(fallback[0]) + fallback[1..]
+        };
+    }
+
+    private static string FormatDate(DateTime? date)
+    {
+        return date?.ToLocalTime().ToString("MMM d, yyyy") ?? string.Empty;
+    }
+
+    private static string FormatLocation(string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim().ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        return string.Join(", ", parts);
+    }
+
+    private static string FormatFee(decimal amount)
+    {
+        return amount <= 0 ? "Free" : amount.ToString("C");
+    }
+}

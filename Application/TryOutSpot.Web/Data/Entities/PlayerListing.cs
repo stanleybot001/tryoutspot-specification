@@ -30,6 +30,12 @@ public partial class PlayerListing
 
     public string? ZipCode { get; set; }
 
+    public string? VisibleSocialLinkKeys { get; set; }
+
+    public string? UploadedPdfObjectKey { get; set; }
+
+    public string? UploadedPdfFileName { get; set; }
+
     public bool IsPublished { get; set; }
 
     public bool IsSearchable { get; set; }

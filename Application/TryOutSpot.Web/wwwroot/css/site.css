@@ -560,6 +560,27 @@ body.splash-page {
   margin: 0.25rem 0;
 }
 
+.listing-pdf-embed {
+  width: 100%;
+  border: 1px solid #d7dee8;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.listing-pdf-embed iframe {
+  width: 100%;
+  min-height: 600px;
+  border: 0;
+  display: block;
+  background: #ffffff;
+}
+
+.listing-visibility-options {
+  display: grid;
+  gap: 0.35rem;
+}
+
 .opportunity-row {
   border-color: #d7dee8;
 }

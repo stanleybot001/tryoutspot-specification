@@ -76,6 +76,15 @@
                             <p class="section-help">@listing.Description</p>
                         }
 
+                        @if (!string.IsNullOrWhiteSpace(listing.UploadedPdfUrl))
+                        {
+                            <div class="feature-code-list">
+                                <a href="@listing.UploadedPdfUrl" target="_blank" rel="noopener">
+                                    @(string.IsNullOrWhiteSpace(listing.UploadedPdfFileName) ? "PDF flyer" : listing.UploadedPdfFileName)
+                                </a>
+                            </div>
+                        }
+
                         <div class="form-actions">
                             @if (listing.IsPublished && listing.IsSearchable)
                             {

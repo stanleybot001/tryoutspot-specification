@@ -118,7 +118,35 @@
                             <p class="section-help">@opportunity.Description</p>
                         }
 
+                        @if (!string.IsNullOrWhiteSpace(opportunity.WebsiteUrl)
+                            || !string.IsNullOrWhiteSpace(opportunity.PdfUrl)
+                            || !string.IsNullOrWhiteSpace(opportunity.UploadedPdfUrl))
+                        {
+                            <div class="feature-code-list">
+                                @if (!string.IsNullOrWhiteSpace(opportunity.WebsiteUrl))
+                                {
+                                    <a href="@opportunity.WebsiteUrl" target="_blank" rel="noopener">Website</a>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(opportunity.UploadedPdfUrl))
+                                {
+                                    <a href="@opportunity.UploadedPdfUrl" target="_blank" rel="noopener">
+                                        @(string.IsNullOrWhiteSpace(opportunity.UploadedPdfFileName) ? "Uploaded PDF" : opportunity.UploadedPdfFileName)
+                                    </a>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(opportunity.PdfUrl))
+                                {
+                                    <a href="@opportunity.PdfUrl" target="_blank" rel="noopener">External PDF</a>
+                                }
+                            </div>
+                        }
+
                         <div class="form-actions">
+                            @if (Model.Team.IsSearchable
+                                && opportunity.IsPublished
+                                && (!opportunity.ExpiresAt.HasValue || opportunity.ExpiresAt > DateTime.UtcNow))
+                            {
+                                <a class="btn btn-outline-primary" href="/opportunities/@opportunity.OpportunityId" target="_blank" rel="noopener">View public page</a>
+                            }
                             <a class="btn btn-outline-primary" href="/account/onboarding/team-opportunities/@Model.Team.TeamId/@opportunity.OpportunityId/edit">Edit</a>
 
                             @if (opportunity.IsPublished)

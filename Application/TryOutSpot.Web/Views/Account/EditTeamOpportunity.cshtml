@@ -41,7 +41,7 @@
     }
 
     <section class="form-section">
-        <form method="post" action="@submitPath" class="stacked-form">
+        <form method="post" action="@submitPath" class="stacked-form" enctype="multipart/form-data" id="teamOpportunityEditorForm">
             @Html.AntiForgeryToken()
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
@@ -156,6 +156,34 @@
                     <input asp-for="WebsiteUrl" class="form-control" placeholder="https://..." />
                     <span asp-validation-for="WebsiteUrl" class="text-danger"></span>
                 </div>
+                <div class="form-field">
+                    <label asp-for="PdfUrl" class="form-label">External PDF link</label>
+                    <input asp-for="PdfUrl" class="form-control" placeholder="https://.../flyer.pdf" />
+                    <span asp-validation-for="PdfUrl" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="form-field">
+                <p class="form-label mb-2">Uploaded PDF flyer</p>
+                @if (Model.HasUploadedPdf && !string.IsNullOrWhiteSpace(Model.UploadedPdfUrl))
+                {
+                    <p class="section-help mb-2">
+                        Current upload:
+                        <a href="@Model.UploadedPdfUrl" target="_blank" rel="noopener">
+                            @(string.IsNullOrWhiteSpace(Model.UploadedPdfFileName) ? "Open PDF" : Model.UploadedPdfFileName)
+                        </a>
+                    </p>
+                    <label class="sms-consent-option" for="RemoveUploadedPdf">
+                        <input asp-for="RemoveUploadedPdf" class="form-check-input" />
+                        <span>Remove current uploaded PDF.</span>
+                    </label>
+                }
+
+                <label asp-for="PdfUpload" class="form-label">Upload PDF</label>
+                <input asp-for="PdfUpload" type="file" accept=".pdf,application/pdf" class="form-control" id="PdfUploadInput" />
+                <p class="section-help">Maximum file size: 10 MB. Upload a PDF only.</p>
+                <span asp-validation-for="PdfUpload" class="text-danger"></span>
+                <p class="text-danger d-none" id="PdfUploadClientError"></p>
             </div>
 
             <div class="form-field">
@@ -228,4 +256,52 @@
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    <script>
+        (function () {
+            const maxBytes = 10 * 1024 * 1024;
+            const form = document.getElementById("teamOpportunityEditorForm");
+            const fileInput = document.getElementById("PdfUploadInput");
+            const errorEl = document.getElementById("PdfUploadClientError");
+            if (!form || !fileInput || !errorEl) {
+                return;
+            }
+
+            const clearError = () => {
+                errorEl.textContent = "";
+                errorEl.classList.add("d-none");
+            };
+
+            const setError = (message) => {
+                errorEl.textContent = message;
+                errorEl.classList.remove("d-none");
+            };
+
+            fileInput.addEventListener("change", () => {
+                clearError();
+                const file = fileInput.files && fileInput.files.length > 0 ? fileInput.files[0] : null;
+                if (!file) {
+                    return;
+                }
+
+                if (file.size > maxBytes) {
+                    fileInput.value = "";
+                    setError("PDF files can be up to 10 MB.");
+                }
+            });
+
+            form.addEventListener("submit", (event) => {
+                clearError();
+                const file = fileInput.files && fileInput.files.length > 0 ? fileInput.files[0] : null;
+                if (!file) {
+                    return;
+                }
+
+                if (file.size > maxBytes) {
+                    event.preventDefault();
+                    fileInput.value = "";
+                    setError("PDF files can be up to 10 MB.");
+                }
+            });
+        })();
+    </script>
 }

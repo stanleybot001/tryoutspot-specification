@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using System.Text.Json;
 using System.Security.Claims;
 using TryOutSpot.Web.Billing;
@@ -24,10 +25,12 @@ public sealed class AccountController(
     AppDbContext dbContext,
     UserManager<User> userManager,
     SignInManager<User> signInManager,
+    ILogger<AccountController> logger,
     IAccountEmailSender accountEmailSender,
     IAccountSmsSender accountSmsSender,
     IEntitlementService entitlementService,
     IZipRadiusSearchService zipRadiusSearchService,
+    IPdfStorageService pdfStorageService,
     IExternalLoginTicketService externalLoginTicketService,
     IStripeBillingService stripeBillingService,
     IStripeSubscriptionSyncService stripeSubscriptionSyncService,
@@ -35,6 +38,10 @@ public sealed class AccountController(
     IOptions<StripeBillingOptions> stripeOptions) : Controller
 {
     private const int BasicTeamMonthlyPublishingLimit = 5;
+    private const int ListingPdfMaxSizeMegabytes = 10;
+    private const long ListingPdfMaxSizeBytes = ListingPdfMaxSizeMegabytes * 1024L * 1024L;
+    private const string PlayerListingDocumentType = "player-listings";
+    private const string OpportunityDocumentType = "opportunities";
     private readonly GoogleAuthenticationOptions googleAuthentication = googleOptions.Value;
     private readonly StripeBillingOptions stripeBillingOptions = stripeOptions.Value;
     private static readonly string[] PlayerRelationshipOptions = ["Parent", "Guardian", "Self", "Coach", "Other"];
@@ -107,6 +114,19 @@ public sealed class AccountController(
             RequiresSportSelection: true,
             SupportsCondition: false,
             SupportsAskingPrice: false)
+    ];
+    private static readonly PlayerListingVisibilityOptionPageItem[] PlayerListingSocialDisplayOptions =
+    [
+        new("facebook", "Facebook page"),
+        new("x", "X profile"),
+        new("instagram", "Instagram profile"),
+        new("youtube", "YouTube channel"),
+        new("tiktok", "TikTok profile")
+    ];
+    private static readonly PlayerListingVisibilityOptionPageItem[] PlayerListingVideoDisplayOptions =
+    [
+        new("highlight_video_1", "Highlight video 1"),
+        new("highlight_video_2", "Highlight video 2")
     ];
 
     [HttpGet("register")]
@@ -777,8 +797,26 @@ public sealed class AccountController(
     [Authorize(
         AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
         Policy = TryOutSpotAuthorizationPolicies.ManagePlayerProfile)]
+    [HttpGet("onboarding/player-profiles")]
+    public async Task<IActionResult> ManagePlayerProfiles(CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(ManagePlayerProfiles)) });
+        }
+
+        var model = await BuildManagePlayerProfilesPageModelAsync(user, cancellationToken);
+        return View(model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManagePlayerProfile)]
     [HttpGet("onboarding/add-player-profile")]
-    public async Task<IActionResult> AddPlayerProfile(CancellationToken cancellationToken)
+    public async Task<IActionResult> AddPlayerProfile(
+        [FromQuery] bool createNew = false,
+        CancellationToken cancellationToken = default)
     {
         var user = await GetCurrentWebUserAsync();
         if (user is null)
@@ -786,10 +824,27 @@ public sealed class AccountController(
             return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(AddPlayerProfile)) });
         }
 
+        if (!createNew)
+        {
+            var hasManagedProfiles = await dbContext.UserPlayerRelationships
+                .AsNoTracking()
+                .AnyAsync(
+                    relationship => relationship.UserId == user.Id
+                        && relationship.CanManage
+                        && relationship.Player.IsActive,
+                    cancellationToken);
+            if (hasManagedProfiles)
+            {
+                return RedirectToAction(nameof(ManagePlayerProfiles));
+            }
+        }
+
         var model = await BuildAddPlayerProfilePageModelAsync(
             user,
             new AddPlayerProfilePageModel
             {
+                IsEditMode = false,
+                ReturnUrl = Url.Action(nameof(ManagePlayerProfiles)),
                 ContactEmail = user.Email,
                 ContactPhone = user.PhoneNumber,
                 City = user.City,
@@ -815,106 +870,31 @@ public sealed class AccountController(
             return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(AddPlayerProfile)) });
         }
 
-        var relationship = NormalizeRelationship(model.Relationship);
-        if (string.IsNullOrWhiteSpace(relationship))
-        {
-            ModelState.AddModelError(nameof(model.Relationship), "Choose a relationship.");
-        }
+        model.IsEditMode = false;
+        model.ReturnUrl ??= Url.Action(nameof(ManagePlayerProfiles));
 
-        var contactVisibility = NormalizePlayerContactVisibility(model.ContactVisibility);
-        if (contactVisibility is null)
-        {
-            ModelState.AddModelError(nameof(model.ContactVisibility), "Choose whether contact details are public or limited to verified coaches.");
-        }
-
-        var selectedSportDetails = model.SportDetails
-            .Where(detail => detail.IsSelected)
-            .GroupBy(detail => detail.SportId)
-            .Select(group => group.First())
-            .ToArray();
-        var selectedSportIds = selectedSportDetails
-            .Select(detail => detail.SportId)
-            .ToArray();
-        var selectedSports = selectedSportIds.Length == 0
-            ? Array.Empty<Guid>()
-            : await dbContext.Sports
-                .AsNoTracking()
-                .Where(sport => sport.IsActive && selectedSportIds.Contains(sport.Id))
-                .Select(sport => sport.Id)
-                .ToArrayAsync(cancellationToken);
-        if (selectedSports.Length != selectedSportIds.Length)
-        {
-            ModelState.AddModelError(nameof(model.SportDetails), "One or more selected sports are no longer available.");
-        }
-
-        for (var sportIndex = 0; sportIndex < model.SportDetails.Count; sportIndex++)
-        {
-            var sportDetail = model.SportDetails[sportIndex];
-            if (!sportDetail.IsSelected)
-            {
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(sportDetail.SkillLevel))
-            {
-                ModelState.AddModelError($"SportDetails[{sportIndex}].SkillLevel", "Enter ability level for each selected sport.");
-            }
-        }
-
-        if (!ModelState.IsValid)
+        var validationContext = await ValidatePlayerProfileInputAsync(model, cancellationToken);
+        if (!ModelState.IsValid || validationContext is null)
         {
             return View(await BuildAddPlayerProfilePageModelAsync(user, model, cancellationToken));
         }
 
         var now = DateTime.UtcNow;
-        var socialMediaLinks = SerializeLinkCollection(
-            ("facebook", model.FacebookPageUrl),
-            ("x", NormalizeSocialHandleOrUrl(model.XPageUrl, "https://x.com/")),
-            ("instagram", NormalizeSocialHandleOrUrl(model.InstagramUrl, "https://instagram.com/")),
-            ("youtube", model.YouTubeUrl),
-            ("tiktok", NormalizeSocialHandleOrUrl(model.TikTokUrl, "https://tiktok.com/")),
-            ("highlight_video_1", model.HighlightVideoUrl1),
-            ("highlight_video_2", model.HighlightVideoUrl2));
-        var recruitingProfileLinks = SerializeLinkCollection(
-            ("sportsrecruits", model.SportsRecruitsProfileUrl),
-            ("fieldlevel", model.FieldLevelProfileUrl),
-            ("ncsa", model.NcsaProfileUrl),
-            ("other", model.OtherRecruitingProfileUrl));
         var playerId = Guid.NewGuid();
         var player = new Player
         {
             Id = playerId,
-            FirstName = model.FirstName.Trim(),
-            LastName = model.LastName.Trim(),
-            DateOfBirth = NormalizeUtcDate(model.DateOfBirth),
-            ContactEmail = NormalizeOptional(model.ContactEmail),
-            ContactPhone = NormalizeOptional(model.ContactPhone),
-            ProfileImageUrl = NormalizeOptional(model.ProfileImageUrl),
-            Height = NormalizeOptional(model.Height),
-            Weight = NormalizeOptional(model.Weight),
-            ThrowsHand = NormalizeOptional(model.ThrowsHand),
-            BatsHand = NormalizeOptional(model.BatsHand),
-            SchoolName = NormalizeOptional(model.SchoolName),
-            CurrentTeamName = NormalizeOptional(model.CurrentTeamName),
-            GraduationYear = model.GraduationYear,
-            ContactVisibility = contactVisibility!,
-            City = NormalizeOptional(model.City),
-            State = NormalizeState(model.State),
-            ZipCode = NormalizeOptional(model.ZipCode),
-            SocialMediaLinks = socialMediaLinks,
-            RecruitingProfileLinks = recruitingProfileLinks,
-            IsSearchable = model.IsSearchable,
             CreatedAt = now,
-            UpdatedAt = now,
             IsActive = true
         };
+        ApplyPlayerProfileValues(player, model, validationContext.ContactVisibility, now);
 
         var relationshipToUser = new UserPlayerRelationship
         {
             Id = Guid.NewGuid(),
             UserId = user.Id,
             PlayerId = playerId,
-            Relationship = relationship!,
+            Relationship = validationContext.Relationship,
             CanManage = model.CanManage,
             CreatedAt = now
         };
@@ -922,8 +902,8 @@ public sealed class AccountController(
         dbContext.Players.Add(player);
         dbContext.UserPlayerRelationships.Add(relationshipToUser);
 
-        var selectedSportSet = selectedSports.ToHashSet();
-        foreach (var sportDetail in selectedSportDetails)
+        var selectedSportSet = validationContext.SelectedSportIds.ToHashSet();
+        foreach (var sportDetail in validationContext.SelectedSportDetails)
         {
             if (!selectedSportSet.Contains(sportDetail.SportId))
             {
@@ -945,7 +925,190 @@ public sealed class AccountController(
 
         await dbContext.SaveChangesAsync(cancellationToken);
         TempData["StatusMessage"] = "Player profile added.";
-        return RedirectToAction(nameof(Onboarding));
+        return RedirectToAction(nameof(ManagePlayerProfiles));
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManagePlayerProfile)]
+    [HttpGet("onboarding/player-profiles/{playerId:guid}/edit")]
+    public async Task<IActionResult> EditPlayerProfile(Guid playerId, CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(EditPlayerProfile), new { playerId })
+            });
+        }
+
+        var model = await BuildEditablePlayerProfilePageModelAsync(user.Id, playerId, cancellationToken);
+        if (model is null)
+        {
+            TempData["StatusMessage"] = "Player profile was not found for this account.";
+            return RedirectToAction(nameof(ManagePlayerProfiles));
+        }
+
+        model = await BuildAddPlayerProfilePageModelAsync(user, model, cancellationToken);
+        return View("AddPlayerProfile", model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManagePlayerProfile)]
+    [HttpPost("onboarding/player-profiles/{playerId:guid}/edit")]
+    public async Task<IActionResult> EditPlayerProfile(
+        Guid playerId,
+        AddPlayerProfilePageModel model,
+        CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(EditPlayerProfile), new { playerId })
+            });
+        }
+
+        var relationshipToUser = await dbContext.UserPlayerRelationships
+            .Include(relationship => relationship.Player)
+            .SingleOrDefaultAsync(
+                relationship => relationship.UserId == user.Id
+                    && relationship.PlayerId == playerId
+                    && relationship.CanManage
+                    && relationship.Player.IsActive,
+                cancellationToken);
+        if (relationshipToUser is null)
+        {
+            TempData["StatusMessage"] = "Player profile was not found for this account.";
+            return RedirectToAction(nameof(ManagePlayerProfiles));
+        }
+
+        model.PlayerId = playerId;
+        model.IsEditMode = true;
+        model.ReturnUrl ??= Url.Action(nameof(ManagePlayerProfiles));
+
+        var validationContext = await ValidatePlayerProfileInputAsync(model, cancellationToken);
+        if (!ModelState.IsValid || validationContext is null)
+        {
+            return View("AddPlayerProfile", await BuildAddPlayerProfilePageModelAsync(user, model, cancellationToken));
+        }
+
+        var now = DateTime.UtcNow;
+        var player = relationshipToUser.Player;
+        ApplyPlayerProfileValues(player, model, validationContext.ContactVisibility, now);
+        relationshipToUser.Relationship = validationContext.Relationship;
+        relationshipToUser.CanManage = model.CanManage;
+
+        var selectedSportIds = validationContext.SelectedSportIds.ToHashSet();
+        var selectedSportDetails = validationContext.SelectedSportDetails
+            .ToDictionary(detail => detail.SportId, detail => detail);
+        var currentSports = await dbContext.PlayerSports
+            .Where(playerSport => playerSport.PlayerId == playerId)
+            .ToArrayAsync(cancellationToken);
+
+        foreach (var playerSport in currentSports)
+        {
+            if (selectedSportIds.Contains(playerSport.SportId))
+            {
+                var selectedDetail = selectedSportDetails[playerSport.SportId];
+                playerSport.SkillLevel = NormalizeOptional(selectedDetail.SkillLevel);
+                playerSport.PrimaryPosition = NormalizeOptional(selectedDetail.PrimaryPosition);
+                playerSport.SecondaryPositions = NormalizeOptional(selectedDetail.SecondaryPositions);
+                playerSport.IsActive = true;
+            }
+            else
+            {
+                playerSport.IsActive = false;
+            }
+        }
+
+        var existingSportIds = currentSports
+            .Select(playerSport => playerSport.SportId)
+            .ToHashSet();
+        foreach (var sportDetail in validationContext.SelectedSportDetails)
+        {
+            if (existingSportIds.Contains(sportDetail.SportId))
+            {
+                continue;
+            }
+
+            dbContext.PlayerSports.Add(new PlayerSport
+            {
+                Id = Guid.NewGuid(),
+                PlayerId = playerId,
+                SportId = sportDetail.SportId,
+                SkillLevel = NormalizeOptional(sportDetail.SkillLevel),
+                PrimaryPosition = NormalizeOptional(sportDetail.PrimaryPosition),
+                SecondaryPositions = NormalizeOptional(sportDetail.SecondaryPositions),
+                IsActive = true,
+                CreatedAt = now
+            });
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        TempData["StatusMessage"] = "Player profile updated.";
+        return RedirectToAction(nameof(ManagePlayerProfiles));
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManagePlayerProfile)]
+    [HttpPost("onboarding/player-profiles/{playerId:guid}/deactivate")]
+    public async Task<IActionResult> DeactivatePlayerProfile(Guid playerId, CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(ManagePlayerProfiles)) });
+        }
+
+        var relationshipToUser = await dbContext.UserPlayerRelationships
+            .Include(relationship => relationship.Player)
+            .SingleOrDefaultAsync(
+                relationship => relationship.UserId == user.Id
+                    && relationship.PlayerId == playerId
+                    && relationship.CanManage
+                    && relationship.Player.IsActive,
+                cancellationToken);
+        if (relationshipToUser is null)
+        {
+            TempData["StatusMessage"] = "Player profile was not found for this account.";
+            return RedirectToAction(nameof(ManagePlayerProfiles));
+        }
+
+        var now = DateTime.UtcNow;
+        var player = relationshipToUser.Player;
+        player.IsActive = false;
+        player.IsSearchable = false;
+        player.UpdatedAt = now;
+
+        var playerSports = await dbContext.PlayerSports
+            .Where(playerSport => playerSport.PlayerId == playerId && playerSport.IsActive)
+            .ToArrayAsync(cancellationToken);
+        foreach (var playerSport in playerSports)
+        {
+            playerSport.IsActive = false;
+        }
+
+        var playerListings = await dbContext.PlayerListings
+            .Where(listing => listing.UserId == user.Id)
+            .Where(listing => listing.PlayerId == playerId)
+            .Where(listing => listing.IsActive)
+            .ToArrayAsync(cancellationToken);
+        foreach (var playerListing in playerListings)
+        {
+            playerListing.IsActive = false;
+            playerListing.IsPublished = false;
+            playerListing.PublishedAt = null;
+            playerListing.UpdatedAt = now;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        TempData["StatusMessage"] = "Player profile deactivated.";
+        return RedirectToAction(nameof(ManagePlayerProfiles));
     }
 
     [Authorize(
@@ -1035,6 +1198,7 @@ public sealed class AccountController(
                 model.ZipCode,
                 validationContext.Player?.ZipCode ?? user.ZipCode,
                 nameof(model.ZipCode)),
+            VisibleSocialLinkKeys = SerializePlayerListingVisibleSocialKeys(model.VisibleSocialLinkKeys),
             IsSearchable = model.IsSearchable,
             IsPublished = model.IsPublished,
             PublishedAt = model.IsPublished ? now : null,
@@ -1043,6 +1207,14 @@ public sealed class AccountController(
             UpdatedAt = now,
             IsActive = true
         };
+
+        await ApplyPlayerListingPdfUploadChangesAsync(
+            listing,
+            user.Id,
+            model.PdfUpload,
+            model.RemoveUploadedPdf,
+            nameof(model.PdfUpload),
+            cancellationToken);
 
         if (!ModelState.IsValid)
         {
@@ -1135,6 +1307,7 @@ public sealed class AccountController(
             model.ZipCode,
             validationContext.Player?.ZipCode ?? user.ZipCode,
             nameof(model.ZipCode));
+        listing.VisibleSocialLinkKeys = SerializePlayerListingVisibleSocialKeys(model.VisibleSocialLinkKeys);
         listing.IsSearchable = model.IsSearchable;
         listing.IsPublished = model.IsPublished;
         listing.PublishedAt = model.IsPublished
@@ -1142,6 +1315,14 @@ public sealed class AccountController(
             : null;
         listing.ExpiresAt = NormalizeUtc(model.ExpiresAt);
         listing.UpdatedAt = DateTime.UtcNow;
+
+        await ApplyPlayerListingPdfUploadChangesAsync(
+            listing,
+            user.Id,
+            model.PdfUpload,
+            model.RemoveUploadedPdf,
+            nameof(model.PdfUpload),
+            cancellationToken);
 
         if (!ModelState.IsValid)
         {
@@ -1235,6 +1416,8 @@ public sealed class AccountController(
         listing.PublishedAt = null;
         listing.UpdatedAt = DateTime.UtcNow;
 
+        await RemovePlayerListingPdfAsync(listing, cancellationToken);
+
         await dbContext.SaveChangesAsync(cancellationToken);
         TempData["StatusMessage"] = "Listing deactivated.";
         return RedirectToAction(nameof(ManagePlayerListings));
@@ -1262,7 +1445,7 @@ public sealed class AccountController(
             return NotFound();
         }
 
-        var model = BuildPlayerListingDetailPageModel(listing);
+        var model = await BuildPlayerListingDetailPageModelAsync(listing, cancellationToken);
         return View(model);
     }
 
@@ -1276,6 +1459,13 @@ public sealed class AccountController(
         if (user is null)
         {
             return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(AddTeamOrOrganization)) });
+        }
+
+        var teamCreationAccess = await ResolveTeamCreationAccessAsync(user.Id, cancellationToken);
+        if (!teamCreationAccess.CanCreateAdditionalTeam)
+        {
+            TempData["StatusMessage"] = teamCreationAccess.BlockReason;
+            return RedirectToAction(nameof(ManageTeamOpportunities));
         }
 
         var model = await BuildAddTeamOrOrganizationPageModelAsync(
@@ -1318,6 +1508,13 @@ public sealed class AccountController(
         {
             TempData["StatusMessage"] = "Select a coach, team manager, academy director, or organization admin account type before adding a team.";
             return RedirectToAction(nameof(Onboarding));
+        }
+
+        var teamCreationAccess = await ResolveTeamCreationAccessAsync(user.Id, cancellationToken);
+        if (!teamCreationAccess.CanCreateAdditionalTeam)
+        {
+            TempData["StatusMessage"] = teamCreationAccess.BlockReason;
+            return RedirectToAction(nameof(ManageTeamOpportunities));
         }
 
         var createType = NormalizeTeamCreateType(model.CreateType);
@@ -1614,6 +1811,7 @@ public sealed class AccountController(
             ContactEmail = NormalizeOptional(model.ContactEmail) ?? managedTeam.Team.Email,
             ContactPhone = NormalizeOptional(model.ContactPhone) ?? managedTeam.Team.PhoneNumber,
             WebsiteUrl = NormalizeOptional(model.WebsiteUrl) ?? managedTeam.Team.WebsiteUrl,
+            PdfUrl = NormalizeOptional(model.PdfUrl),
             RequiredEquipment = NormalizeOptional(model.RequiredEquipment),
             WhatToBring = NormalizeOptional(model.WhatToBring),
             SpecialInstructions = NormalizeOptional(model.SpecialInstructions),
@@ -1625,6 +1823,19 @@ public sealed class AccountController(
             UpdatedAt = now,
             IsActive = true
         };
+
+        await ApplyOpportunityPdfUploadChangesAsync(
+            opportunity,
+            user.Id,
+            model.PdfUpload,
+            model.RemoveUploadedPdf,
+            nameof(model.PdfUpload),
+            cancellationToken);
+
+        if (!ModelState.IsValid)
+        {
+            return View("EditTeamOpportunity", model);
+        }
 
         dbContext.Opportunities.Add(opportunity);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -1764,6 +1975,7 @@ public sealed class AccountController(
         opportunity.ContactEmail = NormalizeOptional(model.ContactEmail) ?? managedTeam.Team.Email;
         opportunity.ContactPhone = NormalizeOptional(model.ContactPhone) ?? managedTeam.Team.PhoneNumber;
         opportunity.WebsiteUrl = NormalizeOptional(model.WebsiteUrl) ?? managedTeam.Team.WebsiteUrl;
+        opportunity.PdfUrl = NormalizeOptional(model.PdfUrl);
         opportunity.RequiredEquipment = NormalizeOptional(model.RequiredEquipment);
         opportunity.WhatToBring = NormalizeOptional(model.WhatToBring);
         opportunity.SpecialInstructions = NormalizeOptional(model.SpecialInstructions);
@@ -1773,6 +1985,19 @@ public sealed class AccountController(
             : null;
         opportunity.ExpiresAt = NormalizeUtc(model.ExpiresAt);
         opportunity.UpdatedAt = now;
+
+        await ApplyOpportunityPdfUploadChangesAsync(
+            opportunity,
+            user.Id,
+            model.PdfUpload,
+            model.RemoveUploadedPdf,
+            nameof(model.PdfUpload),
+            cancellationToken);
+
+        if (!ModelState.IsValid)
+        {
+            return View("EditTeamOpportunity", model);
+        }
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -1900,10 +2125,78 @@ public sealed class AccountController(
         opportunity.IsPublished = false;
         opportunity.PublishedAt = null;
         opportunity.UpdatedAt = DateTime.UtcNow;
+
+        await RemoveOpportunityPdfAsync(opportunity, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         TempData["StatusMessage"] = "Opportunity deactivated.";
         return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/opportunities/{opportunityId:guid}")]
+    public async Task<IActionResult> TeamOpportunityDetail(
+        Guid opportunityId,
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var opportunity = await dbContext.Opportunities
+            .AsNoTracking()
+            .Where(currentOpportunity => currentOpportunity.Id == opportunityId)
+            .Where(currentOpportunity => currentOpportunity.IsActive)
+            .Where(currentOpportunity => currentOpportunity.IsPublished)
+            .Where(currentOpportunity => currentOpportunity.ExpiresAt == null || currentOpportunity.ExpiresAt > now)
+            .Where(currentOpportunity => currentOpportunity.Team.IsActive)
+            .Where(currentOpportunity => currentOpportunity.Team.IsSearchable)
+            .Include(currentOpportunity => currentOpportunity.Team)
+                .ThenInclude(team => team.Organization)
+            .Include(currentOpportunity => currentOpportunity.Sport)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (opportunity is null)
+        {
+            return NotFound();
+        }
+
+        var model = await BuildTeamOpportunityDetailPageModelAsync(opportunity, cancellationToken);
+        return View(model);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/listing-documents/{listingType}/{listingId:guid}")]
+    public async Task<IActionResult> ListingDocument(
+        string listingType,
+        Guid listingId,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedType = NormalizeListingType(listingType);
+        if (normalizedType is null)
+        {
+            return NotFound();
+        }
+
+        var canAccessDocument = await CanAccessListingDocumentAsync(
+            normalizedType,
+            listingId,
+            cancellationToken);
+        if (!canAccessDocument)
+        {
+            return NotFound();
+        }
+
+        var pdfReference = await GetPdfReferenceAsync(normalizedType, listingId, cancellationToken);
+        if (pdfReference is null || string.IsNullOrWhiteSpace(pdfReference.Value.ObjectKey))
+        {
+            return NotFound();
+        }
+
+        var content = await pdfStorageService.DownloadPdfAsync(pdfReference.Value.ObjectKey, cancellationToken);
+        if (content is null || content.Length == 0)
+        {
+            return NotFound();
+        }
+
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return File(content, "application/pdf", enableRangeProcessing: false);
     }
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
@@ -2700,15 +2993,29 @@ public sealed class AccountController(
         var hasLinkedPlayers = hasPlayerOrParentRole
             && await dbContext.UserPlayerRelationships
                 .AsNoTracking()
-                .AnyAsync(relationship => relationship.UserId == user.Id, cancellationToken);
+                .AnyAsync(
+                    relationship => relationship.UserId == user.Id
+                        && relationship.Player.IsActive,
+                    cancellationToken);
         var hasPlayerListingManagementAccess = entitlements?.FeatureCodes.Contains(
                 TryOutSpotFeatureCodes.CreatePlayerListings,
                 StringComparer.Ordinal) == true;
-        var hasManagedPlayerListings = hasPlayerOrParentRole
-            && hasPlayerListingManagementAccess
-            && await dbContext.PlayerListings
-                .AsNoTracking()
-                .AnyAsync(listing => listing.UserId == user.Id && listing.IsActive, cancellationToken);
+        var hasManagedPlayerListings = false;
+        if (hasPlayerOrParentRole && hasPlayerListingManagementAccess)
+        {
+            try
+            {
+                hasManagedPlayerListings = await dbContext.PlayerListings
+                    .AsNoTracking()
+                    .AnyAsync(listing => listing.UserId == user.Id && listing.IsActive, cancellationToken);
+            }
+            catch (PostgresException exception) when (IsUndefinedTableException(exception))
+            {
+                // Keeps onboarding alive while an environment catches up on migrations.
+                hasPlayerListingManagementAccess = false;
+                hasManagedPlayerListings = false;
+            }
+        }
         var hasTeamRole = hasTeamOrOrganizationRole
             && await dbContext.UserTeamRoles
                 .AsNoTracking()
@@ -2882,6 +3189,296 @@ public sealed class AccountController(
         return model;
     }
 
+    private async Task<ManagePlayerProfilesPageModel> BuildManagePlayerProfilesPageModelAsync(
+        User user,
+        CancellationToken cancellationToken)
+    {
+        var managedRelationships = await dbContext.UserPlayerRelationships
+            .AsNoTracking()
+            .Where(relationship => relationship.UserId == user.Id)
+            .Where(relationship => relationship.CanManage)
+            .Where(relationship => relationship.Player.IsActive)
+            .Include(relationship => relationship.Player)
+                .ThenInclude(player => player.PlayerSports)
+                    .ThenInclude(playerSport => playerSport.Sport)
+            .OrderBy(relationship => relationship.Player.LastName)
+            .ThenBy(relationship => relationship.Player.FirstName)
+            .ToArrayAsync(cancellationToken);
+
+        var playerIds = managedRelationships
+            .Select(relationship => relationship.PlayerId)
+            .Distinct()
+            .ToArray();
+        var activeListingCountsByPlayerId = playerIds.Length == 0
+            ? new Dictionary<Guid, int>()
+            : await dbContext.PlayerListings
+                .AsNoTracking()
+                .Where(listing => listing.UserId == user.Id)
+                .Where(listing => listing.IsActive)
+                .Where(listing => listing.PlayerId.HasValue)
+                .Where(listing => playerIds.Contains(listing.PlayerId!.Value))
+                .GroupBy(listing => listing.PlayerId!.Value)
+                .Select(group => new { PlayerId = group.Key, Count = group.Count() })
+                .ToDictionaryAsync(item => item.PlayerId, item => item.Count, cancellationToken);
+
+        var profiles = managedRelationships
+            .GroupBy(relationship => relationship.PlayerId)
+            .Select(group =>
+            {
+                var relationship = group.First();
+                var player = relationship.Player;
+                var sports = player.PlayerSports
+                    .Where(playerSport => playerSport.IsActive)
+                    .OrderBy(playerSport => playerSport.Sport.Name)
+                    .Select(playerSport =>
+                        string.IsNullOrWhiteSpace(playerSport.SkillLevel)
+                            ? playerSport.Sport.Name
+                            : $"{playerSport.Sport.Name} ({playerSport.SkillLevel})")
+                    .ToArray();
+
+                activeListingCountsByPlayerId.TryGetValue(player.Id, out var activeListingCount);
+
+                return new PlayerProfileSummaryPageModel
+                {
+                    PlayerId = player.Id,
+                    FullName = $"{player.FirstName} {player.LastName}".Trim(),
+                    DateOfBirth = player.DateOfBirth.Date,
+                    Relationship = relationship.Relationship,
+                    CanManage = relationship.CanManage,
+                    IsSearchable = player.IsSearchable,
+                    ContactVisibility = player.ContactVisibility,
+                    ContactEmail = player.ContactEmail,
+                    ContactPhone = player.ContactPhone,
+                    City = player.City,
+                    State = player.State,
+                    ZipCode = player.ZipCode,
+                    Sports = sports,
+                    ActiveListingCount = activeListingCount,
+                    UpdatedAt = player.UpdatedAt
+                };
+            })
+            .ToArray();
+
+        return new ManagePlayerProfilesPageModel
+        {
+            Profiles = profiles
+        };
+    }
+
+    private async Task<AddPlayerProfilePageModel?> BuildEditablePlayerProfilePageModelAsync(
+        Guid userId,
+        Guid playerId,
+        CancellationToken cancellationToken)
+    {
+        var relationshipToUser = await dbContext.UserPlayerRelationships
+            .AsNoTracking()
+            .Where(relationship => relationship.UserId == userId)
+            .Where(relationship => relationship.PlayerId == playerId)
+            .Where(relationship => relationship.CanManage)
+            .Where(relationship => relationship.Player.IsActive)
+            .Include(relationship => relationship.Player)
+                .ThenInclude(player => player.PlayerSports)
+                    .ThenInclude(playerSport => playerSport.Sport)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (relationshipToUser is null)
+        {
+            return null;
+        }
+
+        var player = relationshipToUser.Player;
+        var socialLinks = DeserializeLinkCollection(player.SocialMediaLinks);
+        var recruitingLinks = DeserializeLinkCollection(player.RecruitingProfileLinks);
+
+        socialLinks.TryGetValue("facebook", out var facebookPageUrl);
+        socialLinks.TryGetValue("x", out var xPageUrl);
+        socialLinks.TryGetValue("instagram", out var instagramUrl);
+        socialLinks.TryGetValue("youtube", out var youTubeUrl);
+        socialLinks.TryGetValue("tiktok", out var tikTokUrl);
+        socialLinks.TryGetValue("highlight_video_1", out var highlightVideoUrl1);
+        socialLinks.TryGetValue("highlight_video_2", out var highlightVideoUrl2);
+
+        recruitingLinks.TryGetValue("sportsrecruits", out var sportsRecruitsProfileUrl);
+        recruitingLinks.TryGetValue("fieldlevel", out var fieldLevelProfileUrl);
+        recruitingLinks.TryGetValue("ncsa", out var ncsaProfileUrl);
+        recruitingLinks.TryGetValue("other", out var otherRecruitingProfileUrl);
+
+        return new AddPlayerProfilePageModel
+        {
+            PlayerId = player.Id,
+            IsEditMode = true,
+            ReturnUrl = Url.Action(nameof(ManagePlayerProfiles)),
+            FirstName = player.FirstName,
+            LastName = player.LastName,
+            DateOfBirth = player.DateOfBirth.Date,
+            Relationship = NormalizeRelationship(relationshipToUser.Relationship) ?? relationshipToUser.Relationship,
+            CanManage = relationshipToUser.CanManage,
+            IsSearchable = player.IsSearchable,
+            ContactVisibility = NormalizePlayerContactVisibility(player.ContactVisibility) ?? PlayerContactVisibilityOptions[1],
+            ContactEmail = player.ContactEmail,
+            ContactPhone = player.ContactPhone,
+            ProfileImageUrl = player.ProfileImageUrl,
+            HighlightVideoUrl1 = highlightVideoUrl1,
+            HighlightVideoUrl2 = highlightVideoUrl2,
+            SchoolName = player.SchoolName,
+            CurrentTeamName = player.CurrentTeamName,
+            GraduationYear = player.GraduationYear,
+            Height = player.Height,
+            Weight = player.Weight,
+            ThrowsHand = player.ThrowsHand,
+            BatsHand = player.BatsHand,
+            City = player.City,
+            State = player.State,
+            ZipCode = player.ZipCode,
+            FacebookPageUrl = facebookPageUrl,
+            XPageUrl = xPageUrl,
+            InstagramUrl = instagramUrl,
+            YouTubeUrl = youTubeUrl,
+            TikTokUrl = tikTokUrl,
+            SportsRecruitsProfileUrl = sportsRecruitsProfileUrl,
+            FieldLevelProfileUrl = fieldLevelProfileUrl,
+            NcsaProfileUrl = ncsaProfileUrl,
+            OtherRecruitingProfileUrl = otherRecruitingProfileUrl,
+            SportDetails = player.PlayerSports
+                .Where(playerSport => playerSport.IsActive)
+                .OrderBy(playerSport => playerSport.Sport.Name)
+                .Select(playerSport => new PlayerSportDetailPageModel
+                {
+                    SportId = playerSport.SportId,
+                    SportName = playerSport.Sport.Name,
+                    IsSelected = true,
+                    SkillLevel = playerSport.SkillLevel,
+                    PrimaryPosition = playerSport.PrimaryPosition,
+                    SecondaryPositions = playerSport.SecondaryPositions
+                })
+                .ToList()
+        };
+    }
+
+    private async Task<PlayerProfileValidationContext?> ValidatePlayerProfileInputAsync(
+        AddPlayerProfilePageModel model,
+        CancellationToken cancellationToken)
+    {
+        var relationship = NormalizeRelationship(model.Relationship);
+        if (string.IsNullOrWhiteSpace(relationship))
+        {
+            ModelState.AddModelError(nameof(model.Relationship), "Choose a relationship.");
+        }
+
+        var contactVisibility = NormalizePlayerContactVisibility(model.ContactVisibility);
+        if (contactVisibility is null)
+        {
+            ModelState.AddModelError(nameof(model.ContactVisibility), "Choose whether contact details are public or limited to verified coaches.");
+        }
+
+        var selectedSportDetails = model.SportDetails
+            .Where(detail => detail.IsSelected)
+            .GroupBy(detail => detail.SportId)
+            .Select(group => group.First())
+            .ToArray();
+        var selectedSportIds = selectedSportDetails
+            .Select(detail => detail.SportId)
+            .ToArray();
+        var availableSelectedSports = selectedSportIds.Length == 0
+            ? []
+            : await dbContext.Sports
+                .AsNoTracking()
+                .Where(sport => sport.IsActive && selectedSportIds.Contains(sport.Id))
+                .Select(sport => sport.Id)
+                .ToArrayAsync(cancellationToken);
+        if (availableSelectedSports.Length != selectedSportIds.Length)
+        {
+            ModelState.AddModelError(nameof(model.SportDetails), "One or more selected sports are no longer available.");
+        }
+
+        for (var sportIndex = 0; sportIndex < model.SportDetails.Count; sportIndex++)
+        {
+            var sportDetail = model.SportDetails[sportIndex];
+            if (!sportDetail.IsSelected)
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(sportDetail.SkillLevel))
+            {
+                ModelState.AddModelError($"SportDetails[{sportIndex}].SkillLevel", "Enter ability level for each selected sport.");
+            }
+        }
+
+        if (!ModelState.IsValid || string.IsNullOrWhiteSpace(relationship) || contactVisibility is null)
+        {
+            return null;
+        }
+
+        return new PlayerProfileValidationContext(
+            relationship,
+            contactVisibility,
+            availableSelectedSports,
+            selectedSportDetails);
+    }
+
+    private static void ApplyPlayerProfileValues(
+        Player player,
+        AddPlayerProfilePageModel model,
+        string contactVisibility,
+        DateTime now)
+    {
+        player.FirstName = model.FirstName.Trim();
+        player.LastName = model.LastName.Trim();
+        player.DateOfBirth = NormalizeUtcDate(model.DateOfBirth);
+        player.ContactEmail = NormalizeOptional(model.ContactEmail);
+        player.ContactPhone = NormalizeOptional(model.ContactPhone);
+        player.ProfileImageUrl = NormalizeOptional(model.ProfileImageUrl);
+        player.Height = NormalizeOptional(model.Height);
+        player.Weight = NormalizeOptional(model.Weight);
+        player.ThrowsHand = NormalizeOptional(model.ThrowsHand);
+        player.BatsHand = NormalizeOptional(model.BatsHand);
+        player.SchoolName = NormalizeOptional(model.SchoolName);
+        player.CurrentTeamName = NormalizeOptional(model.CurrentTeamName);
+        player.GraduationYear = model.GraduationYear;
+        player.ContactVisibility = contactVisibility;
+        player.City = NormalizeOptional(model.City);
+        player.State = NormalizeState(model.State);
+        player.ZipCode = NormalizeOptional(model.ZipCode);
+        player.SocialMediaLinks = SerializeLinkCollection(
+            ("facebook", model.FacebookPageUrl),
+            ("x", NormalizeSocialHandleOrUrl(model.XPageUrl, "https://x.com/")),
+            ("instagram", NormalizeSocialHandleOrUrl(model.InstagramUrl, "https://instagram.com/")),
+            ("youtube", model.YouTubeUrl),
+            ("tiktok", NormalizeSocialHandleOrUrl(model.TikTokUrl, "https://tiktok.com/")),
+            ("highlight_video_1", model.HighlightVideoUrl1),
+            ("highlight_video_2", model.HighlightVideoUrl2));
+        player.RecruitingProfileLinks = SerializeLinkCollection(
+            ("sportsrecruits", model.SportsRecruitsProfileUrl),
+            ("fieldlevel", model.FieldLevelProfileUrl),
+            ("ncsa", model.NcsaProfileUrl),
+            ("other", model.OtherRecruitingProfileUrl));
+        player.IsSearchable = model.IsSearchable;
+        player.UpdatedAt = now;
+    }
+
+    private static IReadOnlyDictionary<string, string> DeserializeLinkCollection(string? serializedLinks)
+    {
+        if (string.IsNullOrWhiteSpace(serializedLinks))
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try
+        {
+            var links = JsonSerializer.Deserialize<Dictionary<string, string>>(serializedLinks);
+            if (links is null || links.Count == 0)
+            {
+                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            return new Dictionary<string, string>(links, StringComparer.OrdinalIgnoreCase);
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
     private async Task<PlayerListingListPageModel> BuildPlayerListingListPageModelAsync(
         User user,
         int page,
@@ -2904,7 +3501,6 @@ public sealed class AccountController(
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToArrayAsync(cancellationToken);
-
         return new PlayerListingListPageModel
         {
             CanCreateListings = true,
@@ -2913,7 +3509,17 @@ public sealed class AccountController(
             TotalCount = totalCount,
             TotalPages = totalCount == 0 ? 1 : (int)Math.Ceiling(totalCount / (double)pageSize),
             ManagedPlayers = managedPlayers,
-            Listings = listings.Select(ToPlayerListingSummaryPageModel).ToArray()
+            Listings = listings.Select(listing =>
+            {
+                var summary = ToPlayerListingSummaryPageModel(listing);
+                if (!string.IsNullOrWhiteSpace(listing.UploadedPdfObjectKey))
+                {
+                    summary.UploadedPdfUrl = BuildListingDocumentPath(PlayerListingDocumentType, listing.Id);
+                    summary.UploadedPdfFileName = listing.UploadedPdfFileName;
+                }
+
+                return summary;
+            }).ToArray()
         };
     }
 
@@ -2956,6 +3562,7 @@ public sealed class AccountController(
                 City = listing.City,
                 State = listing.State,
                 ZipCode = listing.ZipCode,
+                VisibleSocialLinkKeys = ParsePlayerListingVisibleSocialKeys(listing.VisibleSocialLinkKeys).ToList(),
                 IsSearchable = listing.IsSearchable,
                 IsPublished = listing.IsPublished,
                 ExpiresAt = listing.ExpiresAt
@@ -2970,6 +3577,7 @@ public sealed class AccountController(
                 Currency = "USD",
                 IsSearchable = true,
                 IsPublished = true,
+                VisibleSocialLinkKeys = GetDefaultVisibleSocialLinkKeys().ToList(),
                 City = user.City,
                 State = user.State,
                 ZipCode = user.ZipCode
@@ -2989,6 +3597,7 @@ public sealed class AccountController(
                 sport.Name,
                 model.SportId.HasValue && model.SportId.Value == sport.Id))
             .ToArrayAsync(cancellationToken);
+        model.AvailableSocialDisplayOptions = [.. PlayerListingSocialDisplayOptions, .. PlayerListingVideoDisplayOptions];
 
         var normalizedListingType = NormalizePlayerListingType(model.ListingType, nameof(model.ListingType));
         if (normalizedListingType is not null)
@@ -3006,6 +3615,12 @@ public sealed class AccountController(
         model.City = string.IsNullOrWhiteSpace(model.City) ? user.City : model.City;
         model.State = string.IsNullOrWhiteSpace(model.State) ? user.State : model.State;
         model.ZipCode = string.IsNullOrWhiteSpace(model.ZipCode) ? user.ZipCode : model.ZipCode;
+        model.VisibleSocialLinkKeys = NormalizePlayerListingVisibleSocialKeys(model.VisibleSocialLinkKeys).ToList();
+        model.HasUploadedPdf = listing is not null && !string.IsNullOrWhiteSpace(listing.UploadedPdfObjectKey);
+        model.UploadedPdfFileName = listing?.UploadedPdfFileName;
+        model.UploadedPdfUrl = listing is null || string.IsNullOrWhiteSpace(listing.UploadedPdfObjectKey)
+            ? null
+            : BuildListingDocumentPath(PlayerListingDocumentType, listing.Id);
 
         return model;
     }
@@ -3088,7 +3703,9 @@ public sealed class AccountController(
         return new PlayerListingValidationContext(listingTypeOption, player);
     }
 
-    private static PlayerListingDetailPageModel BuildPlayerListingDetailPageModel(PlayerListing listing)
+    private Task<PlayerListingDetailPageModel> BuildPlayerListingDetailPageModelAsync(
+        PlayerListing listing,
+        CancellationToken cancellationToken)
     {
         var player = listing.Player;
         var isContactPublic = player is not null
@@ -3103,13 +3720,18 @@ public sealed class AccountController(
                 NormalizeOptional(playerSport.SecondaryPositions)))
             .ToArray() ?? [];
 
+        var visibleSocialLinkKeys = ParsePlayerListingVisibleSocialKeys(listing.VisibleSocialLinkKeys);
         var socialLinks = BuildPlayerExternalLinkItems(
             player?.SocialMediaLinks,
+            visibleSocialLinkKeys,
             ("facebook", "Facebook"),
             ("x", "X"),
             ("instagram", "Instagram"),
             ("youtube", "YouTube"),
-            ("tiktok", "TikTok"),
+            ("tiktok", "TikTok"));
+        var profileVideoLinks = BuildPlayerExternalLinkItems(
+            player?.SocialMediaLinks,
+            visibleSocialLinkKeys,
             ("highlight_video_1", "Highlight video 1"),
             ("highlight_video_2", "Highlight video 2"));
         var recruitingLinks = BuildPlayerExternalLinkItems(
@@ -3119,7 +3741,7 @@ public sealed class AccountController(
             ("ncsa", "NCSA"),
             ("other", "Other recruiting profile"));
 
-        return new PlayerListingDetailPageModel
+        return Task.FromResult(new PlayerListingDetailPageModel
         {
             ListingId = listing.Id,
             ListingTypeLabel = GetPlayerListingTypeLabel(listing.ListingType),
@@ -3148,8 +3770,66 @@ public sealed class AccountController(
             ContactPhone = isContactPublic ? player?.ContactPhone : null,
             Sports = sports,
             SocialLinks = socialLinks,
-            RecruitingLinks = recruitingLinks
-        };
+            ProfileVideoLinks = profileVideoLinks,
+            RecruitingLinks = recruitingLinks,
+            PdfUrl = string.IsNullOrWhiteSpace(listing.UploadedPdfObjectKey)
+                ? null
+                : BuildListingDocumentPath(PlayerListingDocumentType, listing.Id),
+            PdfFileName = listing.UploadedPdfFileName
+        });
+    }
+
+    private Task<TeamOpportunityDetailPageModel> BuildTeamOpportunityDetailPageModelAsync(
+        Opportunity opportunity,
+        CancellationToken cancellationToken)
+    {
+        var isContactInfoVisible = opportunity.Team.IsContactInfoVisible
+            && (opportunity.Team.Organization?.IsContactInfoVisible ?? true);
+        var websiteUrl = isContactInfoVisible
+            && TryNormalizeAbsoluteLink(opportunity.WebsiteUrl, out var normalizedWebsiteUrl)
+                ? normalizedWebsiteUrl
+                : null;
+        var externalPdfUrl = isContactInfoVisible
+            && TryNormalizeAbsoluteLink(opportunity.PdfUrl, out var normalizedPdfUrl)
+                ? normalizedPdfUrl
+                : null;
+        var pdfUrl = isContactInfoVisible && !string.IsNullOrWhiteSpace(opportunity.UploadedPdfObjectKey)
+            ? BuildListingDocumentPath(OpportunityDocumentType, opportunity.Id)
+            : externalPdfUrl;
+
+        return Task.FromResult(new TeamOpportunityDetailPageModel
+        {
+            OpportunityId = opportunity.Id,
+            TeamId = opportunity.TeamId,
+            TeamName = opportunity.Team.Name,
+            OrganizationName = opportunity.Team.Organization?.Name,
+            SportName = opportunity.Sport.Name,
+            Type = opportunity.Type,
+            Title = opportunity.Title,
+            Description = NormalizeOptional(opportunity.Description),
+            CompetitionLevel = NormalizeOptional(opportunity.CompetitionLevel),
+            AgeGroup = NormalizeOptional(opportunity.AgeGroup),
+            RegistrationRequired = opportunity.RegistrationRequired,
+            RegistrationFee = opportunity.RegistrationFee,
+            RegistrationDeadline = opportunity.RegistrationDeadline,
+            EventDate = opportunity.EventDate,
+            EventEndDate = opportunity.EventEndDate,
+            PublishedAt = opportunity.PublishedAt,
+            ExpiresAt = opportunity.ExpiresAt,
+            Location = NormalizeOptional(opportunity.Location),
+            Address = NormalizeOptional(opportunity.Address),
+            City = NormalizeOptional(opportunity.City),
+            State = NormalizeOptional(opportunity.State),
+            ZipCode = NormalizeOptional(opportunity.ZipCode),
+            IsContactInfoVisible = isContactInfoVisible,
+            ContactEmail = isContactInfoVisible ? NormalizeOptional(opportunity.ContactEmail) : null,
+            ContactPhone = isContactInfoVisible ? NormalizeOptional(opportunity.ContactPhone) : null,
+            WebsiteUrl = websiteUrl,
+            PdfUrl = pdfUrl,
+            RequiredEquipment = NormalizeOptional(opportunity.RequiredEquipment),
+            WhatToBring = NormalizeOptional(opportunity.WhatToBring),
+            SpecialInstructions = NormalizeOptional(opportunity.SpecialInstructions)
+        });
     }
 
     private async Task<ChoosePlanPageModel> BuildChoosePlanPageModelAsync(
@@ -3341,7 +4021,17 @@ public sealed class AccountController(
             PageSize = pageSize,
             TotalCount = totalCount,
             TotalPages = totalCount == 0 ? 1 : (int)Math.Ceiling(totalCount / (double)pageSize),
-            Opportunities = opportunities.Select(ToTeamOpportunitySummary).ToArray()
+            Opportunities = opportunities.Select(opportunity =>
+            {
+                var summary = ToTeamOpportunitySummary(opportunity);
+                if (!string.IsNullOrWhiteSpace(opportunity.UploadedPdfObjectKey))
+                {
+                    summary.UploadedPdfUrl = BuildListingDocumentPath(OpportunityDocumentType, opportunity.Id);
+                    summary.UploadedPdfFileName = opportunity.UploadedPdfFileName;
+                }
+
+                return summary;
+            }).ToArray()
         };
     }
 
@@ -3405,6 +4095,7 @@ public sealed class AccountController(
                     ContactEmail = existingOpportunity.ContactEmail,
                     ContactPhone = existingOpportunity.ContactPhone,
                     WebsiteUrl = existingOpportunity.WebsiteUrl,
+                    PdfUrl = existingOpportunity.PdfUrl,
                     RequiredEquipment = existingOpportunity.RequiredEquipment,
                     WhatToBring = existingOpportunity.WhatToBring,
                     SpecialInstructions = existingOpportunity.SpecialInstructions,
@@ -3423,6 +4114,7 @@ public sealed class AccountController(
                     State = managedTeam.Team.State,
                     ZipCode = managedTeam.Team.ZipCode,
                     WebsiteUrl = managedTeam.Team.WebsiteUrl,
+                    PdfUrl = null,
                     Type = TeamOpportunityTypeOptions[0],
                     RegistrationRequired = true,
                     IsPublished = true
@@ -3461,6 +4153,12 @@ public sealed class AccountController(
         model.PublishedThisMonthCount = publishedThisMonthCount;
         model.AvailableSports = availableSports;
         model.AvailableOpportunityTypes = TeamOpportunityTypeOptions;
+        model.HasUploadedPdf = existingOpportunity is not null
+            && !string.IsNullOrWhiteSpace(existingOpportunity.UploadedPdfObjectKey);
+        model.UploadedPdfFileName = existingOpportunity?.UploadedPdfFileName;
+        model.UploadedPdfUrl = existingOpportunity is null || string.IsNullOrWhiteSpace(existingOpportunity.UploadedPdfObjectKey)
+            ? null
+            : BuildListingDocumentPath(OpportunityDocumentType, existingOpportunity.Id);
 
         return model;
     }
@@ -3562,6 +4260,34 @@ public sealed class AccountController(
             featureCodes.Contains(TryOutSpotFeatureCodes.UnlimitedOpportunityPostings, StringComparer.Ordinal));
     }
 
+    private async Task<TeamCreationAccess> ResolveTeamCreationAccessAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var managedTeamCount = await dbContext.UserTeamRoles
+            .AsNoTracking()
+            .Where(teamRole => teamRole.UserId == userId)
+            .Where(teamRole => teamRole.IsActive)
+            .Where(teamRole => teamRole.Team.IsActive)
+            .Select(teamRole => teamRole.TeamId)
+            .Distinct()
+            .CountAsync(cancellationToken);
+        if (managedTeamCount == 0)
+        {
+            return TeamCreationAccess.Allow;
+        }
+
+        var entitlements = await entitlementService.GetEntitlementsAsync(userId, cancellationToken);
+        var featureCodes = entitlements?.FeatureCodes ?? [];
+        if (featureCodes.Contains(TryOutSpotFeatureCodes.MultiTeamManagement, StringComparer.Ordinal))
+        {
+            return TeamCreationAccess.Allow;
+        }
+
+        return TeamCreationAccess.Blocked(
+            "Your current membership allows one active team. Upgrade to Enterprise Organization to add additional teams.");
+    }
+
     private string? ResolveZipCodeOrAddModelError(
         string? requestedZipCode,
         string? fallbackZipCode,
@@ -3589,6 +4315,7 @@ public sealed class AccountController(
     {
         var managedTeams = await dbContext.UserTeamRoles
             .AsNoTracking()
+            .AsSplitQuery()
             .Where(teamRole => teamRole.UserId == userId)
             .Where(teamRole => teamRole.IsActive)
             .Where(teamRole => teamRole.Team.IsActive)
@@ -3613,6 +4340,7 @@ public sealed class AccountController(
     {
         var managedTeam = await dbContext.UserTeamRoles
             .AsNoTracking()
+            .AsSplitQuery()
             .Where(teamRole => teamRole.UserId == userId)
             .Where(teamRole => teamRole.TeamId == teamId)
             .Where(teamRole => teamRole.IsActive)
@@ -3728,6 +4456,8 @@ public sealed class AccountController(
             City = opportunity.City,
             State = opportunity.State,
             ZipCode = opportunity.ZipCode,
+            WebsiteUrl = opportunity.WebsiteUrl,
+            PdfUrl = opportunity.PdfUrl,
             IsPublished = opportunity.IsPublished,
             PublishedAt = opportunity.PublishedAt,
             ExpiresAt = opportunity.ExpiresAt,
@@ -3825,8 +4555,375 @@ public sealed class AccountController(
             .ToArray();
     }
 
+    private async Task ApplyPlayerListingPdfUploadChangesAsync(
+        PlayerListing listing,
+        Guid uploadedByUserId,
+        IFormFile? uploadedPdf,
+        bool removeUploadedPdf,
+        string modelStateKey,
+        CancellationToken cancellationToken)
+    {
+        if (uploadedPdf is null || uploadedPdf.Length == 0)
+        {
+            if (removeUploadedPdf)
+            {
+                await RemovePlayerListingPdfAsync(listing, cancellationToken);
+            }
+
+            return;
+        }
+
+        logger.LogInformation(
+            "Player listing PDF upload requested. ListingId={ListingId} UserId={UserId} FileName={FileName} FileSizeBytes={FileSizeBytes}",
+            listing.Id,
+            uploadedByUserId,
+            uploadedPdf.FileName,
+            uploadedPdf.Length);
+
+        var parsedUpload = await ParseUploadedPdfAsync(uploadedPdf, modelStateKey, cancellationToken);
+        if (parsedUpload is null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(listing.UploadedPdfObjectKey))
+        {
+            await pdfStorageService.DeletePdfAsync(listing.UploadedPdfObjectKey, cancellationToken);
+        }
+
+        try
+        {
+            var objectKey = BuildPdfObjectKey(PlayerListingDocumentType, listing.Id, uploadedByUserId, parsedUpload.FileName);
+            await pdfStorageService.UploadPdfAsync(objectKey, parsedUpload.Content, cancellationToken);
+            listing.UploadedPdfObjectKey = objectKey;
+            listing.UploadedPdfFileName = parsedUpload.FileName;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "Failed to upload player listing PDF to R2 for listing {ListingId}.",
+                listing.Id);
+            ModelState.AddModelError(modelStateKey, "We could not upload the PDF right now. Please try again.");
+        }
+    }
+
+    private async Task ApplyOpportunityPdfUploadChangesAsync(
+        Opportunity opportunity,
+        Guid uploadedByUserId,
+        IFormFile? uploadedPdf,
+        bool removeUploadedPdf,
+        string modelStateKey,
+        CancellationToken cancellationToken)
+    {
+        if (uploadedPdf is null || uploadedPdf.Length == 0)
+        {
+            if (removeUploadedPdf)
+            {
+                await RemoveOpportunityPdfAsync(opportunity, cancellationToken);
+            }
+
+            return;
+        }
+
+        logger.LogInformation(
+            "Opportunity PDF upload requested. OpportunityId={OpportunityId} UserId={UserId} FileName={FileName} FileSizeBytes={FileSizeBytes}",
+            opportunity.Id,
+            uploadedByUserId,
+            uploadedPdf.FileName,
+            uploadedPdf.Length);
+
+        var parsedUpload = await ParseUploadedPdfAsync(uploadedPdf, modelStateKey, cancellationToken);
+        if (parsedUpload is null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(opportunity.UploadedPdfObjectKey))
+        {
+            await pdfStorageService.DeletePdfAsync(opportunity.UploadedPdfObjectKey, cancellationToken);
+        }
+
+        try
+        {
+            var objectKey = BuildPdfObjectKey(OpportunityDocumentType, opportunity.Id, uploadedByUserId, parsedUpload.FileName);
+            await pdfStorageService.UploadPdfAsync(objectKey, parsedUpload.Content, cancellationToken);
+            opportunity.UploadedPdfObjectKey = objectKey;
+            opportunity.UploadedPdfFileName = parsedUpload.FileName;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "Failed to upload opportunity PDF to R2 for opportunity {OpportunityId}.",
+                opportunity.Id);
+            ModelState.AddModelError(modelStateKey, "We could not upload the PDF right now. Please try again.");
+        }
+    }
+
+    private async Task<UploadedPdfPayload?> ParseUploadedPdfAsync(
+        IFormFile uploadedPdf,
+        string modelStateKey,
+        CancellationToken cancellationToken)
+    {
+        if (uploadedPdf.Length <= 0)
+        {
+            ModelState.AddModelError(modelStateKey, "Upload a PDF file.");
+            return null;
+        }
+
+        if (uploadedPdf.Length > ListingPdfMaxSizeBytes)
+        {
+            ModelState.AddModelError(
+                modelStateKey,
+                $"PDF files can be up to {ListingPdfMaxSizeMegabytes} MB.");
+            return null;
+        }
+
+        var extension = Path.GetExtension(uploadedPdf.FileName);
+        if (!string.Equals(extension, ".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            ModelState.AddModelError(modelStateKey, "Only PDF files are supported.");
+            return null;
+        }
+
+        await using var stream = uploadedPdf.OpenReadStream();
+        using var memoryStream = new MemoryStream();
+        await stream.CopyToAsync(memoryStream, cancellationToken);
+
+        if (memoryStream.Length <= 0)
+        {
+            ModelState.AddModelError(modelStateKey, "Upload a PDF file.");
+            return null;
+        }
+
+        if (memoryStream.Length > ListingPdfMaxSizeBytes)
+        {
+            ModelState.AddModelError(
+                modelStateKey,
+                $"PDF files can be up to {ListingPdfMaxSizeMegabytes} MB.");
+            return null;
+        }
+
+        var content = memoryStream.ToArray();
+        if (!LooksLikePdf(content))
+        {
+            ModelState.AddModelError(modelStateKey, "Uploaded file is not a valid PDF.");
+            return null;
+        }
+
+        var fileName = Path.GetFileName(uploadedPdf.FileName);
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            fileName = "listing-flyer.pdf";
+        }
+
+        return new UploadedPdfPayload(fileName.Trim(), content);
+    }
+
+    private static bool LooksLikePdf(byte[] content)
+    {
+        return content.Length >= 5
+            && content[0] == 0x25 // %
+            && content[1] == 0x50 // P
+            && content[2] == 0x44 // D
+            && content[3] == 0x46 // F
+            && content[4] == 0x2D; // -
+    }
+
+    private async Task RemovePlayerListingPdfAsync(PlayerListing listing, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(listing.UploadedPdfObjectKey))
+        {
+            await pdfStorageService.DeletePdfAsync(listing.UploadedPdfObjectKey, cancellationToken);
+        }
+
+        listing.UploadedPdfObjectKey = null;
+        listing.UploadedPdfFileName = null;
+    }
+
+    private async Task RemoveOpportunityPdfAsync(Opportunity opportunity, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(opportunity.UploadedPdfObjectKey))
+        {
+            await pdfStorageService.DeletePdfAsync(opportunity.UploadedPdfObjectKey, cancellationToken);
+        }
+
+        opportunity.UploadedPdfObjectKey = null;
+        opportunity.UploadedPdfFileName = null;
+    }
+
+    private static string BuildListingDocumentPath(string listingType, Guid listingId)
+    {
+        return $"/listing-documents/{listingType}/{listingId}";
+    }
+
+    private static string? NormalizeListingType(string listingType)
+    {
+        if (string.Equals(listingType, PlayerListingDocumentType, StringComparison.OrdinalIgnoreCase))
+        {
+            return PlayerListingDocumentType;
+        }
+
+        if (string.Equals(listingType, OpportunityDocumentType, StringComparison.OrdinalIgnoreCase))
+        {
+            return OpportunityDocumentType;
+        }
+
+        return null;
+    }
+
+    private static string BuildPdfObjectKey(string listingType, Guid listingId, Guid userId, string fileName)
+    {
+        var safeFileName = Path.GetFileName(fileName);
+        return $"{listingType}/{listingId}/{DateTime.UtcNow:yyyyMMddHHmmss}-{userId}-{safeFileName}";
+    }
+
+    private async Task<(string? ObjectKey, string? FileName)?> GetPdfReferenceAsync(
+        string listingType,
+        Guid listingId,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(listingType, PlayerListingDocumentType, StringComparison.Ordinal))
+        {
+            var listing = await dbContext.PlayerListings
+                .AsNoTracking()
+                .Where(item => item.Id == listingId)
+                .Select(item => new { item.UploadedPdfObjectKey, item.UploadedPdfFileName })
+                .SingleOrDefaultAsync(cancellationToken);
+            return listing is null ? null : (listing.UploadedPdfObjectKey, listing.UploadedPdfFileName);
+        }
+
+        if (string.Equals(listingType, OpportunityDocumentType, StringComparison.Ordinal))
+        {
+            var listing = await dbContext.Opportunities
+                .AsNoTracking()
+                .Where(item => item.Id == listingId)
+                .Select(item => new { item.UploadedPdfObjectKey, item.UploadedPdfFileName })
+                .SingleOrDefaultAsync(cancellationToken);
+            return listing is null ? null : (listing.UploadedPdfObjectKey, listing.UploadedPdfFileName);
+        }
+
+        return null;
+    }
+
+    private async Task<bool> CanAccessListingDocumentAsync(
+        string listingType,
+        Guid listingId,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(listingType, PlayerListingDocumentType, StringComparison.Ordinal))
+        {
+            if (await CanAccessPlayerListingDocumentAsPublicAsync(listingId, cancellationToken))
+            {
+                return true;
+            }
+
+            var currentUserId = await GetCurrentAuthenticatedWebUserIdAsync();
+            if (!currentUserId.HasValue)
+            {
+                return false;
+            }
+
+            return await dbContext.PlayerListings
+                .AsNoTracking()
+                .AnyAsync(listing =>
+                    listing.Id == listingId
+                    && listing.UserId == currentUserId.Value
+                    && listing.IsActive,
+                    cancellationToken);
+        }
+
+        if (string.Equals(listingType, OpportunityDocumentType, StringComparison.Ordinal))
+        {
+            if (await CanAccessTeamOpportunityDocumentAsPublicAsync(listingId, cancellationToken))
+            {
+                return true;
+            }
+
+            var currentUserId = await GetCurrentAuthenticatedWebUserIdAsync();
+            if (!currentUserId.HasValue)
+            {
+                return false;
+            }
+
+            return await dbContext.Opportunities
+                .AsNoTracking()
+                .Where(opportunity => opportunity.Id == listingId)
+                .Where(opportunity => opportunity.IsActive)
+                .AnyAsync(opportunity =>
+                    opportunity.Team.UserTeamRoles.Any(teamRole =>
+                        teamRole.UserId == currentUserId.Value
+                        && teamRole.IsActive
+                        && teamRole.Team.IsActive),
+                    cancellationToken);
+        }
+
+        return false;
+    }
+
+    private async Task<bool> CanAccessPlayerListingDocumentAsPublicAsync(
+        Guid listingId,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        return await dbContext.PlayerListings
+            .AsNoTracking()
+            .AnyAsync(listing =>
+                listing.Id == listingId
+                && listing.IsActive
+                && listing.IsPublished
+                && listing.IsSearchable
+                && (listing.ExpiresAt == null || listing.ExpiresAt > now),
+                cancellationToken);
+    }
+
+    private async Task<bool> CanAccessTeamOpportunityDocumentAsPublicAsync(
+        Guid opportunityId,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        return await dbContext.Opportunities
+            .AsNoTracking()
+            .AnyAsync(opportunity =>
+                opportunity.Id == opportunityId
+                && opportunity.IsActive
+                && opportunity.IsPublished
+                && (opportunity.ExpiresAt == null || opportunity.ExpiresAt > now)
+                && opportunity.Team.IsActive
+                && opportunity.Team.IsSearchable
+                && opportunity.Team.IsContactInfoVisible
+                && (opportunity.Team.Organization == null || opportunity.Team.Organization.IsContactInfoVisible),
+                cancellationToken);
+    }
+
+    private async Task<Guid?> GetCurrentAuthenticatedWebUserIdAsync()
+    {
+        var authenticationResult = await HttpContext.AuthenticateAsync(TryOutSpotAuthenticationSchemes.WebCookie);
+        var userIdClaim = authenticationResult.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(userIdClaim, out var userId))
+        {
+            return null;
+        }
+
+        return userId;
+    }
+
+    private sealed record UploadedPdfPayload(string FileName, byte[] Content);
+
     private static IReadOnlyCollection<ExternalProfileLinkPageItem> BuildPlayerExternalLinkItems(
         string? serializedLinks,
+        params (string Key, string Label)[] labelPairs)
+    {
+        return BuildPlayerExternalLinkItems(
+            serializedLinks,
+            includedKeys: null,
+            labelPairs);
+    }
+
+    private static IReadOnlyCollection<ExternalProfileLinkPageItem> BuildPlayerExternalLinkItems(
+        string? serializedLinks,
+        IReadOnlyCollection<string>? includedKeys,
         params (string Key, string Label)[] labelPairs)
     {
         if (string.IsNullOrWhiteSpace(serializedLinks))
@@ -3849,10 +4946,18 @@ public sealed class AccountController(
             var orderedKeys = labelPairs
                 .Select(pair => pair.Key)
                 .ToArray();
+            var includedKeysLookup = includedKeys is null
+                ? null
+                : new HashSet<string>(includedKeys, StringComparer.OrdinalIgnoreCase);
 
             var links = new List<ExternalProfileLinkPageItem>();
             foreach (var key in orderedKeys)
             {
+                if (includedKeysLookup is not null && !includedKeysLookup.Contains(key))
+                {
+                    continue;
+                }
+
                 if (!parsedLinks.TryGetValue(key, out var linkValue))
                 {
                     continue;
@@ -3875,6 +4980,74 @@ public sealed class AccountController(
         {
             return [];
         }
+    }
+
+    private static IReadOnlyCollection<string> ParsePlayerListingVisibleSocialKeys(string? serializedKeys)
+    {
+        if (string.IsNullOrWhiteSpace(serializedKeys))
+        {
+            return GetDefaultVisibleSocialLinkKeys();
+        }
+
+        try
+        {
+            var parsedKeys = JsonSerializer.Deserialize<string[]>(serializedKeys);
+            return NormalizePlayerListingVisibleSocialKeys(parsedKeys);
+        }
+        catch (JsonException)
+        {
+            return GetDefaultVisibleSocialLinkKeys();
+        }
+    }
+
+    private static IReadOnlyCollection<string> NormalizePlayerListingVisibleSocialKeys(
+        IEnumerable<string>? selectedKeys)
+    {
+        if (selectedKeys is null)
+        {
+            return [];
+        }
+
+        var validKeys = GetAllPlayerListingSocialDisplayKeys();
+        var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in selectedKeys)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                continue;
+            }
+
+            var normalizedKey = key.Trim();
+            if (validKeys.Contains(normalizedKey))
+            {
+                selected.Add(normalizedKey);
+            }
+        }
+
+        return validKeys
+            .Where(selected.Contains)
+            .ToArray();
+    }
+
+    private static string? SerializePlayerListingVisibleSocialKeys(IEnumerable<string>? selectedKeys)
+    {
+        if (selectedKeys is null)
+        {
+            return null;
+        }
+
+        var normalized = NormalizePlayerListingVisibleSocialKeys(selectedKeys);
+        return JsonSerializer.Serialize(normalized);
+    }
+
+    private static IReadOnlyCollection<string> GetDefaultVisibleSocialLinkKeys()
+    {
+        return GetAllPlayerListingSocialDisplayKeys();
+    }
+
+    private static IReadOnlyCollection<string> GetAllPlayerListingSocialDisplayKeys()
+    {
+        return [.. PlayerListingSocialDisplayOptions.Select(option => option.Key), .. PlayerListingVideoDisplayOptions.Select(option => option.Key)];
     }
 
     private static bool TryNormalizeAbsoluteLink(string? value, out string normalizedLink)
@@ -4153,9 +5326,20 @@ public sealed class AccountController(
 
         var user = await userManager.FindByIdAsync(userId.ToString());
         var tokenSecurityStamp = result.Principal?.FindFirstValue("security_stamp");
-        if (user is not { IsActive: true }
-            || !string.Equals(user.SecurityStamp, tokenSecurityStamp, StringComparison.Ordinal))
+        if (user is not { IsActive: true })
         {
+            logger.LogInformation(
+                "Invalidating web cookie for user {UserId} because the user is missing or inactive.",
+                userId);
+            await HttpContext.SignOutAsync(TryOutSpotAuthenticationSchemes.WebCookie);
+            return null;
+        }
+
+        if (!string.Equals(user.SecurityStamp, tokenSecurityStamp, StringComparison.Ordinal))
+        {
+            logger.LogInformation(
+                "Invalidating web cookie for user {UserId} because the security stamp no longer matches.",
+                userId);
             await HttpContext.SignOutAsync(TryOutSpotAuthenticationSchemes.WebCookie);
             return null;
         }
@@ -4787,13 +5971,31 @@ public sealed class AccountController(
         return normalized.Length > 3 ? normalized[..3] : normalized;
     }
 
+    private static bool IsUndefinedTableException(PostgresException exception)
+    {
+        return string.Equals(exception.SqlState, PostgresErrorCodes.UndefinedTable, StringComparison.Ordinal);
+    }
+
     private sealed record PlayerListingValidationContext(
         PlayerListingTypeSelectionPageItem? ListingTypeOption,
         Player? Player);
 
+    private sealed record PlayerProfileValidationContext(
+        string Relationship,
+        string ContactVisibility,
+        Guid[] SelectedSportIds,
+        PlayerSportDetailPageModel[] SelectedSportDetails);
+
     private sealed record TeamPostingAccess(bool HasLimitedPosting, bool HasUnlimitedPosting)
     {
         public bool CanPostOpportunities => HasLimitedPosting || HasUnlimitedPosting;
+    }
+
+    private sealed record TeamCreationAccess(bool CanCreateAdditionalTeam, string? BlockReason)
+    {
+        public static TeamCreationAccess Allow { get; } = new(true, null);
+
+        public static TeamCreationAccess Blocked(string reason) => new(false, reason);
     }
 
     private sealed record ManagedTeamRoleContext(Team Team, string Role);

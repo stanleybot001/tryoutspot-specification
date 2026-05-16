@@ -129,6 +129,9 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.Title).HasMaxLength(300);
             entity.Property(e => e.Type).HasMaxLength(50);
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.PdfUrl).HasMaxLength(500);
+            entity.Property(e => e.UploadedPdfObjectKey).HasMaxLength(500);
+            entity.Property(e => e.UploadedPdfFileName).HasMaxLength(260);
             entity.Property(e => e.WebsiteUrl).HasMaxLength(500);
             entity.Property(e => e.ZipCode).HasMaxLength(10);
 
@@ -222,6 +225,9 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.State).HasMaxLength(2);
             entity.Property(e => e.Title).HasMaxLength(200);
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.VisibleSocialLinkKeys).HasMaxLength(2000);
+            entity.Property(e => e.UploadedPdfObjectKey).HasMaxLength(500);
+            entity.Property(e => e.UploadedPdfFileName).HasMaxLength(260);
             entity.Property(e => e.ZipCode).HasMaxLength(10);
             entity.Property(e => e.City).HasMaxLength(100);
 
