@@ -484,6 +484,7 @@ public sealed class DiscoveryApiController(
             team.Name,
             team.OrganizationId,
             team.Organization?.Name,
+            ResolveTeamLogoPublicUrl(team.Id, team.LogoImageUrl),
             team.TeamLevel,
             team.GeographicScope,
             sports,
@@ -558,6 +559,7 @@ public sealed class DiscoveryApiController(
             opportunity.Id,
             opportunity.TeamId,
             opportunity.Team.Name,
+            ResolveTeamLogoPublicUrl(opportunity.TeamId, opportunity.Team.LogoImageUrl),
             opportunity.Team.OrganizationId,
             opportunity.Team.Organization?.Name,
             opportunity.SportId,
@@ -599,6 +601,19 @@ public sealed class DiscoveryApiController(
     private static string? NormalizeOptional(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string? ResolveTeamLogoPublicUrl(Guid teamId, string? logoValue)
+    {
+        var normalizedLogo = NormalizeOptional(logoValue);
+        if (normalizedLogo is null)
+        {
+            return null;
+        }
+
+        return normalizedLogo.StartsWith("r2:", StringComparison.Ordinal)
+            ? $"/media/team-logos/{teamId}"
+            : normalizedLogo;
     }
 
     private static string? NormalizeState(string? value)

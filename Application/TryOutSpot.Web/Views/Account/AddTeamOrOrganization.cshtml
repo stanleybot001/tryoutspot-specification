@@ -1,14 +1,16 @@
 @model AddTeamOrOrganizationPageModel
 
 @{
-    ViewData["Title"] = "Add Team Or Organization";
+    ViewData["Title"] = Model.IsEditMode ? "Edit Team Profile" : "Add Team Or Organization";
 }
 
 <section class="account-page compact">
     <div class="account-heading">
         <p class="account-kicker">Onboarding</p>
-        <h1>Add team or organization</h1>
-        <p>Create your first team or organization so you can post opportunities and manage registrations.</p>
+        <h1>@(Model.IsEditMode ? "Edit team profile" : "Add team or organization")</h1>
+        <p>@(Model.IsEditMode
+            ? "Update your team profile information and logo used across public listings."
+            : "Create your first team or organization so you can post opportunities and manage registrations.")</p>
         <p class="required-note"><span class="required-marker">*</span> Required field</p>
     </div>
 
@@ -18,23 +20,34 @@
     }
 
     <section class="form-section">
-        <form asp-action="AddTeamOrOrganization" asp-controller="Account" method="post" class="stacked-form">
+        <form asp-action="@(Model.IsEditMode ? "EditTeamProfile" : "AddTeamOrOrganization")"
+              asp-controller="Account"
+              asp-route-teamId="@Model.TeamId"
+              method="post"
+              enctype="multipart/form-data"
+              class="stacked-form">
+            <input asp-for="TeamId" type="hidden" />
+            <input asp-for="IsEditMode" type="hidden" />
+            <input asp-for="ProfileImageUrl" type="hidden" />
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
-            <div class="form-field">
-                <label asp-for="CreateType" class="form-label">Create <span class="required-marker">*</span></label>
-                <div class="form-actions">
-                    <label class="account-check">
-                        <input class="form-check-input" type="radio" name="CreateType" value="team" checked="@string.Equals(Model.CreateType, "team", StringComparison.OrdinalIgnoreCase)" />
-                        <span>Team only</span>
-                    </label>
-                    <label class="account-check">
-                        <input class="form-check-input" type="radio" name="CreateType" value="organization" checked="@string.Equals(Model.CreateType, "organization", StringComparison.OrdinalIgnoreCase)" />
-                        <span>Organization and team</span>
-                    </label>
+            @if (!Model.IsEditMode)
+            {
+                <div class="form-field">
+                    <label asp-for="CreateType" class="form-label">Create <span class="required-marker">*</span></label>
+                    <div class="form-actions">
+                        <label class="account-check">
+                            <input class="form-check-input" type="radio" name="CreateType" value="team" checked="@string.Equals(Model.CreateType, "team", StringComparison.OrdinalIgnoreCase)" />
+                            <span>Team only</span>
+                        </label>
+                        <label class="account-check">
+                            <input class="form-check-input" type="radio" name="CreateType" value="organization" checked="@string.Equals(Model.CreateType, "organization", StringComparison.OrdinalIgnoreCase)" />
+                            <span>Organization and team</span>
+                        </label>
+                    </div>
+                    <span asp-validation-for="CreateType" class="text-danger"></span>
                 </div>
-                <span asp-validation-for="CreateType" class="text-danger"></span>
-            </div>
+            }
 
             <div class="form-grid two-column">
                 <div class="form-field">
@@ -42,11 +55,14 @@
                     <input asp-for="TeamName" class="form-control" autocomplete="organization" />
                     <span asp-validation-for="TeamName" class="text-danger"></span>
                 </div>
-                <div class="form-field">
-                    <label asp-for="OrganizationName" class="form-label">Organization name</label>
-                    <input asp-for="OrganizationName" class="form-control" autocomplete="organization" />
-                    <span asp-validation-for="OrganizationName" class="text-danger"></span>
-                </div>
+                @if (!Model.IsEditMode)
+                {
+                    <div class="form-field">
+                        <label asp-for="OrganizationName" class="form-label">Organization name</label>
+                        <input asp-for="OrganizationName" class="form-control" autocomplete="organization" />
+                        <span asp-validation-for="OrganizationName" class="text-danger"></span>
+                    </div>
+                }
                 <div class="form-field">
                     <label asp-for="TeamRole" class="form-label">Your team role <span class="required-marker">*</span></label>
                     @if (Model.AvailableTeamRoleOptions.Count == 0)
@@ -96,9 +112,19 @@
                     <span asp-validation-for="ContactPhone" class="text-danger"></span>
                 </div>
                 <div class="form-field">
-                    <label asp-for="ProfileImageUrl" class="form-label">Profile picture URL</label>
-                    <input asp-for="ProfileImageUrl" class="form-control" placeholder="https://..." />
-                    <span asp-validation-for="ProfileImageUrl" class="text-danger"></span>
+                    <label asp-for="ProfileImageUpload" class="form-label">Team logo upload</label>
+                    <input asp-for="ProfileImageUpload" class="form-control" type="file" accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml" />
+                    <span asp-validation-for="ProfileImageUpload" class="text-danger"></span>
+                    @if (!string.IsNullOrWhiteSpace(Model.CurrentProfileImageUrl))
+                    {
+                        <div class="mt-2">
+                            <img class="listing-profile-image" src="@Model.CurrentProfileImageUrl" alt="Current team logo" loading="lazy" />
+                        </div>
+                        <label class="account-check mt-2">
+                            <input asp-for="RemoveProfileImage" class="form-check-input" />
+                            <span>Remove current team logo</span>
+                        </label>
+                    }
                 </div>
                 <div class="form-field">
                     <label asp-for="HighlightVideoUrl1" class="form-label">Highlight video link 1</label>
@@ -210,11 +236,14 @@
                 <span asp-validation-for="SelectedSportIds" class="text-danger"></span>
             </div>
 
-            <p class="section-help">Organization name is required only when creating an organization and team together.</p>
+            @if (!Model.IsEditMode)
+            {
+                <p class="section-help">Organization name is required only when creating an organization and team together.</p>
+            }
 
             <div class="form-actions">
-                <button type="submit" class="btn btn-primary">Save team setup</button>
-                <a class="btn btn-outline-secondary" href="/account/onboarding">Back to onboarding</a>
+                <button type="submit" class="btn btn-primary">@(Model.IsEditMode ? "Save profile updates" : "Save team setup")</button>
+                <a class="btn btn-outline-secondary" href="@(Model.IsEditMode ? "/account/onboarding/team-opportunities" : "/account/onboarding")">Back</a>
             </div>
         </form>
     </section>

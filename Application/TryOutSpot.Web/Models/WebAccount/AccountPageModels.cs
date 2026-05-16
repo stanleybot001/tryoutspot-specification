@@ -204,6 +204,8 @@ public sealed class OnboardingPageModel
 
     public IReadOnlyCollection<BillingPlanResponse> RecommendedPlans { get; set; } = [];
 
+    public bool ShowRecommendedPlans { get; set; } = true;
+
     public IReadOnlyCollection<OnboardingStepPageItem> Steps { get; set; } = [];
 
     public IReadOnlyCollection<string> FeatureCodes { get; set; } = [];
@@ -261,6 +263,14 @@ public sealed class AddPlayerProfilePageModel
     [MaxLength(500)]
     [Display(Name = "Profile picture URL")]
     public string? ProfileImageUrl { get; set; }
+
+    [Display(Name = "Upload profile picture")]
+    public IFormFile? ProfileImageUpload { get; set; }
+
+    [Display(Name = "Remove uploaded profile picture")]
+    public bool RemoveProfileImage { get; set; }
+
+    public string? CurrentProfileImageUrl { get; set; }
 
     [MaxLength(500)]
     [Display(Name = "Highlight video link 1")]
@@ -416,9 +426,12 @@ public sealed class ChoosePlanPageModel
 
 public sealed class AddTeamOrOrganizationPageModel
 {
-    [Required]
     [Display(Name = "Create")]
     public string CreateType { get; set; } = "team";
+
+    public Guid? TeamId { get; set; }
+
+    public bool IsEditMode { get; set; }
 
     [Required]
     [MaxLength(200)]
@@ -429,7 +442,6 @@ public sealed class AddTeamOrOrganizationPageModel
     [Display(Name = "Organization name")]
     public string? OrganizationName { get; set; }
 
-    [Required]
     [MaxLength(50)]
     [Display(Name = "Your team role")]
     public string TeamRole { get; set; } = string.Empty;
@@ -459,6 +471,14 @@ public sealed class AddTeamOrOrganizationPageModel
     [MaxLength(500)]
     [Display(Name = "Profile picture URL")]
     public string? ProfileImageUrl { get; set; }
+
+    [Display(Name = "Upload team logo")]
+    public IFormFile? ProfileImageUpload { get; set; }
+
+    [Display(Name = "Remove uploaded team logo")]
+    public bool RemoveProfileImage { get; set; }
+
+    public string? CurrentProfileImageUrl { get; set; }
 
     [MaxLength(500)]
     [Display(Name = "Highlight video link 1")]
@@ -541,6 +561,8 @@ public sealed class ManagedTeamOpportunitySummaryPageModel
     public string TeamName { get; set; } = string.Empty;
 
     public string? OrganizationName { get; set; }
+
+    public string? LogoImageUrl { get; set; }
 
     public string Role { get; set; } = string.Empty;
 
@@ -1000,6 +1022,8 @@ public sealed class TeamOpportunityDetailPageModel
     public Guid TeamId { get; set; }
 
     public string TeamName { get; set; } = string.Empty;
+
+    public string? TeamLogoImageUrl { get; set; }
 
     public string? OrganizationName { get; set; }
 

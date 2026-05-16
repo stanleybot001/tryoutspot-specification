@@ -30,12 +30,13 @@
     }
 
     <section class="form-section">
-        <form method="post" action="@formAction" class="stacked-form">
+        <form method="post" action="@formAction" enctype="multipart/form-data" class="stacked-form">
             @Html.AntiForgeryToken()
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
             <input asp-for="PlayerId" type="hidden" />
             <input asp-for="IsEditMode" type="hidden" />
             <input asp-for="ReturnUrl" type="hidden" />
+            <input asp-for="ProfileImageUrl" type="hidden" />
 
             <div class="form-grid two-column">
                 <div class="form-field">
@@ -74,9 +75,19 @@
                     <span asp-validation-for="ContactPhone" class="text-danger"></span>
                 </div>
                 <div class="form-field">
-                    <label asp-for="ProfileImageUrl" class="form-label">Profile picture URL</label>
-                    <input asp-for="ProfileImageUrl" class="form-control" placeholder="https://..." />
-                    <span asp-validation-for="ProfileImageUrl" class="text-danger"></span>
+                    <label asp-for="ProfileImageUpload" class="form-label">Profile picture upload</label>
+                    <input asp-for="ProfileImageUpload" class="form-control" type="file" accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml" />
+                    <span asp-validation-for="ProfileImageUpload" class="text-danger"></span>
+                    @if (!string.IsNullOrWhiteSpace(Model.CurrentProfileImageUrl))
+                    {
+                        <div class="mt-2">
+                            <img class="listing-profile-image" src="@Model.CurrentProfileImageUrl" alt="Current profile picture" loading="lazy" />
+                        </div>
+                        <label class="account-check mt-2">
+                            <input asp-for="RemoveProfileImage" class="form-check-input" />
+                            <span>Remove current profile picture</span>
+                        </label>
+                    }
                 </div>
                 <div class="form-field">
                     <label asp-for="HighlightVideoUrl1" class="form-label">Highlight video link 1</label>

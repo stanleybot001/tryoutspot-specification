@@ -551,6 +551,36 @@ body.splash-page {
   background: #f8fafc;
 }
 
+.team-logo-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1px solid #d7dee8;
+  background: #f8fafc;
+  margin-right: 0.5rem;
+}
+
+.listing-identity-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.65rem;
+}
+
+.listing-identity-row p {
+  margin: 0;
+}
+
+.listing-hero-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1px solid #d7dee8;
+  background: #f8fafc;
+}
+
 .listing-link-list {
   margin: 0;
   padding-left: 1rem;

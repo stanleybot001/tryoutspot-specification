@@ -31,6 +31,7 @@ public sealed class AccountController(
     IEntitlementService entitlementService,
     IZipRadiusSearchService zipRadiusSearchService,
     IPdfStorageService pdfStorageService,
+    IImageStorageService imageStorageService,
     IExternalLoginTicketService externalLoginTicketService,
     IStripeBillingService stripeBillingService,
     IStripeSubscriptionSyncService stripeSubscriptionSyncService,
@@ -42,6 +43,18 @@ public sealed class AccountController(
     private const long ListingPdfMaxSizeBytes = ListingPdfMaxSizeMegabytes * 1024L * 1024L;
     private const string PlayerListingDocumentType = "player-listings";
     private const string OpportunityDocumentType = "opportunities";
+    private const string TeamLogoDocumentType = "team-logos";
+    private const string PlayerProfileImageDocumentType = "player-profile-images";
+    private const string R2ObjectStoragePrefix = "r2:";
+    private const int ProfileImageMaxSizeMegabytes = 2;
+    private const long ProfileImageMaxSizeBytes = ProfileImageMaxSizeMegabytes * 1024L * 1024L;
+    private static readonly string[] SupportedImageContentTypes =
+    [
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/svg+xml"
+    ];
     private readonly GoogleAuthenticationOptions googleAuthentication = googleOptions.Value;
     private readonly StripeBillingOptions stripeBillingOptions = stripeOptions.Value;
     private static readonly string[] PlayerRelationshipOptions = ["Parent", "Guardian", "Self", "Coach", "Other"];
@@ -879,6 +892,15 @@ public sealed class AccountController(
             return View(await BuildAddPlayerProfilePageModelAsync(user, model, cancellationToken));
         }
 
+        var uploadedProfileImage = await ParseUploadedImageAsync(
+            model.ProfileImageUpload,
+            nameof(model.ProfileImageUpload),
+            cancellationToken);
+        if (!ModelState.IsValid)
+        {
+            return View(await BuildAddPlayerProfilePageModelAsync(user, model, cancellationToken));
+        }
+
         var now = DateTime.UtcNow;
         var playerId = Guid.NewGuid();
         var player = new Player
@@ -888,6 +910,12 @@ public sealed class AccountController(
             IsActive = true
         };
         ApplyPlayerProfileValues(player, model, validationContext.ContactVisibility, now);
+        if (uploadedProfileImage is not null)
+        {
+            var objectKey = BuildImageObjectKey(PlayerProfileImageDocumentType, playerId, user.Id, uploadedProfileImage.FileName);
+            await imageStorageService.UploadImageAsync(objectKey, uploadedProfileImage.Content, uploadedProfileImage.ContentType, cancellationToken);
+            player.ProfileImageUrl = ToStoredObjectReference(objectKey);
+        }
 
         var relationshipToUser = new UserPlayerRelationship
         {
@@ -996,8 +1024,28 @@ public sealed class AccountController(
             return View("AddPlayerProfile", await BuildAddPlayerProfilePageModelAsync(user, model, cancellationToken));
         }
 
+        var uploadedProfileImage = await ParseUploadedImageAsync(
+            model.ProfileImageUpload,
+            nameof(model.ProfileImageUpload),
+            cancellationToken);
+        if (!ModelState.IsValid)
+        {
+            return View("AddPlayerProfile", await BuildAddPlayerProfilePageModelAsync(user, model, cancellationToken));
+        }
+
         var now = DateTime.UtcNow;
         var player = relationshipToUser.Player;
+        if (uploadedProfileImage is not null || model.RemoveProfileImage)
+        {
+            await ReplacePlayerProfileImageAsync(
+                player,
+                playerId,
+                user.Id,
+                uploadedProfileImage,
+                model.RemoveProfileImage,
+                cancellationToken);
+        }
+
         ApplyPlayerProfileValues(player, model, validationContext.ContactVisibility, now);
         relationshipToUser.Relationship = validationContext.Relationship;
         relationshipToUser.CanManage = model.CanManage;
@@ -1560,6 +1608,14 @@ public sealed class AccountController(
         }
 
         var now = DateTime.UtcNow;
+        var uploadedTeamLogo = await ParseUploadedImageAsync(
+            model.ProfileImageUpload,
+            nameof(model.ProfileImageUpload),
+            cancellationToken);
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
         var socialMediaLinks = SerializeLinkCollection(
             ("facebook", model.FacebookPageUrl),
             ("x", NormalizeSocialHandleOrUrl(model.XPageUrl, "https://x.com/")),
@@ -1647,9 +1703,221 @@ public sealed class AccountController(
             });
         }
 
+        if (uploadedTeamLogo is not null)
+        {
+            var objectKey = BuildImageObjectKey(TeamLogoDocumentType, teamId, user.Id, uploadedTeamLogo.FileName);
+            await imageStorageService.UploadImageAsync(objectKey, uploadedTeamLogo.Content, uploadedTeamLogo.ContentType, cancellationToken);
+            team.LogoImageUrl = ToStoredObjectReference(objectKey);
+            if (organization is not null)
+            {
+                organization.LogoImageUrl = ToStoredObjectReference(objectKey);
+            }
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
         TempData["StatusMessage"] = "Team setup saved.";
         return RedirectToAction(nameof(Onboarding));
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
+    [HttpGet("onboarding/team-opportunities/{teamId:guid}/edit-profile")]
+    public async Task<IActionResult> EditTeamProfile(Guid teamId, CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(EditTeamProfile), new { teamId })
+            });
+        }
+
+        var managedTeam = await GetManagedTeamRoleContextAsync(user.Id, teamId, cancellationToken);
+        if (managedTeam is null)
+        {
+            TempData["StatusMessage"] = "Team access was not found for this account.";
+            return RedirectToAction(nameof(ManageTeamOpportunities));
+        }
+
+        var socialLinks = DeserializeLinkCollection(managedTeam.Team.SocialMediaLinks);
+        socialLinks.TryGetValue("facebook", out var facebookPageUrl);
+        socialLinks.TryGetValue("x", out var xPageUrl);
+        socialLinks.TryGetValue("instagram", out var instagramUrl);
+        socialLinks.TryGetValue("youtube", out var youtubeUrl);
+        socialLinks.TryGetValue("tiktok", out var tikTokUrl);
+        socialLinks.TryGetValue("gamechanger_coach", out var gameChangerCoachName);
+        socialLinks.TryGetValue("gamechanger_team_name", out var gameChangerTeamName);
+        socialLinks.TryGetValue("highlight_video_1", out var highlightVideoUrl1);
+        socialLinks.TryGetValue("highlight_video_2", out var highlightVideoUrl2);
+
+        var model = await BuildAddTeamOrOrganizationPageModelAsync(
+            user,
+            new AddTeamOrOrganizationPageModel
+            {
+                TeamId = teamId,
+                IsEditMode = true,
+                TeamName = managedTeam.Team.Name,
+                OrganizationName = managedTeam.Team.Organization?.Name,
+                TeamRole = managedTeam.Role,
+                TeamLevel = managedTeam.Team.TeamLevel,
+                GeographicScope = managedTeam.Team.GeographicScope,
+                IsSearchable = managedTeam.Team.IsSearchable,
+                ContactEmail = managedTeam.Team.Email,
+                ContactPhone = managedTeam.Team.PhoneNumber,
+                ProfileImageUrl = managedTeam.Team.LogoImageUrl,
+                CurrentProfileImageUrl = ResolveTeamLogoPublicUrl(managedTeam.Team.Id, managedTeam.Team.LogoImageUrl),
+                HighlightVideoUrl1 = highlightVideoUrl1,
+                HighlightVideoUrl2 = highlightVideoUrl2,
+                WebsiteUrl = managedTeam.Team.WebsiteUrl,
+                City = managedTeam.Team.City,
+                State = managedTeam.Team.State,
+                ZipCode = managedTeam.Team.ZipCode,
+                FacebookPageUrl = facebookPageUrl,
+                XPageUrl = xPageUrl,
+                InstagramUrl = instagramUrl,
+                YouTubeUrl = youtubeUrl,
+                TikTokUrl = tikTokUrl,
+                GameChangerCoachName = gameChangerCoachName,
+                GameChangerTeamName = gameChangerTeamName,
+                SelectedSportIds = managedTeam.Team.TeamSports
+                    .Where(teamSport => teamSport.IsActive)
+                    .Select(teamSport => teamSport.SportId)
+                    .Distinct()
+                    .ToList()
+            },
+            cancellationToken);
+
+        return View("AddTeamOrOrganization", model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
+    [HttpPost("onboarding/team-opportunities/{teamId:guid}/edit-profile")]
+    public async Task<IActionResult> EditTeamProfile(
+        Guid teamId,
+        AddTeamOrOrganizationPageModel model,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(EditTeamProfile), new { teamId })
+            });
+        }
+
+        var managedTeam = await GetManagedTeamRoleContextAsync(user.Id, teamId, cancellationToken);
+        if (managedTeam is null)
+        {
+            TempData["StatusMessage"] = "Team access was not found for this account.";
+            return RedirectToAction(nameof(ManageTeamOpportunities));
+        }
+
+        model.TeamId = teamId;
+        model.IsEditMode = true;
+        model = await BuildAddTeamOrOrganizationPageModelAsync(user, model, cancellationToken);
+
+        var geographicScope = NormalizeTeamGeographicScope(model.GeographicScope);
+        if (geographicScope is null)
+        {
+            ModelState.AddModelError(nameof(model.GeographicScope), "Choose Local, Regional, or National.");
+        }
+
+        var selectedSportIds = model.SelectedSportIds.Distinct().ToArray();
+        var selectedSports = selectedSportIds.Length == 0
+            ? Array.Empty<Guid>()
+            : await dbContext.Sports
+                .AsNoTracking()
+                .Where(sport => sport.IsActive && selectedSportIds.Contains(sport.Id))
+                .Select(sport => sport.Id)
+                .ToArrayAsync(cancellationToken);
+        if (selectedSports.Length != selectedSportIds.Length)
+        {
+            ModelState.AddModelError(nameof(model.SelectedSportIds), "One or more selected sports are no longer available.");
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return View("AddTeamOrOrganization", model);
+        }
+
+        var uploadedTeamLogo = await ParseUploadedImageAsync(
+            model.ProfileImageUpload,
+            nameof(model.ProfileImageUpload),
+            cancellationToken);
+        var now = DateTime.UtcNow;
+        if (!ModelState.IsValid)
+        {
+            return View("AddTeamOrOrganization", model);
+        }
+
+        if (uploadedTeamLogo is not null || model.RemoveProfileImage)
+        {
+            await ReplaceTeamLogoAsync(
+                managedTeam.Team,
+                managedTeam.Team.Organization,
+                teamId,
+                user.Id,
+                uploadedTeamLogo,
+                model.RemoveProfileImage,
+                cancellationToken);
+        }
+
+        managedTeam.Team.Name = model.TeamName.Trim();
+        managedTeam.Team.TeamLevel = NormalizeOptional(model.TeamLevel);
+        managedTeam.Team.GeographicScope = geographicScope!;
+        if (uploadedTeamLogo is null && !model.RemoveProfileImage)
+        {
+            managedTeam.Team.LogoImageUrl = NormalizeOptional(model.ProfileImageUrl);
+        }
+        managedTeam.Team.WebsiteUrl = NormalizeOptional(model.WebsiteUrl);
+        managedTeam.Team.City = NormalizeOptional(model.City);
+        managedTeam.Team.State = NormalizeState(model.State);
+        managedTeam.Team.ZipCode = NormalizeOptional(model.ZipCode);
+        managedTeam.Team.PhoneNumber = NormalizeOptional(model.ContactPhone);
+        managedTeam.Team.Email = NormalizeOptional(model.ContactEmail);
+        managedTeam.Team.IsSearchable = model.IsSearchable;
+        managedTeam.Team.SocialMediaLinks = SerializeLinkCollection(
+            ("facebook", model.FacebookPageUrl),
+            ("x", NormalizeSocialHandleOrUrl(model.XPageUrl, "https://x.com/")),
+            ("instagram", NormalizeSocialHandleOrUrl(model.InstagramUrl, "https://instagram.com/")),
+            ("youtube", model.YouTubeUrl),
+            ("tiktok", NormalizeSocialHandleOrUrl(model.TikTokUrl, "https://tiktok.com/")),
+            ("gamechanger_coach", NormalizeOptional(model.GameChangerCoachName)),
+            ("gamechanger_team_name", NormalizeOptional(model.GameChangerTeamName)),
+            ("highlight_video_1", model.HighlightVideoUrl1),
+            ("highlight_video_2", model.HighlightVideoUrl2));
+        managedTeam.Team.UpdatedAt = now;
+
+        var activeTeamSports = await dbContext.TeamSports
+            .Where(teamSport => teamSport.TeamId == teamId && teamSport.IsActive)
+            .ToArrayAsync(cancellationToken);
+        var activeSportIdSet = activeTeamSports.Select(teamSport => teamSport.SportId).ToHashSet();
+
+        foreach (var teamSport in activeTeamSports.Where(teamSport => !selectedSports.Contains(teamSport.SportId)))
+        {
+            teamSport.IsActive = false;
+        }
+
+        foreach (var sportId in selectedSports.Where(sportId => !activeSportIdSet.Contains(sportId)))
+        {
+            dbContext.TeamSports.Add(new TeamSport
+            {
+                Id = Guid.NewGuid(),
+                TeamId = teamId,
+                SportId = sportId,
+                IsActive = true,
+                CreatedAt = now
+            });
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        TempData["StatusMessage"] = "Team profile updated.";
+        return RedirectToAction(nameof(ManageTeamOpportunities));
     }
 
     [Authorize(
@@ -2159,6 +2427,64 @@ public sealed class AccountController(
 
         var model = await BuildTeamOpportunityDetailPageModelAsync(opportunity, cancellationToken);
         return View(model);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/media/team-logos/{teamId:guid}")]
+    public async Task<IActionResult> TeamLogo(
+        Guid teamId,
+        CancellationToken cancellationToken = default)
+    {
+        var team = await dbContext.Teams
+            .AsNoTracking()
+            .Where(currentTeam => currentTeam.Id == teamId)
+            .Where(currentTeam => currentTeam.IsActive)
+            .Where(currentTeam => currentTeam.IsSearchable)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (team is null)
+        {
+            return NotFound();
+        }
+
+        var objectKey = TryGetStoredObjectKey(team.LogoImageUrl);
+        if (objectKey is null)
+        {
+            return NotFound();
+        }
+
+        var payload = await imageStorageService.DownloadImageAsync(objectKey, cancellationToken);
+        return payload is null
+            ? NotFound()
+            : File(payload.Content, payload.ContentType);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/media/player-profiles/{playerId:guid}")]
+    public async Task<IActionResult> PlayerProfileImage(
+        Guid playerId,
+        CancellationToken cancellationToken = default)
+    {
+        var player = await dbContext.Players
+            .AsNoTracking()
+            .Where(currentPlayer => currentPlayer.Id == playerId)
+            .Where(currentPlayer => currentPlayer.IsActive)
+            .Where(currentPlayer => currentPlayer.IsSearchable)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (player is null)
+        {
+            return NotFound();
+        }
+
+        var objectKey = TryGetStoredObjectKey(player.ProfileImageUrl);
+        if (objectKey is null)
+        {
+            return NotFound();
+        }
+
+        var payload = await imageStorageService.DownloadImageAsync(objectKey, cancellationToken);
+        return payload is null
+            ? NotFound()
+            : File(payload.Content, payload.ContentType);
     }
 
     [AllowAnonymous]
@@ -3081,19 +3407,19 @@ public sealed class AccountController(
         {
             steps.Add(new OnboardingStepPageItem(
                 "add_team_or_organization",
-                "Add team or organization",
+                "Team / Organization Details",
                 "Create or join a team or organization before posting opportunities.",
                 false,
                 hasTeamRole));
             steps.Add(new OnboardingStepPageItem(
                 "manage_team_opportunities",
-                "Manage team opportunities",
+                "Team Listings",
                 "Create, edit, publish, and deactivate team listings.",
                 false,
                 hasManagedTeamOpportunities));
         }
 
-        if (recommendedPlans.Any(plan => plan.RequiresStripeSubscription))
+        if (!hasCompletedPlanSelection && recommendedPlans.Any(plan => plan.RequiresStripeSubscription))
         {
             steps.Add(new OnboardingStepPageItem(
                 "choose_plan",
@@ -3114,6 +3440,7 @@ public sealed class AccountController(
             AccountTypes = roles.ToList(),
             AvailableAccountTypes = GetAccountTypeOptions(roles),
             RecommendedPlans = recommendedPlans,
+            ShowRecommendedPlans = !hasCompletedPlanSelection,
             FeatureCodes = entitlements?.FeatureCodes ?? [],
             Steps = steps
         };
@@ -3185,6 +3512,7 @@ public sealed class AccountController(
         model.ZipCode = string.IsNullOrWhiteSpace(model.ZipCode)
             ? user.ZipCode
             : model.ZipCode;
+        model.CurrentProfileImageUrl = ResolvePlayerProfileImagePublicUrl(model.PlayerId, model.ProfileImageUrl);
 
         return model;
     }
@@ -3317,6 +3645,7 @@ public sealed class AccountController(
             ContactEmail = player.ContactEmail,
             ContactPhone = player.ContactPhone,
             ProfileImageUrl = player.ProfileImageUrl,
+            CurrentProfileImageUrl = ResolvePlayerProfileImagePublicUrl(player.Id, player.ProfileImageUrl),
             HighlightVideoUrl1 = highlightVideoUrl1,
             HighlightVideoUrl2 = highlightVideoUrl2,
             SchoolName = player.SchoolName,
@@ -3427,7 +3756,10 @@ public sealed class AccountController(
         player.DateOfBirth = NormalizeUtcDate(model.DateOfBirth);
         player.ContactEmail = NormalizeOptional(model.ContactEmail);
         player.ContactPhone = NormalizeOptional(model.ContactPhone);
-        player.ProfileImageUrl = NormalizeOptional(model.ProfileImageUrl);
+        if (model.ProfileImageUpload is null || model.ProfileImageUpload.Length == 0)
+        {
+            player.ProfileImageUrl = NormalizeOptional(model.ProfileImageUrl);
+        }
         player.Height = NormalizeOptional(model.Height);
         player.Weight = NormalizeOptional(model.Weight);
         player.ThrowsHand = NormalizeOptional(model.ThrowsHand);
@@ -3757,7 +4089,7 @@ public sealed class AccountController(
             PublishedAt = listing.PublishedAt,
             ExpiresAt = listing.ExpiresAt,
             PlayerName = player is null ? null : $"{player.FirstName} {player.LastName}".Trim(),
-            ProfileImageUrl = player?.ProfileImageUrl,
+            ProfileImageUrl = ResolvePlayerProfileImagePublicUrl(player?.Id, player?.ProfileImageUrl),
             SchoolName = player?.SchoolName,
             CurrentTeamName = player?.CurrentTeamName,
             GraduationYear = player?.GraduationYear,
@@ -3802,6 +4134,7 @@ public sealed class AccountController(
             OpportunityId = opportunity.Id,
             TeamId = opportunity.TeamId,
             TeamName = opportunity.Team.Name,
+            TeamLogoImageUrl = ResolveTeamLogoPublicUrl(opportunity.Team.Id, opportunity.Team.LogoImageUrl),
             OrganizationName = opportunity.Team.Organization?.Name,
             SportName = opportunity.Sport.Name,
             Type = opportunity.Type,
@@ -3942,6 +4275,7 @@ public sealed class AccountController(
 
         model.GeographicScope = NormalizeTeamGeographicScope(model.GeographicScope)
             ?? TeamGeographicScopeOptions[0];
+        model.CurrentProfileImageUrl = ResolveTeamLogoPublicUrl(model.TeamId, model.ProfileImageUrl);
 
         return model;
     }
@@ -4421,6 +4755,7 @@ public sealed class AccountController(
             TeamId = team.Id,
             TeamName = team.Name,
             OrganizationName = team.Organization?.Name,
+            LogoImageUrl = ResolveTeamLogoPublicUrl(team.Id, team.LogoImageUrl),
             Role = role,
             TeamLevel = team.TeamLevel,
             GeographicScope = team.GeographicScope,
@@ -4721,6 +5056,121 @@ public sealed class AccountController(
         return new UploadedPdfPayload(fileName.Trim(), content);
     }
 
+    private async Task<UploadedImagePayload?> ParseUploadedImageAsync(
+        IFormFile? uploadedImage,
+        string modelStateKey,
+        CancellationToken cancellationToken)
+    {
+        if (uploadedImage is null || uploadedImage.Length == 0)
+        {
+            return null;
+        }
+
+        if (uploadedImage.Length > ProfileImageMaxSizeBytes)
+        {
+            ModelState.AddModelError(
+                modelStateKey,
+                $"Image files can be up to {ProfileImageMaxSizeMegabytes} MB.");
+            return null;
+        }
+
+        var contentType = NormalizeOptional(uploadedImage.ContentType)?.ToLowerInvariant();
+        if (contentType is null || !SupportedImageContentTypes.Contains(contentType, StringComparer.OrdinalIgnoreCase))
+        {
+            ModelState.AddModelError(modelStateKey, "Only JPG, PNG, WEBP, or SVG images are supported.");
+            return null;
+        }
+
+        await using var stream = uploadedImage.OpenReadStream();
+        using var memoryStream = new MemoryStream();
+        await stream.CopyToAsync(memoryStream, cancellationToken);
+
+        if (memoryStream.Length <= 0)
+        {
+            ModelState.AddModelError(modelStateKey, "Upload an image file.");
+            return null;
+        }
+
+        if (memoryStream.Length > ProfileImageMaxSizeBytes)
+        {
+            ModelState.AddModelError(
+                modelStateKey,
+                $"Image files can be up to {ProfileImageMaxSizeMegabytes} MB.");
+            return null;
+        }
+
+        return new UploadedImagePayload(
+            BuildSafeUploadedFileName(uploadedImage.FileName, contentType),
+            memoryStream.ToArray(),
+            contentType);
+    }
+
+    private async Task ReplaceTeamLogoAsync(
+        Team team,
+        Organization? organization,
+        Guid teamId,
+        Guid uploadedByUserId,
+        UploadedImagePayload? uploadedImage,
+        bool removeImage,
+        CancellationToken cancellationToken)
+    {
+        var previousObjectKey = TryGetStoredObjectKey(team.LogoImageUrl)
+            ?? (organization is null ? null : TryGetStoredObjectKey(organization.LogoImageUrl));
+
+        if (removeImage)
+        {
+            team.LogoImageUrl = null;
+            if (organization is not null)
+            {
+                organization.LogoImageUrl = null;
+            }
+        }
+
+        if (uploadedImage is not null)
+        {
+            var objectKey = BuildImageObjectKey(TeamLogoDocumentType, teamId, uploadedByUserId, uploadedImage.FileName);
+            await imageStorageService.UploadImageAsync(objectKey, uploadedImage.Content, uploadedImage.ContentType, cancellationToken);
+            var storedReference = ToStoredObjectReference(objectKey);
+            team.LogoImageUrl = storedReference;
+            if (organization is not null)
+            {
+                organization.LogoImageUrl = storedReference;
+            }
+        }
+
+        if (previousObjectKey is not null && (removeImage || uploadedImage is not null))
+        {
+            await imageStorageService.DeleteImageAsync(previousObjectKey, cancellationToken);
+        }
+    }
+
+    private async Task ReplacePlayerProfileImageAsync(
+        Player player,
+        Guid playerId,
+        Guid uploadedByUserId,
+        UploadedImagePayload? uploadedImage,
+        bool removeImage,
+        CancellationToken cancellationToken)
+    {
+        var previousObjectKey = TryGetStoredObjectKey(player.ProfileImageUrl);
+        if (removeImage)
+        {
+            player.ProfileImageUrl = null;
+        }
+
+        if (uploadedImage is not null)
+        {
+            var objectKey = BuildImageObjectKey(PlayerProfileImageDocumentType, playerId, uploadedByUserId, uploadedImage.FileName);
+            await imageStorageService.UploadImageAsync(objectKey, uploadedImage.Content, uploadedImage.ContentType, cancellationToken);
+            player.ProfileImageUrl = ToStoredObjectReference(objectKey);
+        }
+
+        if (previousObjectKey is not null && (removeImage || uploadedImage is not null))
+        {
+            await imageStorageService.DeleteImageAsync(previousObjectKey, cancellationToken);
+        }
+    }
+
     private static bool LooksLikePdf(byte[] content)
     {
         return content.Length >= 5
@@ -4758,6 +5208,11 @@ public sealed class AccountController(
         return $"/listing-documents/{listingType}/{listingId}";
     }
 
+    private static string BuildImageDocumentPath(string imageType, Guid itemId)
+    {
+        return $"/media/{imageType}/{itemId}";
+    }
+
     private static string? NormalizeListingType(string listingType)
     {
         if (string.Equals(listingType, PlayerListingDocumentType, StringComparison.OrdinalIgnoreCase))
@@ -4777,6 +5232,69 @@ public sealed class AccountController(
     {
         var safeFileName = Path.GetFileName(fileName);
         return $"{listingType}/{listingId}/{DateTime.UtcNow:yyyyMMddHHmmss}-{userId}-{safeFileName}";
+    }
+
+    private static string BuildImageObjectKey(string imageType, Guid itemId, Guid userId, string fileName)
+    {
+        var safeFileName = Path.GetFileName(fileName);
+        return $"{imageType}/{itemId}/{DateTime.UtcNow:yyyyMMddHHmmss}-{userId}-{safeFileName}";
+    }
+
+    private static string ToStoredObjectReference(string objectKey)
+    {
+        return $"{R2ObjectStoragePrefix}{objectKey}";
+    }
+
+    private static string? TryGetStoredObjectKey(string? storedValue)
+    {
+        var normalized = NormalizeOptional(storedValue);
+        if (normalized is null || !normalized.StartsWith(R2ObjectStoragePrefix, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var objectKey = normalized[R2ObjectStoragePrefix.Length..];
+        return string.IsNullOrWhiteSpace(objectKey) ? null : objectKey;
+    }
+
+    private static string? ResolveTeamLogoPublicUrl(Guid? teamId, string? teamLogoImageValue)
+    {
+        if (teamId.HasValue && TryGetStoredObjectKey(teamLogoImageValue) is not null)
+        {
+            return BuildImageDocumentPath("team-logos", teamId.Value);
+        }
+
+        return NormalizeOptional(teamLogoImageValue);
+    }
+
+    private static string? ResolvePlayerProfileImagePublicUrl(Guid? playerId, string? playerProfileImageValue)
+    {
+        if (playerId.HasValue && TryGetStoredObjectKey(playerProfileImageValue) is not null)
+        {
+            return BuildImageDocumentPath("player-profiles", playerId.Value);
+        }
+
+        return NormalizeOptional(playerProfileImageValue);
+    }
+
+    private static string BuildSafeUploadedFileName(string originalFileName, string contentType)
+    {
+        var baseName = Path.GetFileNameWithoutExtension(originalFileName);
+        if (string.IsNullOrWhiteSpace(baseName))
+        {
+            baseName = "image";
+        }
+
+        var extension = contentType switch
+        {
+            "image/jpeg" => ".jpg",
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            "image/svg+xml" => ".svg",
+            _ => Path.GetExtension(originalFileName)
+        };
+
+        return $"{baseName.Trim()}{extension}";
     }
 
     private async Task<(string? ObjectKey, string? FileName)?> GetPdfReferenceAsync(
@@ -5999,4 +6517,5 @@ public sealed class AccountController(
     }
 
     private sealed record ManagedTeamRoleContext(Team Team, string Role);
+    private sealed record UploadedImagePayload(string FileName, byte[] Content, string ContentType);
 }

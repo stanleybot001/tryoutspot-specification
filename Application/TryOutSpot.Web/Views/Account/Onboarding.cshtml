@@ -3,11 +3,25 @@
 
 @{
     ViewData["Title"] = "Account Setup";
+    var hiddenWhenCompleteStepCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "choose_account_types",
+        "verify_email",
+        "choose_plan"
+    };
+    var visibleSteps = Model.Steps
+        .Where(step => !step.IsComplete || !hiddenWhenCompleteStepCodes.Contains(step.Code))
+        .ToArray();
+    var completedSteps = Model.Steps
+        .Where(step => step.IsComplete && hiddenWhenCompleteStepCodes.Contains(step.Code))
+        .ToArray();
+    var showAccountTypeEditor = !Model.Steps.Any(step =>
+        string.Equals(step.Code, "choose_account_types", StringComparison.OrdinalIgnoreCase) && step.IsComplete);
 }
 
 <section class="account-page">
     <div class="account-heading">
-        <p class="account-kicker">Account setup</p>
+        <p class="account-kicker">Setup</p>
         <h1>@Model.FirstName, finish the pieces that matter.</h1>
         <p>TryOutSpot keeps signup light. These items help tailor the next screens for players, parents, coaches, and organization staff.</p>
         <p class="required-note"><span class="required-marker">*</span> Required item</p>
@@ -37,7 +51,7 @@
         <section class="form-section">
             <h2>Setup checklist</h2>
             <div class="step-list">
-                @foreach (var step in Model.Steps)
+                @foreach (var step in visibleSteps)
                 {
                     <div class="step-row @(step.IsComplete ? "complete" : string.Empty)">
                         <div>
@@ -65,66 +79,96 @@
                     </div>
                 }
             </div>
+            @if (completedSteps.Length > 0)
+            {
+                <details class="mt-3">
+                    <summary class="section-help">Completed setup (@completedSteps.Length)</summary>
+                    <div class="step-list mt-2">
+                        @foreach (var step in completedSteps)
+                        {
+                            <div class="step-row complete">
+                                <div>
+                                    <strong>@step.Title</strong>
+                                    <span>@step.Description</span>
+                                </div>
+                                <div class="step-status">
+                                    <span>Complete</span>
+                                    @if (TryGetStepOpenUrl(step.Code, out var stepOpenUrl))
+                                    {
+                                        <a class="btn btn-sm btn-outline-primary" href="@stepOpenUrl">View</a>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </details>
+            }
         </section>
 
-        <section class="form-section" id="onboarding-account-types">
-            <h2>Account type <span class="required-marker">*</span></h2>
-            <p class="section-help">A user can have more than one role. Select every role that fits your current work.</p>
-            <form asp-action="UpdateOnboardingAccountTypes" asp-controller="Account" method="post">
-                <div class="account-type-grid compact-grid">
-                    @foreach (var accountType in Model.AvailableAccountTypes)
-                    {
-                        <label class="account-type-option" for="onboarding-account-type-@accountType.Name">
-                            <input class="form-check-input" id="onboarding-account-type-@accountType.Name" name="accountTypes" type="checkbox" value="@accountType.Name" checked="@accountType.IsSelected" />
-                            <span>
-                                <strong>@accountType.Label</strong>
-                                <small>@accountType.Description</small>
-                            </span>
-                        </label>
-                    }
-                </div>
-                <div class="form-actions">
-                    <button type="submit" class="btn btn-primary">Update account type</button>
-                </div>
-            </form>
-        </section>
+        @if (showAccountTypeEditor)
+        {
+            <section class="form-section" id="onboarding-account-types">
+                <h2>Account type <span class="required-marker">*</span></h2>
+                <p class="section-help">A user can have more than one role. Select every role that fits your current work.</p>
+                <form asp-action="UpdateOnboardingAccountTypes" asp-controller="Account" method="post">
+                    <div class="account-type-grid compact-grid">
+                        @foreach (var accountType in Model.AvailableAccountTypes)
+                        {
+                            <label class="account-type-option" for="onboarding-account-type-@accountType.Name">
+                                <input class="form-check-input" id="onboarding-account-type-@accountType.Name" name="accountTypes" type="checkbox" value="@accountType.Name" checked="@accountType.IsSelected" />
+                                <span>
+                                    <strong>@accountType.Label</strong>
+                                    <small>@accountType.Description</small>
+                                </span>
+                            </label>
+                        }
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Update account type</button>
+                    </div>
+                </form>
+            </section>
+        }
     </div>
 
-    <section class="form-section">
-        <h2>Recommended plan options</h2>
-        <p class="section-help">Stay on the free path or upgrade now. Paid plans redirect to Stripe checkout; free plans apply immediately.</p>
-        <div class="plan-list">
-            @foreach (var plan in Model.RecommendedPlans)
-            {
-                <div class="plan-row">
-                    <div>
-                        <strong>@plan.Name</strong>
-                        <span>@plan.Audience</span>
-                        <p>@plan.Description</p>
+    @if (Model.ShowRecommendedPlans)
+    {
+        <section class="form-section">
+            <h2>Recommended plan options</h2>
+            <p class="section-help">Stay on the free path or upgrade now. Paid plans redirect to Stripe checkout; free plans apply immediately.</p>
+            <div class="plan-list">
+                @foreach (var plan in Model.RecommendedPlans)
+                {
+                    <div class="plan-row">
+                        <div>
+                            <strong>@plan.Name</strong>
+                            <span>@plan.Audience</span>
+                            <p>@plan.Description</p>
+                        </div>
+                        <div class="plan-price">
+                            @if (TryOutSpotBillingCatalog.RequiresAnnualCommitment(plan.Code) && plan.AnnualAmount is not null)
+                            {
+                                <strong>@($"{plan.AnnualAmount.Value:C0}/yr")</strong>
+                                <span>Annual only</span>
+                            }
+                            else
+                            {
+                                <strong>@FormatMonthlyAmount(plan.MonthlyAmount)</strong>
+                            }
+                            @if (plan.TrialDays is not null)
+                            {
+                                <span>@plan.TrialDays-day trial</span>
+                            }
+                            else if (!plan.RequiresStripeSubscription)
+                            {
+                                <span>No payment required</span>
+                            }
+                        </div>
                     </div>
-                    <div class="plan-price">
-                        @if (TryOutSpotBillingCatalog.RequiresAnnualCommitment(plan.Code) && plan.AnnualAmount is not null)
-                        {
-                            <strong>@($"{plan.AnnualAmount.Value:C0}/yr")</strong>
-                            <span>Annual only</span>
-                        }
-                        else
-                        {
-                            <strong>@FormatMonthlyAmount(plan.MonthlyAmount)</strong>
-                        }
-                        @if (plan.TrialDays is not null)
-                        {
-                            <span>@plan.TrialDays-day trial</span>
-                        }
-                        else if (!plan.RequiresStripeSubscription)
-                        {
-                            <span>No payment required</span>
-                        }
-                    </div>
-                </div>
-            }
-        </div>
-    </section>
+                }
+            </div>
+        </section>
+    }
 
     @if (Model.FeatureCodes.Count > 0)
     {

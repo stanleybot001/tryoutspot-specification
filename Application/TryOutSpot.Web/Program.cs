@@ -74,7 +74,9 @@ builder.Services.AddDataProtection()
 if (!builder.Environment.IsEnvironment("Testing"))
 {
     builder.Services.AddDbContext<AppDbContext>(options =>
-        options.UseNpgsql(builder.Configuration.GetConnectionString("TryOutSpotDatabase")));
+        options.UseNpgsql(
+            builder.Configuration.GetConnectionString("TryOutSpotDatabase"),
+            npgsqlOptions => npgsqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
 }
 builder.Services.AddIdentityCore<User>(options =>
     {
@@ -300,6 +302,7 @@ builder.Services.AddScoped<IZipRadiusSearchService, ZipRadiusSearchService>();
 builder.Services.AddScoped<IStripeBillingService, StripeBillingService>();
 builder.Services.AddScoped<IStripeSubscriptionSyncService, StripeSubscriptionSyncService>();
 builder.Services.AddScoped<IPdfStorageService, R2PdfStorageService>();
+builder.Services.AddScoped<IImageStorageService, R2ImageStorageService>();
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(

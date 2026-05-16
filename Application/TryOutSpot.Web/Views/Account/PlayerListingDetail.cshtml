@@ -9,6 +9,19 @@
         <p class="account-kicker">Player listing</p>
         <h1>@Model.Title</h1>
         <p>@Model.ListingTypeLabel</p>
+        @if (!string.IsNullOrWhiteSpace(Model.PlayerName) || !string.IsNullOrWhiteSpace(Model.ProfileImageUrl))
+        {
+            <div class="listing-identity-row section-help">
+                @if (!string.IsNullOrWhiteSpace(Model.ProfileImageUrl))
+                {
+                    <img class="listing-hero-avatar" src="@Model.ProfileImageUrl" alt="@Model.PlayerName profile photo" loading="lazy" />
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.PlayerName))
+                {
+                    <p>Player: <strong>@Model.PlayerName</strong></p>
+                }
+            </div>
+        }
     </div>
 
     <section class="form-section">

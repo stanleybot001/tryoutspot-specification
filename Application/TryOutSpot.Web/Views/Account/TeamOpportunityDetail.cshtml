@@ -9,13 +9,19 @@
         <p class="account-kicker">Team opportunity</p>
         <h1>@Model.Title</h1>
         <p>@FormatOpportunityType(Model.Type) - @Model.SportName</p>
-        <p class="section-help">
-            Team: <strong>@Model.TeamName</strong>
-            @if (!string.IsNullOrWhiteSpace(Model.OrganizationName))
+        <div class="listing-identity-row section-help">
+            @if (!string.IsNullOrWhiteSpace(Model.TeamLogoImageUrl))
             {
-                <span> - @Model.OrganizationName</span>
+                <img class="listing-hero-avatar" src="@Model.TeamLogoImageUrl" alt="@Model.TeamName logo" loading="lazy" />
             }
-        </p>
+            <p>
+                Team: <strong>@Model.TeamName</strong>
+                @if (!string.IsNullOrWhiteSpace(Model.OrganizationName))
+                {
+                    <span> - @Model.OrganizationName</span>
+                }
+            </p>
+        </div>
     </div>
 
     <section class="form-section">
