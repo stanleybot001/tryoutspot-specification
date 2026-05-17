@@ -1,0 +1,446 @@
+@model TeamOpportunityRegistrationSharePageModel
+
+@{
+    Layout = null;
+    var checkInUrl = BuildDocumentUrl("check-in");
+    var evaluationUrl = BuildDocumentUrl("evaluation");
+    var shareSubject = $"TryOutSpot evaluation sheet: {Model.Title}";
+    var shareBody = BuildShareBody(evaluationUrl, "Coach evaluation sheet");
+    var emailHref = $"mailto:?subject={Uri.EscapeDataString(shareSubject)}&body={Uri.EscapeDataString(shareBody)}";
+    var smsHref = $"sms:?body={Uri.EscapeDataString(shareBody)}";
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coach evaluation sheet - @Model.Title - TryOutSpot</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --ink: #111827;
+            --muted: #4b5563;
+            --line: #cbd5e1;
+            --soft: #f8fafc;
+            --accent: #0f62fe;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #eef2f7;
+            color: var(--ink);
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 12px;
+            line-height: 1.3;
+        }
+
+        .print-shell {
+            width: min(1500px, calc(100% - 24px));
+            margin: 16px auto;
+            background: #ffffff;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+            padding: 18px;
+        }
+
+        .document-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+
+        .document-toolbar a,
+        .document-toolbar button {
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            background: #ffffff;
+            color: var(--accent);
+            cursor: pointer;
+            font: inherit;
+            font-weight: 700;
+            padding: 7px 10px;
+            text-decoration: none;
+        }
+
+        .document-toolbar .primary {
+            background: var(--accent);
+            color: #ffffff;
+        }
+
+        .document-header {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 16px;
+            align-items: start;
+            border-bottom: 2px solid var(--ink);
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+        }
+
+        .document-kicker {
+            margin: 0 0 4px;
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            margin: 0 0 5px;
+            font-size: 26px;
+            line-height: 1.05;
+        }
+
+        .document-subtitle {
+            margin: 0;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .document-count {
+            border: 2px solid var(--ink);
+            min-width: 120px;
+            padding: 8px;
+            text-align: center;
+        }
+
+        .document-count strong {
+            display: block;
+            font-size: 30px;
+            line-height: 1;
+        }
+
+        .small-label {
+            display: block;
+            color: var(--muted);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+        }
+
+        .meta-strip {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px 18px;
+            border: 1px solid var(--line);
+            background: var(--soft);
+            padding: 7px 9px;
+            margin-bottom: 10px;
+        }
+
+        .meta-strip strong {
+            color: var(--ink);
+        }
+
+        .coach-lines {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .coach-lines div {
+            border-bottom: 1px solid var(--ink);
+            min-height: 24px;
+            padding-top: 5px;
+            color: var(--muted);
+            font-weight: 700;
+        }
+
+        .table-scroll {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            min-width: 1180px;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--line);
+            padding: 5px 6px;
+            text-align: left;
+            vertical-align: middle;
+        }
+
+        th {
+            background: #e5edf7;
+            font-size: 10px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        tbody tr:nth-child(even) {
+            background: var(--soft);
+        }
+
+        td {
+            height: 32px;
+        }
+
+        .tryout-number {
+            font-size: 20px;
+            font-weight: 800;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .player-name {
+            font-weight: 800;
+            min-width: 160px;
+        }
+
+        .favorite-marker {
+            color: #a16207;
+            font-weight: 800;
+        }
+
+        .blank-cell {
+            min-width: 72px;
+        }
+
+        .notes-cell {
+            min-width: 180px;
+        }
+
+        @@media (max-width: 760px) {
+            body {
+                font-size: 13px;
+            }
+
+            .print-shell {
+                width: 100%;
+                margin: 0;
+                border: 0;
+                border-radius: 0;
+                padding: 12px;
+            }
+
+            .document-header,
+            .coach-lines {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @@media print {
+            @@page {
+                size: landscape;
+                margin: 0.35in;
+            }
+
+            body {
+                background: #ffffff;
+                font-size: 10px;
+            }
+
+            .print-shell {
+                width: 100%;
+                margin: 0;
+                border: 0;
+                border-radius: 0;
+                box-shadow: none;
+                padding: 0;
+            }
+
+            .document-toolbar {
+                display: none;
+            }
+
+            table {
+                min-width: 0;
+            }
+
+            th,
+            td {
+                padding: 4px;
+            }
+
+            tr {
+                break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="print-shell">
+        <nav class="document-toolbar" aria-label="Document actions">
+            <button type="button" class="primary" onclick="window.print()">Print / Save PDF</button>
+            <a href="@emailHref">Email link</a>
+            <a href="@smsHref">Text link</a>
+            <a href="@checkInUrl">Check-in sheet</a>
+            <a href="/account/onboarding/team-opportunities/@Model.TeamId">Back to listing</a>
+        </nav>
+
+        <header class="document-header">
+            <div>
+                <p class="document-kicker">Coach evaluation sheet</p>
+                <h1>@Model.Title</h1>
+                <p class="document-subtitle">@Model.TeamName@if (!string.IsNullOrWhiteSpace(Model.OrganizationName))
+                    {
+                        @: - @Model.OrganizationName
+                    }</p>
+            </div>
+            <div class="document-count">
+                <span class="small-label">Players</span>
+                <strong>@Model.RegistrantCount</strong>
+            </div>
+        </header>
+
+        <section class="meta-strip" aria-label="Tryout details">
+            <span><strong>Sport:</strong> @Model.SportName</span>
+            <span><strong>Type:</strong> @FormatOpportunityType(Model.Type)</span>
+            <span><strong>Age:</strong> @FormatValue(Model.AgeGroup)</span>
+            <span><strong>Competition:</strong> @FormatValue(Model.CompetitionLevel)</span>
+            <span><strong>Date:</strong> @FormatDate(Model.EventDate)</span>
+            <span><strong>Location:</strong> @FormatLocation(Model.City, Model.State, Model.ZipCode)</span>
+        </section>
+
+        <section class="coach-lines" aria-label="Coach evaluation metadata">
+            <div>Coach</div>
+            <div>Station / field</div>
+            <div>Group</div>
+        </section>
+
+        @if (Model.Registrants.Count == 0)
+        {
+            <p>No players have registered for this event yet.</p>
+        }
+        else
+        {
+            <section class="table-scroll" aria-label="Evaluation roster">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Tryout #</th>
+                            <th scope="col">Player</th>
+                            <th scope="col">Age</th>
+                            <th scope="col">60 time</th>
+                            <th scope="col">Home-1st</th>
+                            <th scope="col">Arm velo</th>
+                            <th scope="col">Pop time</th>
+                            <th scope="col">Pitching</th>
+                            <th scope="col">Hitting (1-5)</th>
+                            <th scope="col">Fielding (1-5)</th>
+                            <th scope="col">Arm (1-5)</th>
+                            <th scope="col">Speed (1-5)</th>
+                            <th scope="col">Coach notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var registrant in Model.Registrants)
+                        {
+                            <tr>
+                                <td class="tryout-number">@registrant.TryoutNumber</td>
+                                <td class="player-name">
+                                    @registrant.PlayerName
+                                    @if (registrant.IsFavoritedByViewer)
+                                    {
+                                        <span class="favorite-marker" title="Favorited player listing">&#9733;</span>
+                                    }
+                                </td>
+                                <td>@FormatAge(registrant.PlayerAge)</td>
+                                <td class="blank-cell"></td>
+                                <td class="blank-cell"></td>
+                                <td class="blank-cell"></td>
+                                <td class="blank-cell"></td>
+                                <td class="blank-cell"></td>
+                                <td class="blank-cell"></td>
+                                <td class="blank-cell"></td>
+                                <td class="blank-cell"></td>
+                                <td class="blank-cell"></td>
+                                <td class="notes-cell"></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </section>
+        }
+    </main>
+</body>
+</html>
+
+@functions {
+    private string BuildDocumentUrl(string documentType)
+    {
+        var path = $"/account/onboarding/team-opportunities/{Model.TeamId}/{Model.OpportunityId}/registrations/{documentType}";
+        return $"{Context.Request.Scheme}://{Context.Request.Host}{Context.Request.PathBase}{path}";
+    }
+
+    private string BuildShareBody(string documentUrl, string documentLabel)
+    {
+        return string.Join(
+            Environment.NewLine,
+            [
+                $"{documentLabel} for {Model.Title}",
+                $"{Model.TeamName} - {FormatDate(Model.EventDate)}",
+                documentUrl
+            ]);
+    }
+
+    private static string FormatOpportunityType(string type)
+    {
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            return "Opportunity";
+        }
+
+        return type.Replace("_", " ", StringComparison.Ordinal).Trim().ToLowerInvariant() switch
+        {
+            "tryout" => "Tryout",
+            "roster opening" => "Roster opening",
+            "pickup player" => "Pickup player",
+            "camp" => "Camp",
+            "clinic" => "Clinic",
+            "tournament" => "Tournament",
+            "private workout" => "Private workout",
+            var fallback => char.ToUpperInvariant(fallback[0]) + fallback[1..]
+        };
+    }
+
+    private static string FormatLocation(string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim().ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        return parts.Count == 0 ? "Not set" : string.Join(", ", parts);
+    }
+
+    private static string FormatDate(DateTime? date)
+    {
+        return date?.ToLocalTime().ToString("MMM d, yyyy") ?? "Not set";
+    }
+
+    private static string FormatValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "Not set" : value.Trim();
+    }
+
+    private static string FormatAge(int? age)
+    {
+        return age?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "n/a";
+    }
+}

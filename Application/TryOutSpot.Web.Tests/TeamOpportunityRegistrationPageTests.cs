@@ -156,15 +156,17 @@ public sealed class TeamOpportunityRegistrationPageTests
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("registration-roster-toggle", html, StringComparison.Ordinal);
         Assert.Contains("registration-roster-table", html, StringComparison.Ordinal);
-        Assert.Contains("Share roster", html, StringComparison.Ordinal);
+        Assert.Contains("Check-in sheet", html, StringComparison.Ordinal);
+        Assert.Contains("Evaluation sheet", html, StringComparison.Ordinal);
         Assert.Contains("Favorited player listing", html, StringComparison.Ordinal);
         Assert.Contains("Pending Registrant", html, StringComparison.Ordinal);
+        Assert.Contains(">1</strong>", html, StringComparison.Ordinal);
         Assert.Contains("Mark present", html, StringComparison.Ordinal);
         Assert.Contains("Mark waiver", html, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task TeamRepresentativeCanOpenFormattedRegistrationShareRoster()
+    public async Task TeamRepresentativeCanOpenPrintableCheckInRoster()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
         var teamUser = await factory.CreateUserAsync("team-roster-share@example.com", [TryOutSpotRoles.TeamRepresentative]);
@@ -177,18 +179,48 @@ public sealed class TeamOpportunityRegistrationPageTests
         await LoginWebUserAsync(client, teamUser.Email!);
 
         var response = await client.GetAsync(
-            $"/account/onboarding/team-opportunities/{seeded.TeamId}/{seeded.OpportunityId}/registrations/share");
+            $"/account/onboarding/team-opportunities/{seeded.TeamId}/{seeded.OpportunityId}/registrations/check-in");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Registration roster", html, StringComparison.Ordinal);
-        Assert.Contains("registration-share-table", html, StringComparison.Ordinal);
+        Assert.Contains("Tryout check-in roster", html, StringComparison.Ordinal);
+        Assert.Contains("Print / Save PDF", html, StringComparison.Ordinal);
         Assert.Contains("Email link", html, StringComparison.Ordinal);
         Assert.Contains("sms:?body=", html, StringComparison.Ordinal);
+        Assert.Contains("Tryout #", html, StringComparison.Ordinal);
         Assert.Contains("Pending Registrant", html, StringComparison.Ordinal);
         Assert.Contains("North High", html, StringComparison.Ordinal);
         Assert.Contains("guardian-share@example.com", html, StringComparison.Ordinal);
         Assert.Contains("Favorited player listing", html, StringComparison.Ordinal);
+        Assert.Contains(">1</td>", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TeamRepresentativeCanOpenPrintableEvaluationSheet()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var teamUser = await factory.CreateUserAsync("team-evaluation-share@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var seeded = SeedTeamOpportunityRegistrationForReview(factory, teamUser.Id, favoritePlayer: true);
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, teamUser.Email!);
+
+        var response = await client.GetAsync(
+            $"/account/onboarding/team-opportunities/{seeded.TeamId}/{seeded.OpportunityId}/registrations/evaluation");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Coach evaluation sheet", html, StringComparison.Ordinal);
+        Assert.Contains("Print / Save PDF", html, StringComparison.Ordinal);
+        Assert.Contains("Tryout #", html, StringComparison.Ordinal);
+        Assert.Contains("60 time", html, StringComparison.Ordinal);
+        Assert.Contains("Hitting (1-5)", html, StringComparison.Ordinal);
+        Assert.Contains("Fielding (1-5)", html, StringComparison.Ordinal);
+        Assert.Contains("Pending Registrant", html, StringComparison.Ordinal);
+        Assert.Contains(">1</td>", html, StringComparison.Ordinal);
     }
 
     private static (Guid OpportunityId, Guid ManagedPlayerId) SeedPublishedTryoutOpportunity(

@@ -188,14 +188,19 @@
                                 </summary>
                                 <div class="registration-roster-toolbar">
                                     <a class="btn btn-outline-secondary btn-sm"
-                                       href="/account/onboarding/team-opportunities/@Model.Team.TeamId/@opportunity.OpportunityId/registrations/share"
+                                       href="/account/onboarding/team-opportunities/@Model.Team.TeamId/@opportunity.OpportunityId/registrations/check-in"
                                        target="_blank"
-                                       rel="noopener">Share roster</a>
+                                       rel="noopener">Check-in sheet</a>
+                                    <a class="btn btn-outline-secondary btn-sm"
+                                       href="/account/onboarding/team-opportunities/@Model.Team.TeamId/@opportunity.OpportunityId/registrations/evaluation"
+                                       target="_blank"
+                                       rel="noopener">Evaluation sheet</a>
                                 </div>
                                 <div class="table-responsive" style="max-height: 420px; overflow-y: auto;">
                                     <table class="table table-sm align-middle registration-roster-table mb-0">
                                         <thead>
                                             <tr>
+                                                <th scope="col">#</th>
                                                 <th scope="col">Player</th>
                                                 <th scope="col">Status</th>
                                                 <th scope="col">Contact</th>
@@ -208,6 +213,7 @@
                                             @foreach (var registrant in opportunity.Registrants)
                                             {
                                                 <tr class="@(registrant.IsFavoritedByViewer ? "table-warning" : string.Empty)">
+                                                    <td><strong>@registrant.TryoutNumber</strong></td>
                                                     <td>
                                                         <strong>
                                                             @registrant.PlayerName
@@ -218,6 +224,7 @@
                                                                       aria-label="Favorited player listing">&#9733;</span>
                                                             }
                                                         </strong>
+                                                        <span class="d-block small text-muted">Age @FormatAge(registrant.PlayerAge)</span>
                                                         @if (!string.IsNullOrWhiteSpace(registrant.SchoolName))
                                                         {
                                                             <span class="d-block small text-muted">@registrant.SchoolName</span>
@@ -494,6 +501,11 @@
     private static string FormatFee(decimal amount)
     {
         return amount <= 0 ? "Free" : amount.ToString("C");
+    }
+
+    private static string FormatAge(int? age)
+    {
+        return age?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "n/a";
     }
 
     private static string FormatPercent(decimal? value)

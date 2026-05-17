@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using System.Globalization;
 using System.Text.Json;
 using System.Security.Claims;
 using TryOutSpot.Web.Billing;
@@ -2750,7 +2751,18 @@ public sealed class AccountController(
         AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
         Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
     [HttpGet("onboarding/team-opportunities/{teamId:guid}/{opportunityId:guid}/registrations/share")]
-    public async Task<IActionResult> ShareTeamOpportunityRegistrations(
+    public IActionResult ShareTeamOpportunityRegistrations(
+        Guid teamId,
+        Guid opportunityId)
+    {
+        return RedirectToAction(nameof(CheckInTeamOpportunityRegistrations), new { teamId, opportunityId });
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
+    [HttpGet("onboarding/team-opportunities/{teamId:guid}/{opportunityId:guid}/registrations/check-in")]
+    public async Task<IActionResult> CheckInTeamOpportunityRegistrations(
         Guid teamId,
         Guid opportunityId,
         CancellationToken cancellationToken = default)
@@ -2760,7 +2772,39 @@ public sealed class AccountController(
         {
             return RedirectToAction(nameof(Login), new
             {
-                returnUrl = Url.Action(nameof(ShareTeamOpportunityRegistrations), new { teamId, opportunityId })
+                returnUrl = Url.Action(nameof(CheckInTeamOpportunityRegistrations), new { teamId, opportunityId })
+            });
+        }
+
+        var model = await BuildTeamOpportunityRegistrationSharePageModelAsync(
+            user,
+            teamId,
+            opportunityId,
+            cancellationToken);
+        if (model is null)
+        {
+            TempData["StatusMessage"] = "Registration roster was not found for this team.";
+            return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+        }
+
+        return View(model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
+    [HttpGet("onboarding/team-opportunities/{teamId:guid}/{opportunityId:guid}/registrations/evaluation")]
+    public async Task<IActionResult> EvaluateTeamOpportunityRegistrations(
+        Guid teamId,
+        Guid opportunityId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(EvaluateTeamOpportunityRegistrations), new { teamId, opportunityId })
             });
         }
 
@@ -5939,9 +5983,11 @@ public sealed class AccountController(
                 registration.Notes,
                 registration.Player.FirstName,
                 registration.Player.LastName,
+                PlayerDateOfBirth = registration.Player.DateOfBirth,
                 PlayerSchoolName = registration.Player.SchoolName,
                 registration.Player.ContactPhone,
-                registration.Player.ContactEmail
+                registration.Player.ContactEmail,
+                registration.Opportunity.EventDate
             })
             .ToArrayAsync(cancellationToken);
         if (registrationRows.Length == 0)
@@ -5970,16 +6016,20 @@ public sealed class AccountController(
             .ToDictionary(
                 group => group.Key,
                 group => group
-                    .OrderByDescending(row => row.CreatedAt)
+                    .OrderBy(row => row.CreatedAt)
                     .ThenBy(row => row.LastName)
                     .ThenBy(row => row.FirstName)
-                    .Select(row =>
+                    .ThenBy(row => row.Id)
+                    .Select((row, index) =>
                     {
                         var registrationData = ParseRegistrationDataSnapshot(row.RegistrationData);
+                        var playerBirthDate = registrationData.PlayerBirthDate ?? row.PlayerDateOfBirth;
                         return new TeamOpportunityRegistrantPageItem(
                             row.Id,
                             row.PlayerId,
                             BuildPlayerDisplayName(row.FirstName, row.LastName),
+                            index + 1,
+                            CalculatePlayerAge(playerBirthDate, row.EventDate),
                             FirstPopulatedValue(registrationData.PlayerSchool, row.PlayerSchoolName),
                             ToRegistrationStatusCode(row.Status),
                             FormatRegistrationStatusLabel(row.Status),
@@ -6019,6 +6069,7 @@ public sealed class AccountController(
             }
 
             return new RegistrationDataSnapshot(
+                GetJsonDateProperty(root, "playerBirthDate"),
                 GetJsonStringProperty(root, "playerSchool"),
                 GetJsonStringProperty(root, "playerPhone"),
                 GetJsonStringProperty(root, "playerEmail"),
@@ -6036,11 +6087,52 @@ public sealed class AccountController(
         }
     }
 
+    private static DateTime? GetJsonDateProperty(JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out var value)
+            || value.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var rawValue = NormalizeOptional(value.GetString());
+        if (rawValue is null)
+        {
+            return null;
+        }
+
+        return DateTime.TryParse(
+            rawValue,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+            out var parsed)
+            ? parsed.Date
+            : null;
+    }
+
     private static string? GetJsonStringProperty(JsonElement root, string propertyName)
     {
         return root.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
             ? NormalizeOptional(value.GetString())
             : null;
+    }
+
+    private static int? CalculatePlayerAge(DateTime? birthDate, DateTime? eventDate)
+    {
+        if (!birthDate.HasValue)
+        {
+            return null;
+        }
+
+        var referenceDate = (eventDate ?? DateTime.UtcNow).Date;
+        var normalizedBirthDate = birthDate.Value.Date;
+        var age = referenceDate.Year - normalizedBirthDate.Year;
+        if (normalizedBirthDate > referenceDate.AddYears(-age))
+        {
+            age--;
+        }
+
+        return age < 0 ? null : age;
     }
 
     private static string? FirstPopulatedValue(params string?[] values)
@@ -9153,6 +9245,7 @@ public sealed class AccountController(
         int DeclinedCount);
 
     private sealed record RegistrationDataSnapshot(
+        DateTime? PlayerBirthDate,
         string? PlayerSchool,
         string? PlayerPhone,
         string? PlayerEmail,
@@ -9164,7 +9257,7 @@ public sealed class AccountController(
         string? MedicalInfo,
         string? AdditionalNotes)
     {
-        public static RegistrationDataSnapshot Empty { get; } = new(null, null, null, null, null, null, null, null, null, null);
+        public static RegistrationDataSnapshot Empty { get; } = new(null, null, null, null, null, null, null, null, null, null, null);
     }
 
     private enum RegistrationStatusCategory

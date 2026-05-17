@@ -764,6 +764,8 @@ public sealed record TeamOpportunityRegistrantPageItem(
     Guid RegistrationId,
     Guid PlayerId,
     string PlayerName,
+    int TryoutNumber,
+    int? PlayerAge,
     string? SchoolName,
     string StatusCode,
     string StatusLabel,
