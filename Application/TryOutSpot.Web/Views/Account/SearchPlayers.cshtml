@@ -1,0 +1,321 @@
+@model SearchPlayersPageModel
+
+@{
+    ViewData["Title"] = "Search Players";
+}
+
+<section class="account-page search-page">
+    <div class="account-heading">
+        <p class="account-kicker">Team discovery</p>
+        <h1>Search players.</h1>
+        <p>Find published player and parent listings using your team search permissions. Priority player listings are weighted in the result order.</p>
+    </div>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    @if (!Model.HasAdvancedPlayerSearch)
+    {
+        <div class="account-alert">
+            Free Coach search includes age and radius filters up to @Model.MaxRadiusMiles miles. Skill-level filters require Team Basic or higher.
+        </div>
+    }
+    @if (Model.SkillLevelFilterIgnored)
+    {
+        <div class="account-alert">Skill-level filters require Team Basic, Team Professional, or Enterprise.</div>
+    }
+    @if (Model.RadiusWasConstrained)
+    {
+        <div class="account-alert">Radius was capped at @Model.MaxRadiusMiles miles for your current plan.</div>
+    }
+
+    <section class="form-section">
+        <form method="get" class="account-form search-form">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <div class="form-grid three-column">
+                <div class="form-field">
+                    <label asp-for="Q" class="form-label"></label>
+                    <input asp-for="Q" class="form-control" placeholder="Name, title, position, city" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="ListingType" class="form-label"></label>
+                    <select asp-for="ListingType" class="form-select">
+                        @foreach (var option in Model.AvailableListingTypes)
+                        {
+                            <option value="@option.Code" selected="@option.IsSelected">@option.Label</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label asp-for="SportId" class="form-label"></label>
+                    <select asp-for="SportId" class="form-select">
+                        <option value="">All sports</option>
+                        @foreach (var sport in Model.AvailableSports)
+                        {
+                            <option value="@sport.Id" selected="@sport.IsSelected">@sport.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label asp-for="MinAge" class="form-label"></label>
+                    <input asp-for="MinAge" class="form-control" />
+                    <span asp-validation-for="MinAge" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="MaxAge" class="form-label"></label>
+                    <input asp-for="MaxAge" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="SkillLevel" class="form-label"></label>
+                    <input asp-for="SkillLevel" class="form-control" placeholder="AA, AAA, Major" disabled="@(!Model.CanUseSkillLevelFilter)" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="OriginZipCode" class="form-label"></label>
+                    <input asp-for="OriginZipCode" class="form-control" placeholder="ZIP for radius" />
+                    <span asp-validation-for="OriginZipCode" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="RadiusMiles" class="form-label"></label>
+                    <select asp-for="RadiusMiles" class="form-select">
+                        @foreach (var radius in Model.AvailableRadiusOptions)
+                        {
+                            <option value="@radius.Miles" selected="@radius.IsSelected" disabled="@(!radius.IsEnabled)">@radius.Label</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label asp-for="City" class="form-label"></label>
+                    <input asp-for="City" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="State" class="form-label"></label>
+                    <input asp-for="State" class="form-control" maxlength="2" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="MinPrice" class="form-label"></label>
+                    <input asp-for="MinPrice" class="form-control" />
+                    <span asp-validation-for="MinPrice" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="MaxPrice" class="form-label"></label>
+                    <input asp-for="MaxPrice" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="PageSize" class="form-label">Per page</label>
+                    <select asp-for="PageSize" class="form-select">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Search</button>
+                <a class="btn btn-outline-secondary" asp-action="SearchPlayers">Reset</a>
+                <a class="btn btn-outline-secondary" asp-action="Onboarding">Back to dashboard</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="form-section">
+        <div class="team-row-head">
+            <div>
+                <h2>Results</h2>
+                <span>@FormatResultRange(Model.FirstItemNumber, Model.LastItemNumber, Model.TotalCount)</span>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(Model.SearchOriginZipCode) && Model.SearchRadiusMiles.HasValue)
+            {
+                <div class="team-metric-inline">
+                    <span>@Model.SearchRadiusMiles miles from @Model.SearchOriginZipCode</span>
+                    <span>@(Model.HasAdvancedPlayerSearch ? "Advanced filters" : "Basic filters")</span>
+                </div>
+            }
+        </div>
+
+        @if (Model.Results.Count == 0)
+        {
+            <p class="section-help">No player listings matched these filters.</p>
+        }
+        else
+        {
+            <div class="plan-list">
+                @foreach (var result in Model.Results)
+                {
+                    <article class="plan-row plan-row-stack opportunity-row p-2 @(result.IsPriorityListing ? "priority-result" : string.Empty)">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@result.Title</strong>
+                                <span>@result.ListingTypeLabel - @(string.IsNullOrWhiteSpace(result.SportName) ? "Sport not set" : result.SportName)</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                @if (result.IsPriorityListing)
+                                {
+                                    <span>Priority player</span>
+                                }
+                                @if (result.DistanceMiles.HasValue)
+                                {
+                                    <span>@result.DistanceMiles.Value.ToString("0.#") miles</span>
+                                }
+                                @if (result.IsFavorited)
+                                {
+                                    <span>Favorited</span>
+                                }
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mt-2 small text-muted">
+                            <span><strong class="text-body">Player:</strong> @(string.IsNullOrWhiteSpace(result.PlayerName) ? "Not linked" : result.PlayerName)</span>
+                            <span><strong class="text-body">Age:</strong> @(result.PlayerAge?.ToString() ?? "n/a")</span>
+                            <span><strong class="text-body">Price:</strong> @FormatAskingPrice(result.AskingPrice, result.Currency)</span>
+                            <span><strong class="text-body">Condition:</strong> @(string.IsNullOrWhiteSpace(result.Condition) ? "Not set" : result.Condition)</span>
+                            <span><strong class="text-body">Location:</strong> @FormatLocation(result.City, result.State, result.ZipCode)</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(result.Description))
+                        {
+                            <p class="section-help small mb-1">@result.Description</p>
+                        }
+                        <div class="form-actions mt-2">
+                            <a class="btn btn-outline-primary btn-sm" href="/player-listings/@result.ListingId">View details</a>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        @if (Model.TotalPages > 1)
+        {
+            <div class="form-actions mt-3">
+                @if (Model.HasPreviousPage)
+                {
+                    <a class="btn btn-outline-secondary"
+                       asp-action="SearchPlayers"
+                       asp-route-q="@Model.Q"
+                       asp-route-listingType="@Model.ListingType"
+                       asp-route-sportId="@Model.SportId"
+                       asp-route-minAge="@Model.MinAge"
+                       asp-route-maxAge="@Model.MaxAge"
+                       asp-route-skillLevel="@Model.SkillLevel"
+                       asp-route-originZipCode="@Model.OriginZipCode"
+                       asp-route-radiusMiles="@Model.RadiusMiles"
+                       asp-route-city="@Model.City"
+                       asp-route-state="@Model.State"
+                       asp-route-minPrice="@Model.MinPrice"
+                       asp-route-maxPrice="@Model.MaxPrice"
+                       asp-route-page="@(Model.Page - 1)"
+                       asp-route-pageSize="@Model.PageSize">Previous</a>
+                }
+                <span class="section-help">Page @Model.Page of @Model.TotalPages</span>
+                @if (Model.HasNextPage)
+                {
+                    <a class="btn btn-outline-secondary"
+                       asp-action="SearchPlayers"
+                       asp-route-q="@Model.Q"
+                       asp-route-listingType="@Model.ListingType"
+                       asp-route-sportId="@Model.SportId"
+                       asp-route-minAge="@Model.MinAge"
+                       asp-route-maxAge="@Model.MaxAge"
+                       asp-route-skillLevel="@Model.SkillLevel"
+                       asp-route-originZipCode="@Model.OriginZipCode"
+                       asp-route-radiusMiles="@Model.RadiusMiles"
+                       asp-route-city="@Model.City"
+                       asp-route-state="@Model.State"
+                       asp-route-minPrice="@Model.MinPrice"
+                       asp-route-maxPrice="@Model.MaxPrice"
+                       asp-route-page="@(Model.Page + 1)"
+                       asp-route-pageSize="@Model.PageSize">Next</a>
+                }
+            </div>
+        }
+    </section>
+
+    @if (Model.RadiusSuggestions.Count > 0)
+    {
+        <section class="form-section">
+            <h2>Farther away</h2>
+            <div class="plan-list">
+                @foreach (var group in Model.RadiusSuggestions)
+                {
+                    <article class="plan-row plan-row-stack">
+                        <div class="team-row-head">
+                            <div>
+                                <strong>Within @group.RadiusMiles miles</strong>
+                                <span>Additional player listings outside your selected radius</span>
+                            </div>
+                            <a class="btn btn-outline-primary btn-sm"
+                               asp-action="SearchPlayers"
+                               asp-route-q="@Model.Q"
+                               asp-route-listingType="@Model.ListingType"
+                               asp-route-sportId="@Model.SportId"
+                               asp-route-minAge="@Model.MinAge"
+                               asp-route-maxAge="@Model.MaxAge"
+                               asp-route-skillLevel="@Model.SkillLevel"
+                               asp-route-originZipCode="@Model.OriginZipCode"
+                               asp-route-radiusMiles="@group.RadiusMiles"
+                               asp-route-city="@Model.City"
+                               asp-route-state="@Model.State"
+                               asp-route-minPrice="@Model.MinPrice"
+                               asp-route-maxPrice="@Model.MaxPrice"
+                               asp-route-pageSize="@Model.PageSize">Search @group.RadiusMiles miles</a>
+                        </div>
+                        <div class="search-suggestion-list">
+                            @foreach (var result in group.Results)
+                            {
+                                <a href="/player-listings/@result.ListingId">
+                                    <strong>@result.Title</strong>
+                                    <span>@(string.IsNullOrWhiteSpace(result.PlayerName) ? result.ListingTypeLabel : result.PlayerName) - @FormatLocation(result.City, result.State, result.ZipCode)@FormatDistanceSuffix(result.DistanceMiles)</span>
+                                </a>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+</section>
+
+@functions {
+    private static string FormatResultRange(int first, int last, int total)
+    {
+        return total == 0 ? "No results" : $"Showing {first}-{last} of {total}.";
+    }
+
+    private static string FormatLocation(string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim().ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        return parts.Count == 0 ? "Not set" : string.Join(", ", parts);
+    }
+
+    private static string FormatAskingPrice(decimal? value, string? currency)
+    {
+        if (!value.HasValue)
+        {
+            return "Not listed";
+        }
+
+        var normalizedCurrency = string.IsNullOrWhiteSpace(currency)
+            ? "USD"
+            : currency.Trim().ToUpperInvariant();
+        return $"{normalizedCurrency} {value.Value:0.##}";
+    }
+
+    private static string FormatDistanceSuffix(double? distanceMiles)
+    {
+        return distanceMiles.HasValue ? $" - {distanceMiles.Value:0.#} miles" : string.Empty;
+    }
+}

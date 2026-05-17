@@ -16,7 +16,8 @@ public static class TryOutSpotBillingCatalog
 
     private static readonly string[] FreeCoachFeatures =
     [
-        TryOutSpotFeatureCodes.PostLimitedOpportunities
+        TryOutSpotFeatureCodes.PostLimitedOpportunities,
+        TryOutSpotFeatureCodes.BasicPlayerSearch
     ];
 
     private static readonly BillingFeatureDefinition[] FeatureDefinitions =
@@ -139,12 +140,12 @@ public static class TryOutSpotBillingCatalog
         new(
             TryOutSpotFeatureCodes.PrioritySupport,
             "Priority support",
-            "Receive priority customer support.",
+            "Coming soon - receive priority customer support.",
             true),
         new(
             TryOutSpotFeatureCodes.CustomBranding,
             "Custom branding",
-            "Customize team or organization branding where supported.",
+            "Coming soon - customize team or organization branding where supported.",
             true),
         new(
             TryOutSpotFeatureCodes.BulkCommunication,

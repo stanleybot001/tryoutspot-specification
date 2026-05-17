@@ -47,9 +47,28 @@
                             </li>
                             @if (User.Identity?.IsAuthenticated ?? false)
                             {
+                                var showTeamItemSearch = User.IsInRole(TryOutSpotRoles.Parent)
+                                    || User.IsInRole(TryOutSpotRoles.Player);
+                                var showPlayerSearch = User.IsInRole(TryOutSpotRoles.TeamRepresentative)
+                                    || User.IsInRole(TryOutSpotRoles.Coach)
+                                    || User.IsInRole(TryOutSpotRoles.TeamManager)
+                                    || User.IsInRole(TryOutSpotRoles.AcademyDirector)
+                                    || User.IsInRole(TryOutSpotRoles.OrganizationAdmin);
                                 <li class="nav-item">
                                     <a class="nav-link text-dark" asp-area="" asp-controller="Account" asp-action="Onboarding">Dashboard</a>
                                 </li>
+                                @if (showTeamItemSearch)
+                                {
+                                    <li class="nav-item">
+                                        <a class="nav-link text-dark" asp-area="" asp-controller="Account" asp-action="SearchTeamItems">Search Team Items</a>
+                                    </li>
+                                }
+                                @if (showPlayerSearch)
+                                {
+                                    <li class="nav-item">
+                                        <a class="nav-link text-dark" asp-area="" asp-controller="Account" asp-action="SearchPlayers">Search Players</a>
+                                    </li>
+                                }
                                 <li class="nav-item">
                                     <a class="nav-link text-dark" asp-area="" asp-controller="Account" asp-action="Settings">Account Settings</a>
                                 </li>

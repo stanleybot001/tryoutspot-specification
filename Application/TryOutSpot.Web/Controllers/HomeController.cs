@@ -113,7 +113,8 @@ public class HomeController : Controller
                 "Team/Academy",
                 "No team plan",
                 [
-                    F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 1 tryout listing every 6 months.")
+                    F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 1 tryout listing every 6 months."),
+                    F("players.search.basic", "Basic player search", "Limited player search with age filters and radius capped at 120 miles.")
                 ]),
             new FeatureBundlePageItem(
                 "Team basic add-ons",
@@ -135,8 +136,8 @@ public class HomeController : Controller
                     F("players.search.advanced", "Advanced player search", "Full player discovery filters including age, level, and radius."),
                     F("registrations.manage.premium", "Premium registration management", "Enhanced applicant review and registration tooling."),
                     F("analytics.team.detailed", "Detailed team analytics", "Deeper team analytics and conversion visibility."),
-                    F("support.priority", "Priority support", "Priority support queue."),
-                    F("branding.custom", "Custom branding", "Team branding customization."),
+                    F("support.priority", "Priority support", "Coming soon - priority support queue."),
+                    F("branding.custom", "Custom branding", "Coming soon - team branding customization."),
                     F("communication.bulk", "Bulk communication", "Bulk communication workflows.")
                 ]),
             new FeatureBundlePageItem(
@@ -178,7 +179,8 @@ public class HomeController : Controller
 
         var freeCoach = new[]
         {
-            F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 1 tryout listing every 6 months.")
+            F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 1 tryout listing every 6 months."),
+            F("players.search.basic", "Basic player search", "Limited player search with age filters and radius capped at 120 miles.")
         };
 
         var teamBasic = new[]
@@ -196,8 +198,8 @@ public class HomeController : Controller
             F("players.search.advanced", "Advanced player search", "Full player discovery filters including age, level, and radius."),
             F("registrations.manage.premium", "Premium registration management", "Enhanced applicant review and registration tooling."),
             F("analytics.team.detailed", "Detailed team analytics", "Deeper team analytics and conversion visibility."),
-            F("support.priority", "Priority support", "Priority support queue."),
-            F("branding.custom", "Custom branding", "Team branding customization."),
+            F("support.priority", "Priority support", "Coming soon - priority support queue."),
+            F("branding.custom", "Custom branding", "Coming soon - team branding customization."),
             F("communication.bulk", "Bulk communication", "Bulk communication workflows.")
         };
 

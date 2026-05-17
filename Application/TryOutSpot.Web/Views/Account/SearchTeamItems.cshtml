@@ -1,0 +1,312 @@
+@model SearchTeamItemsPageModel
+
+@{
+    ViewData["Title"] = "Search Team Items";
+}
+
+<section class="account-page search-page">
+    <div class="account-heading">
+        <p class="account-kicker">Discovery</p>
+        <h1>Search team items.</h1>
+        <p>Find tryouts, tournaments, camps, roster openings, and other team opportunities using the filters included with your membership.</p>
+    </div>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    @if (!Model.HasAdvancedOpportunitySearch)
+    {
+        <div class="account-alert">
+            Free Player/Parent search is limited to tryouts, age filters, and a radius up to @Model.MaxRadiusMiles miles.
+        </div>
+    }
+    @if (Model.TypeFilterConstrained)
+    {
+        <div class="account-alert">Your current plan limits opportunity type search to tryouts.</div>
+    }
+    @if (Model.CompetitionLevelFilterIgnored)
+    {
+        <div class="account-alert">Competition level filters require Premium Player.</div>
+    }
+    @if (Model.RadiusWasConstrained)
+    {
+        <div class="account-alert">Radius was capped at @Model.MaxRadiusMiles miles for your current plan.</div>
+    }
+
+    <section class="form-section">
+        <form method="get" class="account-form search-form">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <div class="form-grid three-column">
+                <div class="form-field">
+                    <label asp-for="Q" class="form-label"></label>
+                    <input asp-for="Q" class="form-control" placeholder="Team, title, city, sport" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="SportId" class="form-label"></label>
+                    <select asp-for="SportId" class="form-select">
+                        <option value="">All sports</option>
+                        @foreach (var sport in Model.AvailableSports)
+                        {
+                            <option value="@sport.Id" selected="@sport.IsSelected">@sport.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Type" class="form-label"></label>
+                    <select asp-for="Type" class="form-select">
+                        @foreach (var option in Model.AvailableOpportunityTypes)
+                        {
+                            <option value="@option.Code" selected="@option.IsSelected" disabled="@(!option.IsEnabled)">@option.Label</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label asp-for="AgeGroup" class="form-label"></label>
+                    <input asp-for="AgeGroup" class="form-control" placeholder="12U, 14U, high school" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="CompetitionLevel" class="form-label"></label>
+                    <input asp-for="CompetitionLevel" class="form-control" placeholder="AA, AAA, Major" disabled="@(!Model.CanUseCompetitionLevelFilter)" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="OriginZipCode" class="form-label"></label>
+                    <input asp-for="OriginZipCode" class="form-control" placeholder="ZIP for radius" />
+                    <span asp-validation-for="OriginZipCode" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="RadiusMiles" class="form-label"></label>
+                    <select asp-for="RadiusMiles" class="form-select">
+                        @foreach (var radius in Model.AvailableRadiusOptions)
+                        {
+                            <option value="@radius.Miles" selected="@radius.IsSelected" disabled="@(!radius.IsEnabled)">@radius.Label</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label asp-for="City" class="form-label"></label>
+                    <input asp-for="City" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="State" class="form-label"></label>
+                    <input asp-for="State" class="form-control" maxlength="2" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="EventDateFrom" class="form-label"></label>
+                    <input asp-for="EventDateFrom" class="form-control" />
+                    <span asp-validation-for="EventDateFrom" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="EventDateTo" class="form-label"></label>
+                    <input asp-for="EventDateTo" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="PageSize" class="form-label">Per page</label>
+                    <select asp-for="PageSize" class="form-select">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Search</button>
+                <a class="btn btn-outline-secondary" asp-action="SearchTeamItems">Reset</a>
+                <a class="btn btn-outline-secondary" asp-action="Onboarding">Back to dashboard</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="form-section">
+        <div class="team-row-head">
+            <div>
+                <h2>Results</h2>
+                <span>@FormatResultRange(Model.FirstItemNumber, Model.LastItemNumber, Model.TotalCount)</span>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(Model.SearchOriginZipCode) && Model.SearchRadiusMiles.HasValue)
+            {
+                <div class="team-metric-inline">
+                    <span>@Model.SearchRadiusMiles miles from @Model.SearchOriginZipCode</span>
+                    <span>@(Model.HasAdvancedOpportunitySearch ? "Premium filters" : "Free filters")</span>
+                </div>
+            }
+        </div>
+
+        @if (Model.Results.Count == 0)
+        {
+            <p class="section-help">No team items matched these filters.</p>
+        }
+        else
+        {
+            <div class="plan-list">
+                @foreach (var result in Model.Results)
+                {
+                    <article class="plan-row plan-row-stack opportunity-row p-2">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@result.Title</strong>
+                                <span>@result.TypeLabel - @result.SportName - @result.TeamName</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                @if (result.DistanceMiles.HasValue)
+                                {
+                                    <span>@result.DistanceMiles.Value.ToString("0.#") miles</span>
+                                }
+                                @if (result.IsFavorited)
+                                {
+                                    <span>Favorited</span>
+                                }
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mt-2 small text-muted">
+                            <span><strong class="text-body">Org:</strong> @(string.IsNullOrWhiteSpace(result.OrganizationName) ? "Independent" : result.OrganizationName)</span>
+                            <span><strong class="text-body">Age:</strong> @(string.IsNullOrWhiteSpace(result.AgeGroup) ? "Not set" : result.AgeGroup)</span>
+                            <span><strong class="text-body">Level:</strong> @(string.IsNullOrWhiteSpace(result.CompetitionLevel) ? "Not set" : result.CompetitionLevel)</span>
+                            <span><strong class="text-body">Fee:</strong> @FormatFee(result.RegistrationFee)</span>
+                            <span><strong class="text-body">Event:</strong> @FormatDate(result.EventDate)</span>
+                            <span><strong class="text-body">Deadline:</strong> @FormatDate(result.RegistrationDeadline)</span>
+                            <span><strong class="text-body">Location:</strong> @FormatLocation(result.City, result.State, result.ZipCode)</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(result.Description))
+                        {
+                            <p class="section-help small mb-1">@result.Description</p>
+                        }
+                        <div class="form-actions mt-2">
+                            <a class="btn btn-outline-primary btn-sm" href="/opportunities/@result.OpportunityId">View details</a>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        @if (Model.TotalPages > 1)
+        {
+            <div class="form-actions mt-3">
+                @if (Model.HasPreviousPage)
+                {
+                    <a class="btn btn-outline-secondary"
+                       asp-action="SearchTeamItems"
+                       asp-route-q="@Model.Q"
+                       asp-route-sportId="@Model.SportId"
+                       asp-route-type="@Model.Type"
+                       asp-route-ageGroup="@Model.AgeGroup"
+                       asp-route-competitionLevel="@Model.CompetitionLevel"
+                       asp-route-originZipCode="@Model.OriginZipCode"
+                       asp-route-radiusMiles="@Model.RadiusMiles"
+                       asp-route-city="@Model.City"
+                       asp-route-state="@Model.State"
+                       asp-route-eventDateFrom="@Model.EventDateFrom?.ToString("yyyy-MM-dd")"
+                       asp-route-eventDateTo="@Model.EventDateTo?.ToString("yyyy-MM-dd")"
+                       asp-route-page="@(Model.Page - 1)"
+                       asp-route-pageSize="@Model.PageSize">Previous</a>
+                }
+                <span class="section-help">Page @Model.Page of @Model.TotalPages</span>
+                @if (Model.HasNextPage)
+                {
+                    <a class="btn btn-outline-secondary"
+                       asp-action="SearchTeamItems"
+                       asp-route-q="@Model.Q"
+                       asp-route-sportId="@Model.SportId"
+                       asp-route-type="@Model.Type"
+                       asp-route-ageGroup="@Model.AgeGroup"
+                       asp-route-competitionLevel="@Model.CompetitionLevel"
+                       asp-route-originZipCode="@Model.OriginZipCode"
+                       asp-route-radiusMiles="@Model.RadiusMiles"
+                       asp-route-city="@Model.City"
+                       asp-route-state="@Model.State"
+                       asp-route-eventDateFrom="@Model.EventDateFrom?.ToString("yyyy-MM-dd")"
+                       asp-route-eventDateTo="@Model.EventDateTo?.ToString("yyyy-MM-dd")"
+                       asp-route-page="@(Model.Page + 1)"
+                       asp-route-pageSize="@Model.PageSize">Next</a>
+                }
+            </div>
+        }
+    </section>
+
+    @if (Model.RadiusSuggestions.Count > 0)
+    {
+        <section class="form-section">
+            <h2>Farther away</h2>
+            <div class="plan-list">
+                @foreach (var group in Model.RadiusSuggestions)
+                {
+                    <article class="plan-row plan-row-stack">
+                        <div class="team-row-head">
+                            <div>
+                                <strong>Within @group.RadiusMiles miles</strong>
+                                <span>Additional matches outside your selected radius</span>
+                            </div>
+                            <a class="btn btn-outline-primary btn-sm"
+                               asp-action="SearchTeamItems"
+                               asp-route-q="@Model.Q"
+                               asp-route-sportId="@Model.SportId"
+                               asp-route-type="@Model.Type"
+                               asp-route-ageGroup="@Model.AgeGroup"
+                               asp-route-competitionLevel="@Model.CompetitionLevel"
+                               asp-route-originZipCode="@Model.OriginZipCode"
+                               asp-route-radiusMiles="@group.RadiusMiles"
+                               asp-route-city="@Model.City"
+                               asp-route-state="@Model.State"
+                               asp-route-eventDateFrom="@Model.EventDateFrom?.ToString("yyyy-MM-dd")"
+                               asp-route-eventDateTo="@Model.EventDateTo?.ToString("yyyy-MM-dd")"
+                               asp-route-pageSize="@Model.PageSize">Search @group.RadiusMiles miles</a>
+                        </div>
+                        <div class="search-suggestion-list">
+                            @foreach (var result in group.Results)
+                            {
+                                <a href="/opportunities/@result.OpportunityId">
+                                    <strong>@result.Title</strong>
+                                    <span>@result.TeamName - @FormatLocation(result.City, result.State, result.ZipCode)@FormatDistanceSuffix(result.DistanceMiles)</span>
+                                </a>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+</section>
+
+@functions {
+    private static string FormatResultRange(int first, int last, int total)
+    {
+        return total == 0 ? "No results" : $"Showing {first}-{last} of {total}.";
+    }
+
+    private static string FormatLocation(string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim().ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        return parts.Count == 0 ? "Not set" : string.Join(", ", parts);
+    }
+
+    private static string FormatDate(DateTime? value)
+    {
+        return value?.ToLocalTime().ToString("MMM d, yyyy") ?? "Not set";
+    }
+
+    private static string FormatFee(decimal amount)
+    {
+        return amount <= 0 ? "Free" : amount.ToString("C");
+    }
+
+    private static string FormatDistanceSuffix(double? distanceMiles)
+    {
+        return distanceMiles.HasValue ? $" - {distanceMiles.Value:0.#} miles" : string.Empty;
+    }
+}

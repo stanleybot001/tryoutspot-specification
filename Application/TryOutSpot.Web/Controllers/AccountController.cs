@@ -51,6 +51,11 @@ public sealed class AccountController(
     private const int DashboardFavoritePreviewLimit = 12;
     private const int DefaultFavoritePageSize = 25;
     private const int FavoriteListLimit = 100;
+    private const int DefaultSearchPageSize = 20;
+    private const int MaxSearchPageSize = 50;
+    private const int FreeSearchMaxRadiusMiles = 120;
+    private const int SearchSuggestionResultLimit = 5;
+    private const string AllSearchFilterValue = "all";
     private const int ListingPdfMaxSizeMegabytes = 10;
     private const long ListingPdfMaxSizeBytes = ListingPdfMaxSizeMegabytes * 1024L * 1024L;
     private const string PlayerListingDocumentType = "player-listings";
@@ -92,6 +97,8 @@ public sealed class AccountController(
         "tournament",
         "private_workout"
     ];
+    private static readonly int[] SearchRadiusOptions = [10, 25, 30, 60, 120, 250];
+    private static readonly int[] SearchSuggestionRadiusMiles = [30, 60, 120, 250];
     private static readonly PlayerListingTypeSelectionPageItem[] PlayerListingTypeOptions =
     [
         new(
@@ -784,6 +791,64 @@ public sealed class AccountController(
         }
 
         return View(await BuildFavoritesPageModelAsync(user, page, pageSize, cancellationToken));
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
+    [HttpGet("search/team-items")]
+    public async Task<IActionResult> SearchTeamItems(
+        [FromQuery] SearchTeamItemsPageModel model,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(SearchTeamItems)) });
+        }
+
+        if (Request.Query.Count == 0 && string.IsNullOrWhiteSpace(model.OriginZipCode))
+        {
+            model.OriginZipCode = user.ZipCode;
+        }
+
+        var preparedModel = await BuildSearchTeamItemsPageModelAsync(user, model, cancellationToken);
+        if (!preparedModel.CanSearchTeamItems)
+        {
+            TempData["StatusMessage"] = "Search Team Items is available to parent and player accounts.";
+            return RedirectToAction(nameof(Onboarding));
+        }
+
+        return View(preparedModel);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
+    [HttpGet("search/players")]
+    public async Task<IActionResult> SearchPlayers(
+        [FromQuery] SearchPlayersPageModel model,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(SearchPlayers)) });
+        }
+
+        if (Request.Query.Count == 0 && string.IsNullOrWhiteSpace(model.OriginZipCode))
+        {
+            model.OriginZipCode = user.ZipCode;
+        }
+
+        var preparedModel = await BuildSearchPlayersPageModelAsync(user, model, cancellationToken);
+        if (!preparedModel.CanSearchPlayers)
+        {
+            TempData["StatusMessage"] = "Search Players is available to team representative accounts.";
+            return RedirectToAction(nameof(Onboarding));
+        }
+
+        return View(preparedModel);
     }
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
@@ -4281,6 +4346,1083 @@ public sealed class AccountController(
             && string.Equals(currentUser.Email, model.Email, StringComparison.OrdinalIgnoreCase);
 
         return model;
+    }
+
+    private async Task<SearchTeamItemsPageModel> BuildSearchTeamItemsPageModelAsync(
+        User user,
+        SearchTeamItemsPageModel model,
+        CancellationToken cancellationToken)
+    {
+        var entitlements = await entitlementService.GetEntitlementsAsync(user.Id, cancellationToken);
+        var roles = entitlements?.AccountTypes ?? await GetCanonicalPublicRolesAsync(user);
+        var featureCodes = entitlements?.FeatureCodes ?? [];
+        var hasPlayerParentAccess = roles.Any(TryOutSpotRoles.IsPlayerParentRole)
+            || featureCodes.Contains(TryOutSpotFeatureCodes.BrowseOpportunities, StringComparer.Ordinal);
+        var hasAdvancedOpportunitySearch = featureCodes.Contains(
+            TryOutSpotFeatureCodes.AdvancedOpportunitySearch,
+            StringComparer.Ordinal);
+        var maxRadiusMiles = hasAdvancedOpportunitySearch
+            ? ZipRadiusSearchService.MaxRadiusMiles
+            : FreeSearchMaxRadiusMiles;
+
+        NormalizeSearchTeamItemsModel(model);
+        model.CanSearchTeamItems = hasPlayerParentAccess;
+        model.HasAdvancedOpportunitySearch = hasAdvancedOpportunitySearch;
+        model.CanUseOpportunityTypeFilters = hasAdvancedOpportunitySearch;
+        model.CanUseCompetitionLevelFilter = hasAdvancedOpportunitySearch;
+        model.CanUseExpandedRadius = hasAdvancedOpportunitySearch;
+        model.MaxRadiusMiles = maxRadiusMiles;
+        model.AvailableSports = await BuildSportSelectionItemsAsync(model.SportId, cancellationToken);
+
+        var normalizedType = ResolveOpportunityTypeFilter(model, hasAdvancedOpportunitySearch);
+        model.AvailableOpportunityTypes = BuildOpportunityTypeSearchOptions(model.Type, hasAdvancedOpportunitySearch);
+        model.AvailableRadiusOptions = BuildRadiusSearchOptions(model.RadiusMiles, maxRadiusMiles);
+
+        if (!hasPlayerParentAccess)
+        {
+            return model;
+        }
+
+        if (model.EventDateFrom.HasValue
+            && model.EventDateTo.HasValue
+            && model.EventDateFrom.Value > model.EventDateTo.Value)
+        {
+            ModelState.AddModelError(
+                nameof(SearchTeamItemsPageModel.EventDateFrom),
+                "Start date cannot be after end date.");
+        }
+
+        if (!hasAdvancedOpportunitySearch && !string.IsNullOrWhiteSpace(model.CompetitionLevel))
+        {
+            model.CompetitionLevelFilterIgnored = true;
+            model.CompetitionLevel = null;
+        }
+
+        var zipRadius = await ResolveSearchZipRadiusAsync(
+            model.OriginZipCode,
+            model.RadiusMiles,
+            maxRadiusMiles,
+            nameof(SearchTeamItemsPageModel.OriginZipCode),
+            constrained: () => model.RadiusWasConstrained = true,
+            cancellationToken);
+        model.SearchOriginZipCode = zipRadius?.OriginZipCode;
+        model.SearchRadiusMiles = zipRadius?.RadiusMiles;
+        if (zipRadius is not null)
+        {
+            model.OriginZipCode = zipRadius.OriginZipCode;
+            model.RadiusMiles = zipRadius.RadiusMiles;
+            model.AvailableRadiusOptions = BuildRadiusSearchOptions(model.RadiusMiles, maxRadiusMiles);
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return model;
+        }
+
+        var normalizedSearch = NormalizeOptional(model.Q);
+        var query = BuildTeamItemSearchQuery(
+            normalizedSearch,
+            model.SportId,
+            normalizedType,
+            model.AgeGroup,
+            model.CompetitionLevel,
+            model.EventDateFrom,
+            model.EventDateTo,
+            model.City,
+            model.State,
+            zipRadius?.ZipCodes,
+            hasAdvancedOpportunitySearch);
+
+        model.TotalCount = await query.CountAsync(cancellationToken);
+        model.TotalPages = Math.Max(1, (int)Math.Ceiling(model.TotalCount / (double)model.PageSize));
+        if (model.Page > model.TotalPages)
+        {
+            model.Page = model.TotalPages;
+        }
+
+        var rows = await ApplyTeamItemSearchOrdering(
+                ProjectTeamItemSearchRows(query, normalizedSearch, zipRadius, user.Id),
+                hasSearch: !string.IsNullOrWhiteSpace(normalizedSearch),
+                hasRadius: zipRadius is not null)
+            .Skip((model.Page - 1) * model.PageSize)
+            .Take(model.PageSize)
+            .ToArrayAsync(cancellationToken);
+        model.Results = rows
+            .Select(row => ToTeamItemSearchResult(row, zipRadius?.DistanceByZipCode))
+            .ToArray();
+
+        if (zipRadius is not null)
+        {
+            model.RadiusSuggestions = await BuildTeamItemRadiusSuggestionsAsync(
+                user.Id,
+                normalizedSearch,
+                model,
+                normalizedType,
+                hasAdvancedOpportunitySearch,
+                zipRadius,
+                maxRadiusMiles,
+                cancellationToken);
+        }
+
+        return model;
+    }
+
+    private async Task<SearchPlayersPageModel> BuildSearchPlayersPageModelAsync(
+        User user,
+        SearchPlayersPageModel model,
+        CancellationToken cancellationToken)
+    {
+        var entitlements = await entitlementService.GetEntitlementsAsync(user.Id, cancellationToken);
+        var roles = entitlements?.AccountTypes ?? await GetCanonicalPublicRolesAsync(user);
+        var featureCodes = entitlements?.FeatureCodes ?? [];
+        var hasTeamAccess = roles.Any(TryOutSpotRoles.IsTeamBundleRole)
+            || featureCodes.Contains(TryOutSpotFeatureCodes.BasicPlayerSearch, StringComparer.Ordinal)
+            || featureCodes.Contains(TryOutSpotFeatureCodes.AdvancedPlayerSearch, StringComparer.Ordinal);
+        var hasAdvancedPlayerSearch = featureCodes.Contains(
+            TryOutSpotFeatureCodes.AdvancedPlayerSearch,
+            StringComparer.Ordinal);
+        var maxRadiusMiles = hasAdvancedPlayerSearch
+            ? ZipRadiusSearchService.MaxRadiusMiles
+            : FreeSearchMaxRadiusMiles;
+
+        NormalizeSearchPlayersModel(model);
+        model.CanSearchPlayers = hasTeamAccess;
+        model.HasAdvancedPlayerSearch = hasAdvancedPlayerSearch;
+        model.CanUseSkillLevelFilter = hasAdvancedPlayerSearch;
+        model.CanUseExpandedRadius = hasAdvancedPlayerSearch;
+        model.MaxRadiusMiles = maxRadiusMiles;
+        model.AvailableSports = await BuildSportSelectionItemsAsync(model.SportId, cancellationToken);
+
+        var normalizedListingType = ResolvePlayerListingTypeFilter(model);
+        model.AvailableListingTypes = BuildPlayerListingTypeSearchOptions(model.ListingType);
+        model.AvailableRadiusOptions = BuildRadiusSearchOptions(model.RadiusMiles, maxRadiusMiles);
+
+        if (!hasTeamAccess)
+        {
+            return model;
+        }
+
+        if (model.MinAge.HasValue && model.MaxAge.HasValue && model.MinAge.Value > model.MaxAge.Value)
+        {
+            ModelState.AddModelError(
+                nameof(SearchPlayersPageModel.MinAge),
+                "Minimum age cannot exceed maximum age.");
+        }
+
+        if (model.MinPrice.HasValue && model.MaxPrice.HasValue && model.MinPrice.Value > model.MaxPrice.Value)
+        {
+            ModelState.AddModelError(
+                nameof(SearchPlayersPageModel.MinPrice),
+                "Minimum price cannot exceed maximum price.");
+        }
+
+        if (!hasAdvancedPlayerSearch && !string.IsNullOrWhiteSpace(model.SkillLevel))
+        {
+            model.SkillLevelFilterIgnored = true;
+            model.SkillLevel = null;
+        }
+
+        var zipRadius = await ResolveSearchZipRadiusAsync(
+            model.OriginZipCode,
+            model.RadiusMiles,
+            maxRadiusMiles,
+            nameof(SearchPlayersPageModel.OriginZipCode),
+            constrained: () => model.RadiusWasConstrained = true,
+            cancellationToken);
+        model.SearchOriginZipCode = zipRadius?.OriginZipCode;
+        model.SearchRadiusMiles = zipRadius?.RadiusMiles;
+        if (zipRadius is not null)
+        {
+            model.OriginZipCode = zipRadius.OriginZipCode;
+            model.RadiusMiles = zipRadius.RadiusMiles;
+            model.AvailableRadiusOptions = BuildRadiusSearchOptions(model.RadiusMiles, maxRadiusMiles);
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return model;
+        }
+
+        var normalizedSearch = NormalizeOptional(model.Q);
+        var query = BuildPlayerSearchQuery(
+            normalizedSearch,
+            normalizedListingType,
+            model.SportId,
+            model.MinAge,
+            model.MaxAge,
+            model.SkillLevel,
+            model.City,
+            model.State,
+            model.MinPrice,
+            model.MaxPrice,
+            zipRadius?.ZipCodes);
+
+        model.TotalCount = await query.CountAsync(cancellationToken);
+        model.TotalPages = Math.Max(1, (int)Math.Ceiling(model.TotalCount / (double)model.PageSize));
+        if (model.Page > model.TotalPages)
+        {
+            model.Page = model.TotalPages;
+        }
+
+        var rows = await ApplyPlayerSearchOrdering(
+                ProjectPlayerSearchRows(query, normalizedSearch, zipRadius, user.Id),
+                hasSearch: !string.IsNullOrWhiteSpace(normalizedSearch),
+                hasRadius: zipRadius is not null)
+            .Skip((model.Page - 1) * model.PageSize)
+            .Take(model.PageSize)
+            .ToArrayAsync(cancellationToken);
+        model.Results = rows
+            .Select(row => ToPlayerSearchResult(row, zipRadius?.DistanceByZipCode))
+            .ToArray();
+
+        if (zipRadius is not null)
+        {
+            model.RadiusSuggestions = await BuildPlayerRadiusSuggestionsAsync(
+                user.Id,
+                normalizedSearch,
+                model,
+                normalizedListingType,
+                zipRadius,
+                maxRadiusMiles,
+                cancellationToken);
+        }
+
+        return model;
+    }
+
+    private static void NormalizeSearchTeamItemsModel(SearchTeamItemsPageModel model)
+    {
+        model.Q = NormalizeOptional(model.Q);
+        model.Type = NormalizeOptional(model.Type) ?? AllSearchFilterValue;
+        model.AgeGroup = NormalizeOptional(model.AgeGroup);
+        model.CompetitionLevel = NormalizeOptional(model.CompetitionLevel);
+        model.OriginZipCode = NormalizeOptional(model.OriginZipCode);
+        model.City = NormalizeOptional(model.City);
+        model.State = NormalizeState(model.State);
+        model.Page = Math.Max(model.Page, 1);
+        model.PageSize = NormalizeSearchPageSize(model.PageSize);
+    }
+
+    private static void NormalizeSearchPlayersModel(SearchPlayersPageModel model)
+    {
+        model.Q = NormalizeOptional(model.Q);
+        model.ListingType = NormalizeOptional(model.ListingType) ?? AllSearchFilterValue;
+        model.SkillLevel = NormalizeOptional(model.SkillLevel);
+        model.OriginZipCode = NormalizeOptional(model.OriginZipCode);
+        model.City = NormalizeOptional(model.City);
+        model.State = NormalizeState(model.State);
+        model.Page = Math.Max(model.Page, 1);
+        model.PageSize = NormalizeSearchPageSize(model.PageSize);
+    }
+
+    private string? ResolveOpportunityTypeFilter(
+        SearchTeamItemsPageModel model,
+        bool hasAdvancedOpportunitySearch)
+    {
+        var normalizedType = NormalizeSearchOptionCode(model.Type);
+        if (!hasAdvancedOpportunitySearch)
+        {
+            if (!string.Equals(normalizedType, "tryout", StringComparison.Ordinal))
+            {
+                model.TypeFilterConstrained = true;
+            }
+
+            model.Type = "tryout";
+            return "tryout";
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedType)
+            || string.Equals(normalizedType, AllSearchFilterValue, StringComparison.Ordinal))
+        {
+            model.Type = AllSearchFilterValue;
+            return null;
+        }
+
+        if (!TeamOpportunityTypeOptions.Contains(normalizedType, StringComparer.Ordinal))
+        {
+            ModelState.AddModelError(
+                nameof(SearchTeamItemsPageModel.Type),
+                "Choose one of the supported opportunity types.");
+            model.Type = AllSearchFilterValue;
+            return null;
+        }
+
+        model.Type = normalizedType;
+        return normalizedType;
+    }
+
+    private string? ResolvePlayerListingTypeFilter(SearchPlayersPageModel model)
+    {
+        var normalizedListingType = NormalizeSearchOptionCode(model.ListingType);
+        if (string.IsNullOrWhiteSpace(normalizedListingType)
+            || string.Equals(normalizedListingType, AllSearchFilterValue, StringComparison.Ordinal))
+        {
+            model.ListingType = AllSearchFilterValue;
+            return null;
+        }
+
+        var supportedListingType = NormalizePlayerListingType(
+            normalizedListingType,
+            nameof(SearchPlayersPageModel.ListingType));
+        if (supportedListingType is null)
+        {
+            model.ListingType = AllSearchFilterValue;
+            return null;
+        }
+
+        model.ListingType = supportedListingType;
+        return supportedListingType;
+    }
+
+    private async Task<ZipRadiusSearchResult?> ResolveSearchZipRadiusAsync(
+        string? originZipCode,
+        int? radiusMiles,
+        int maxRadiusMiles,
+        string originZipCodeModelStateKey,
+        Action constrained,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(originZipCode))
+        {
+            return null;
+        }
+
+        var normalizedOriginZipCode = zipRadiusSearchService.NormalizeZipCode(originZipCode);
+        if (normalizedOriginZipCode is null)
+        {
+            ModelState.AddModelError(originZipCodeModelStateKey, "Enter a valid 5-digit ZIP code.");
+            return null;
+        }
+
+        var normalizedRadiusMiles = zipRadiusSearchService.ClampRadiusMiles(radiusMiles);
+        if (normalizedRadiusMiles > maxRadiusMiles)
+        {
+            normalizedRadiusMiles = maxRadiusMiles;
+            constrained();
+        }
+
+        var zipRadiusResult = await zipRadiusSearchService.ResolveZipCodesWithinRadiusAsync(
+            normalizedOriginZipCode,
+            normalizedRadiusMiles,
+            cancellationToken);
+        if (zipRadiusResult is null)
+        {
+            ModelState.AddModelError(
+                originZipCodeModelStateKey,
+                "That ZIP code is not in the geographic catalog yet.");
+        }
+
+        return zipRadiusResult;
+    }
+
+    private IQueryable<Opportunity> BuildTeamItemSearchQuery(
+        string? normalizedSearch,
+        Guid? sportId,
+        string? normalizedType,
+        string? ageGroup,
+        string? competitionLevel,
+        DateTime? eventDateFrom,
+        DateTime? eventDateTo,
+        string? city,
+        string? state,
+        IReadOnlyCollection<string>? zipCodes,
+        bool hasAdvancedOpportunitySearch)
+    {
+        var now = DateTime.UtcNow;
+        var query = dbContext.Opportunities
+            .AsNoTracking()
+            .Where(opportunity => opportunity.IsActive)
+            .Where(opportunity => opportunity.IsPublished)
+            .Where(opportunity =>
+                (opportunity.ListingEndDate ?? opportunity.ExpiresAt) == null
+                || (opportunity.ListingEndDate ?? opportunity.ExpiresAt) > now)
+            .Where(opportunity => opportunity.Team.IsActive)
+            .Where(opportunity => opportunity.Team.IsSearchable);
+
+        if (!hasAdvancedOpportunitySearch)
+        {
+            query = query.Where(opportunity => opportunity.ListingStartDate == null || opportunity.ListingStartDate <= now);
+        }
+
+        if (sportId.HasValue)
+        {
+            query = query.Where(opportunity => opportunity.SportId == sportId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedType))
+        {
+            query = query.Where(opportunity => opportunity.Type.ToLower() == normalizedType);
+        }
+
+        if (!string.IsNullOrWhiteSpace(ageGroup))
+        {
+            var ageGroupSearch = ageGroup.ToLowerInvariant();
+            query = query.Where(opportunity =>
+                opportunity.AgeGroup != null
+                && opportunity.AgeGroup.ToLower().Contains(ageGroupSearch));
+        }
+
+        if (hasAdvancedOpportunitySearch && !string.IsNullOrWhiteSpace(competitionLevel))
+        {
+            var levelSearch = competitionLevel.ToLowerInvariant();
+            query = query.Where(opportunity =>
+                opportunity.CompetitionLevel != null
+                && opportunity.CompetitionLevel.ToLower().Contains(levelSearch));
+        }
+
+        var normalizedEventDateFrom = NormalizeUtc(eventDateFrom);
+        if (normalizedEventDateFrom.HasValue)
+        {
+            query = query.Where(opportunity =>
+                opportunity.EventDate != null
+                && opportunity.EventDate >= normalizedEventDateFrom.Value);
+        }
+
+        var normalizedEventDateTo = NormalizeUtc(eventDateTo);
+        if (normalizedEventDateTo.HasValue)
+        {
+            query = query.Where(opportunity =>
+                opportunity.EventDate != null
+                && opportunity.EventDate <= normalizedEventDateTo.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            var citySearch = city.ToLowerInvariant();
+            query = query.Where(opportunity =>
+                (opportunity.City != null && opportunity.City.ToLower().Contains(citySearch))
+                || (opportunity.City == null && opportunity.Team.City != null && opportunity.Team.City.ToLower().Contains(citySearch)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            query = query.Where(opportunity =>
+                opportunity.State == state
+                || (opportunity.State == null && opportunity.Team.State == state));
+        }
+
+        if (zipCodes is { Count: > 0 })
+        {
+            query = query.Where(opportunity =>
+                (opportunity.ZipCode != null && zipCodes.Contains(opportunity.ZipCode))
+                || (opportunity.ZipCode == null
+                    && opportunity.Team.ZipCode != null
+                    && zipCodes.Contains(opportunity.Team.ZipCode)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedSearch))
+        {
+            var search = normalizedSearch.ToLowerInvariant();
+            query = query.Where(opportunity =>
+                opportunity.Title.ToLower().Contains(search)
+                || (opportunity.Description != null && opportunity.Description.ToLower().Contains(search))
+                || (opportunity.City != null && opportunity.City.ToLower().Contains(search))
+                || (opportunity.State != null && opportunity.State.ToLower().Contains(search))
+                || (opportunity.ZipCode != null && opportunity.ZipCode.Contains(search))
+                || opportunity.Team.Name.ToLower().Contains(search)
+                || opportunity.Sport.Name.ToLower().Contains(search)
+                || (opportunity.Team.Organization != null && opportunity.Team.Organization.Name.ToLower().Contains(search)));
+        }
+
+        return query;
+    }
+
+    private IQueryable<PlayerListing> BuildPlayerSearchQuery(
+        string? normalizedSearch,
+        string? normalizedListingType,
+        Guid? sportId,
+        int? minAge,
+        int? maxAge,
+        string? skillLevel,
+        string? city,
+        string? state,
+        decimal? minPrice,
+        decimal? maxPrice,
+        IReadOnlyCollection<string>? zipCodes)
+    {
+        var now = DateTime.UtcNow;
+        var query = dbContext.PlayerListings
+            .AsNoTracking()
+            .Where(listing => listing.IsActive)
+            .Where(listing => listing.IsPublished)
+            .Where(listing => listing.IsSearchable)
+            .Where(listing => listing.ExpiresAt == null || listing.ExpiresAt > now);
+
+        if (!string.IsNullOrWhiteSpace(normalizedListingType))
+        {
+            query = query.Where(listing => listing.ListingType == normalizedListingType);
+        }
+
+        if (sportId.HasValue)
+        {
+            query = query.Where(listing => listing.SportId == sportId.Value);
+        }
+
+        if (minAge.HasValue || maxAge.HasValue)
+        {
+            var today = DateTime.UtcNow.Date;
+            if (minAge.HasValue)
+            {
+                var maxDobForMinAge = today.AddYears(-minAge.Value);
+                query = query.Where(listing =>
+                    listing.Player != null
+                    && listing.Player.DateOfBirth <= maxDobForMinAge);
+            }
+
+            if (maxAge.HasValue)
+            {
+                var minDobForMaxAge = today.AddYears(-(maxAge.Value + 1)).AddDays(1);
+                query = query.Where(listing =>
+                    listing.Player != null
+                    && listing.Player.DateOfBirth >= minDobForMaxAge);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(skillLevel))
+        {
+            var skillLevelSearch = skillLevel.ToLowerInvariant();
+            query = query.Where(listing =>
+                listing.Player != null
+                && listing.Player.PlayerSports.Any(playerSport =>
+                    playerSport.IsActive
+                    && playerSport.SkillLevel != null
+                    && playerSport.SkillLevel.ToLower().Contains(skillLevelSearch)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            var citySearch = city.ToLowerInvariant();
+            query = query.Where(listing => listing.City != null && listing.City.ToLower().Contains(citySearch));
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            query = query.Where(listing => listing.State == state);
+        }
+
+        if (minPrice.HasValue)
+        {
+            query = query.Where(listing => listing.AskingPrice == null || listing.AskingPrice >= minPrice.Value);
+        }
+
+        if (maxPrice.HasValue)
+        {
+            query = query.Where(listing => listing.AskingPrice == null || listing.AskingPrice <= maxPrice.Value);
+        }
+
+        if (zipCodes is { Count: > 0 })
+        {
+            query = query.Where(listing =>
+                listing.ZipCode != null
+                && zipCodes.Contains(listing.ZipCode));
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedSearch))
+        {
+            var search = normalizedSearch.ToLowerInvariant();
+            query = query.Where(listing =>
+                listing.Title.ToLower().Contains(search)
+                || (listing.Description != null && listing.Description.ToLower().Contains(search))
+                || (listing.City != null && listing.City.ToLower().Contains(search))
+                || (listing.State != null && listing.State.ToLower().Contains(search))
+                || (listing.ZipCode != null && listing.ZipCode.Contains(search))
+                || (listing.Player != null && listing.Player.FirstName.ToLower().Contains(search))
+                || (listing.Player != null && listing.Player.LastName.ToLower().Contains(search))
+                || (listing.Sport != null && listing.Sport.Name.ToLower().Contains(search)));
+        }
+
+        return query;
+    }
+
+    private IQueryable<TeamItemSearchProjection> ProjectTeamItemSearchRows(
+        IQueryable<Opportunity> query,
+        string? normalizedSearch,
+        ZipRadiusSearchResult? zipRadius,
+        Guid viewerUserId)
+    {
+        var search = normalizedSearch?.ToLowerInvariant();
+        var hasRadius = zipRadius is not null;
+        var originLatitude = zipRadius?.OriginLatitude ?? 0d;
+        var originLongitude = zipRadius?.OriginLongitude ?? 0d;
+        var longitudeScale = hasRadius
+            ? Math.Cos(originLatitude * Math.PI / 180d)
+            : 1d;
+
+        return from opportunity in query
+               join zip in dbContext.ZipCodeGeographies.AsNoTracking()
+                   on (opportunity.ZipCode ?? opportunity.Team.ZipCode) equals zip.ZipCode into zipJoin
+               from zip in zipJoin.DefaultIfEmpty()
+               select new TeamItemSearchProjection(
+                   opportunity.Id,
+                   opportunity.TeamId,
+                   opportunity.Title,
+                   opportunity.Type,
+                   opportunity.Team.Name,
+                   opportunity.Team.Organization == null ? null : opportunity.Team.Organization.Name,
+                   opportunity.Sport.Name,
+                   opportunity.Description,
+                   opportunity.CompetitionLevel,
+                   opportunity.AgeGroup,
+                   opportunity.RegistrationFee,
+                   opportunity.RegistrationDeadline,
+                   opportunity.EventDate,
+                   opportunity.EventEndDate,
+                   opportunity.City ?? opportunity.Team.City,
+                   opportunity.State ?? opportunity.Team.State,
+                   opportunity.ZipCode ?? opportunity.Team.ZipCode,
+                   opportunity.PublishedAt,
+                   hasRadius && zip != null
+                       ? (((double)zip.Latitude - originLatitude) * ((double)zip.Latitude - originLatitude))
+                           + ((((double)zip.Longitude - originLongitude) * longitudeScale)
+                               * (((double)zip.Longitude - originLongitude) * longitudeScale))
+                       : null,
+                   dbContext.UserFavorites.Any(favorite =>
+                       favorite.UserId == viewerUserId
+                       && favorite.OpportunityId == opportunity.Id),
+                   search == null
+                       ? 0
+                       : (opportunity.Title.ToLower().Contains(search) ? 10 : 0)
+                           + (opportunity.Team.Name.ToLower().Contains(search) ? 7 : 0)
+                           + (opportunity.Sport.Name.ToLower().Contains(search) ? 5 : 0)
+                           + (opportunity.Description != null && opportunity.Description.ToLower().Contains(search) ? 4 : 0)
+                           + (opportunity.City != null && opportunity.City.ToLower().Contains(search) ? 2 : 0)
+                           + (opportunity.State != null && opportunity.State.ToLower().Contains(search) ? 1 : 0)
+                           + (opportunity.ZipCode != null && opportunity.ZipCode.Contains(search) ? 1 : 0));
+    }
+
+    private IQueryable<PlayerSearchProjection> ProjectPlayerSearchRows(
+        IQueryable<PlayerListing> query,
+        string? normalizedSearch,
+        ZipRadiusSearchResult? zipRadius,
+        Guid viewerUserId)
+    {
+        var search = normalizedSearch?.ToLowerInvariant();
+        var hasRadius = zipRadius is not null;
+        var originLatitude = zipRadius?.OriginLatitude ?? 0d;
+        var originLongitude = zipRadius?.OriginLongitude ?? 0d;
+        var longitudeScale = hasRadius
+            ? Math.Cos(originLatitude * Math.PI / 180d)
+            : 1d;
+        var entitlingStatusActive = "active";
+        var entitlingStatusTrialing = "trialing";
+
+        return from listing in query
+               join zip in dbContext.ZipCodeGeographies.AsNoTracking()
+                   on listing.ZipCode equals zip.ZipCode into zipJoin
+               from zip in zipJoin.DefaultIfEmpty()
+               select new PlayerSearchProjection(
+                   listing.Id,
+                   listing.ListingType,
+                   listing.Title,
+                   listing.Description,
+                   listing.PlayerId,
+                   listing.Player == null ? null : (listing.Player.FirstName + " " + listing.Player.LastName).Trim(),
+                   listing.Player == null ? null : listing.Player.DateOfBirth,
+                   listing.Sport == null ? null : listing.Sport.Name,
+                   listing.AskingPrice,
+                   listing.Currency,
+                   listing.Condition,
+                   listing.City,
+                   listing.State,
+                   listing.ZipCode,
+                   listing.PublishedAt,
+                   hasRadius && zip != null
+                       ? (((double)zip.Latitude - originLatitude) * ((double)zip.Latitude - originLatitude))
+                           + ((((double)zip.Longitude - originLongitude) * longitudeScale)
+                               * (((double)zip.Longitude - originLongitude) * longitudeScale))
+                       : null,
+                   dbContext.Subscriptions.Any(subscription =>
+                       subscription.UserId == listing.UserId
+                       && (subscription.Status == entitlingStatusActive || subscription.Status == entitlingStatusTrialing)
+                       && (subscription.PlanType == TryOutSpotPlanCodes.PremiumPlayer || subscription.IsElite)),
+                   dbContext.UserFavorites.Any(favorite =>
+                       favorite.UserId == viewerUserId
+                       && favorite.PlayerListingId == listing.Id),
+                   search == null
+                       ? 0
+                       : (listing.Title.ToLower().Contains(search) ? 10 : 0)
+                           + (listing.Player != null && listing.Player.LastName.ToLower().Contains(search) ? 8 : 0)
+                           + (listing.Player != null && listing.Player.FirstName.ToLower().Contains(search) ? 8 : 0)
+                           + (listing.Sport != null && listing.Sport.Name.ToLower().Contains(search) ? 5 : 0)
+                           + (listing.Description != null && listing.Description.ToLower().Contains(search) ? 4 : 0)
+                           + (listing.City != null && listing.City.ToLower().Contains(search) ? 2 : 0)
+                           + (listing.State != null && listing.State.ToLower().Contains(search) ? 1 : 0)
+                           + (listing.ZipCode != null && listing.ZipCode.Contains(search) ? 1 : 0));
+    }
+
+    private static IOrderedQueryable<TeamItemSearchProjection> ApplyTeamItemSearchOrdering(
+        IQueryable<TeamItemSearchProjection> rows,
+        bool hasSearch,
+        bool hasRadius)
+    {
+        IOrderedQueryable<TeamItemSearchProjection> ordered = hasSearch
+            ? rows.OrderByDescending(row => row.RelevanceScore)
+            : hasRadius
+                ? rows.OrderBy(row => row.DistanceSort ?? 999999d)
+                : rows.OrderBy(row => row.EventDate ?? DateTime.MaxValue);
+
+        if (hasSearch && hasRadius)
+        {
+            ordered = ordered.ThenBy(row => row.DistanceSort ?? 999999d);
+        }
+
+        return ordered
+            .ThenBy(row => row.EventDate ?? DateTime.MaxValue)
+            .ThenByDescending(row => row.PublishedAt);
+    }
+
+    private static IOrderedQueryable<PlayerSearchProjection> ApplyPlayerSearchOrdering(
+        IQueryable<PlayerSearchProjection> rows,
+        bool hasSearch,
+        bool hasRadius)
+    {
+        IOrderedQueryable<PlayerSearchProjection> ordered = hasSearch
+            ? rows.OrderByDescending(row => row.RelevanceScore)
+            : rows.OrderByDescending(row => row.IsPriorityListing);
+
+        if (hasSearch)
+        {
+            ordered = ordered.ThenByDescending(row => row.IsPriorityListing);
+        }
+
+        if (hasRadius)
+        {
+            ordered = ordered.ThenBy(row => row.DistanceSort ?? 999999d);
+        }
+
+        return ordered.ThenByDescending(row => row.PublishedAt);
+    }
+
+    private async Task<IReadOnlyCollection<TeamItemSearchSuggestionGroupPageItem>> BuildTeamItemRadiusSuggestionsAsync(
+        Guid viewerUserId,
+        string? normalizedSearch,
+        SearchTeamItemsPageModel model,
+        string? normalizedType,
+        bool hasAdvancedOpportunitySearch,
+        ZipRadiusSearchResult currentRadius,
+        int maxRadiusMiles,
+        CancellationToken cancellationToken)
+    {
+        var suggestions = new List<TeamItemSearchSuggestionGroupPageItem>();
+        var alreadyCoveredZipCodes = currentRadius.ZipCodes.ToHashSet(StringComparer.Ordinal);
+        foreach (var radiusMiles in GetSearchSuggestionRadii(currentRadius.RadiusMiles, maxRadiusMiles))
+        {
+            var expandedRadius = await zipRadiusSearchService.ResolveZipCodesWithinRadiusAsync(
+                currentRadius.OriginZipCode,
+                radiusMiles,
+                cancellationToken);
+            if (expandedRadius is null)
+            {
+                continue;
+            }
+
+            var additionalZipCodes = expandedRadius.ZipCodes
+                .Where(zipCode => !alreadyCoveredZipCodes.Contains(zipCode))
+                .ToArray();
+            alreadyCoveredZipCodes.UnionWith(expandedRadius.ZipCodes);
+            if (additionalZipCodes.Length == 0)
+            {
+                continue;
+            }
+
+            var query = BuildTeamItemSearchQuery(
+                normalizedSearch,
+                model.SportId,
+                normalizedType,
+                model.AgeGroup,
+                model.CompetitionLevel,
+                model.EventDateFrom,
+                model.EventDateTo,
+                model.City,
+                model.State,
+                additionalZipCodes,
+                hasAdvancedOpportunitySearch);
+            var rows = await ApplyTeamItemSearchOrdering(
+                    ProjectTeamItemSearchRows(query, normalizedSearch, expandedRadius, viewerUserId),
+                    hasSearch: !string.IsNullOrWhiteSpace(normalizedSearch),
+                    hasRadius: true)
+                .Take(SearchSuggestionResultLimit)
+                .ToArrayAsync(cancellationToken);
+            if (rows.Length > 0)
+            {
+                suggestions.Add(new TeamItemSearchSuggestionGroupPageItem(
+                    radiusMiles,
+                    rows.Select(row => ToTeamItemSearchResult(row, expandedRadius.DistanceByZipCode)).ToArray()));
+            }
+        }
+
+        return suggestions;
+    }
+
+    private async Task<IReadOnlyCollection<PlayerSearchSuggestionGroupPageItem>> BuildPlayerRadiusSuggestionsAsync(
+        Guid viewerUserId,
+        string? normalizedSearch,
+        SearchPlayersPageModel model,
+        string? normalizedListingType,
+        ZipRadiusSearchResult currentRadius,
+        int maxRadiusMiles,
+        CancellationToken cancellationToken)
+    {
+        var suggestions = new List<PlayerSearchSuggestionGroupPageItem>();
+        var alreadyCoveredZipCodes = currentRadius.ZipCodes.ToHashSet(StringComparer.Ordinal);
+        foreach (var radiusMiles in GetSearchSuggestionRadii(currentRadius.RadiusMiles, maxRadiusMiles))
+        {
+            var expandedRadius = await zipRadiusSearchService.ResolveZipCodesWithinRadiusAsync(
+                currentRadius.OriginZipCode,
+                radiusMiles,
+                cancellationToken);
+            if (expandedRadius is null)
+            {
+                continue;
+            }
+
+            var additionalZipCodes = expandedRadius.ZipCodes
+                .Where(zipCode => !alreadyCoveredZipCodes.Contains(zipCode))
+                .ToArray();
+            alreadyCoveredZipCodes.UnionWith(expandedRadius.ZipCodes);
+            if (additionalZipCodes.Length == 0)
+            {
+                continue;
+            }
+
+            var query = BuildPlayerSearchQuery(
+                normalizedSearch,
+                normalizedListingType,
+                model.SportId,
+                model.MinAge,
+                model.MaxAge,
+                model.SkillLevel,
+                model.City,
+                model.State,
+                model.MinPrice,
+                model.MaxPrice,
+                additionalZipCodes);
+            var rows = await ApplyPlayerSearchOrdering(
+                    ProjectPlayerSearchRows(query, normalizedSearch, expandedRadius, viewerUserId),
+                    hasSearch: !string.IsNullOrWhiteSpace(normalizedSearch),
+                    hasRadius: true)
+                .Take(SearchSuggestionResultLimit)
+                .ToArrayAsync(cancellationToken);
+            if (rows.Length > 0)
+            {
+                suggestions.Add(new PlayerSearchSuggestionGroupPageItem(
+                    radiusMiles,
+                    rows.Select(row => ToPlayerSearchResult(row, expandedRadius.DistanceByZipCode)).ToArray()));
+            }
+        }
+
+        return suggestions;
+    }
+
+    private async Task<IReadOnlyCollection<SportSelectionPageItem>> BuildSportSelectionItemsAsync(
+        Guid? selectedSportId,
+        CancellationToken cancellationToken)
+    {
+        return await dbContext.Sports
+            .AsNoTracking()
+            .Where(sport => sport.IsActive)
+            .OrderBy(sport => sport.Name)
+            .Select(sport => new SportSelectionPageItem(
+                sport.Id,
+                sport.Name,
+                selectedSportId.HasValue && selectedSportId.Value == sport.Id))
+            .ToArrayAsync(cancellationToken);
+    }
+
+    private static IReadOnlyCollection<SearchFilterOptionPageItem> BuildOpportunityTypeSearchOptions(
+        string? selectedType,
+        bool hasAdvancedOpportunitySearch)
+    {
+        var normalizedSelectedType = NormalizeSearchOptionCode(selectedType) ?? AllSearchFilterValue;
+        var options = new List<SearchFilterOptionPageItem>
+        {
+            new(
+                AllSearchFilterValue,
+                "All types",
+                string.Equals(normalizedSelectedType, AllSearchFilterValue, StringComparison.Ordinal),
+                hasAdvancedOpportunitySearch,
+                hasAdvancedOpportunitySearch ? null : "Premium Player unlocks all opportunity types.")
+        };
+
+        options.AddRange(TeamOpportunityTypeOptions.Select(type => new SearchFilterOptionPageItem(
+            type,
+            FormatSearchOptionLabel(type),
+            string.Equals(normalizedSelectedType, type, StringComparison.Ordinal),
+            hasAdvancedOpportunitySearch || string.Equals(type, "tryout", StringComparison.Ordinal),
+            hasAdvancedOpportunitySearch || string.Equals(type, "tryout", StringComparison.Ordinal)
+                ? null
+                : "Premium Player unlocks this filter.")));
+
+        return options;
+    }
+
+    private static IReadOnlyCollection<SearchFilterOptionPageItem> BuildPlayerListingTypeSearchOptions(
+        string? selectedListingType)
+    {
+        var normalizedSelectedListingType = NormalizeSearchOptionCode(selectedListingType) ?? AllSearchFilterValue;
+        var options = new List<SearchFilterOptionPageItem>
+        {
+            new(
+                AllSearchFilterValue,
+                "All listing types",
+                string.Equals(normalizedSelectedListingType, AllSearchFilterValue, StringComparison.Ordinal),
+                true)
+        };
+
+        options.AddRange(PlayerListingTypeOptions.Select(option => new SearchFilterOptionPageItem(
+            option.Code,
+            option.Label,
+            string.Equals(normalizedSelectedListingType, option.Code, StringComparison.Ordinal),
+            true)));
+
+        return options;
+    }
+
+    private static IReadOnlyCollection<SearchRadiusOptionPageItem> BuildRadiusSearchOptions(
+        int? selectedRadiusMiles,
+        int maxRadiusMiles)
+    {
+        var selected = selectedRadiusMiles ?? ZipRadiusSearchService.DefaultRadiusMiles;
+        return SearchRadiusOptions
+            .Where(radius => radius <= maxRadiusMiles || radius == selected)
+            .Select(radius => new SearchRadiusOptionPageItem(
+                radius,
+                $"{radius} miles",
+                radius == selected,
+                radius <= maxRadiusMiles))
+            .ToArray();
+    }
+
+    private static IReadOnlyCollection<int> GetSearchSuggestionRadii(int currentRadiusMiles, int maxRadiusMiles)
+    {
+        return SearchSuggestionRadiusMiles
+            .Where(radiusMiles => radiusMiles > currentRadiusMiles && radiusMiles <= maxRadiusMiles)
+            .Take(3)
+            .ToArray();
+    }
+
+    private static TeamItemSearchResultPageItem ToTeamItemSearchResult(
+        TeamItemSearchProjection row,
+        IReadOnlyDictionary<string, double>? distanceByZipCode)
+    {
+        return new TeamItemSearchResultPageItem(
+            row.OpportunityId,
+            row.TeamId,
+            row.Title,
+            row.Type,
+            FormatSearchOptionLabel(row.Type),
+            row.TeamName,
+            row.OrganizationName,
+            row.SportName,
+            row.Description,
+            row.CompetitionLevel,
+            row.AgeGroup,
+            row.RegistrationFee,
+            row.RegistrationDeadline,
+            row.EventDate,
+            row.EventEndDate,
+            row.City,
+            row.State,
+            row.ZipCode,
+            ResolveDistanceMiles(row.ZipCode, distanceByZipCode),
+            row.IsFavorited,
+            row.RelevanceScore);
+    }
+
+    private static PlayerSearchResultPageItem ToPlayerSearchResult(
+        PlayerSearchProjection row,
+        IReadOnlyDictionary<string, double>? distanceByZipCode)
+    {
+        return new PlayerSearchResultPageItem(
+            row.ListingId,
+            row.ListingType,
+            GetPlayerListingTypeLabel(row.ListingType),
+            row.Title,
+            row.Description,
+            row.PlayerId,
+            row.PlayerName,
+            CalculateAge(row.PlayerDateOfBirth),
+            row.SportName,
+            row.AskingPrice,
+            row.Currency,
+            row.Condition,
+            row.City,
+            row.State,
+            row.ZipCode,
+            ResolveDistanceMiles(row.ZipCode, distanceByZipCode),
+            row.IsPriorityListing,
+            row.IsFavorited,
+            row.RelevanceScore);
+    }
+
+    private static int NormalizeSearchPageSize(int pageSize)
+    {
+        if (pageSize <= 0)
+        {
+            return DefaultSearchPageSize;
+        }
+
+        return Math.Clamp(pageSize, 1, MaxSearchPageSize);
+    }
+
+    private static int? CalculateAge(DateTime? dateOfBirth)
+    {
+        if (!dateOfBirth.HasValue)
+        {
+            return null;
+        }
+
+        var today = DateTime.UtcNow.Date;
+        var birthDate = dateOfBirth.Value.Date;
+        var age = today.Year - birthDate.Year;
+        if (birthDate > today.AddYears(-age))
+        {
+            age--;
+        }
+
+        return Math.Max(age, 0);
+    }
+
+    private static double? ResolveDistanceMiles(
+        string? zipCode,
+        IReadOnlyDictionary<string, double>? distanceByZipCode)
+    {
+        if (distanceByZipCode is null || string.IsNullOrWhiteSpace(zipCode))
+        {
+            return null;
+        }
+
+        return distanceByZipCode.TryGetValue(zipCode, out var distanceMiles)
+            ? Math.Round(distanceMiles, 1)
+            : null;
+    }
+
+    private static string? NormalizeSearchOptionCode(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim().Replace("-", "_", StringComparison.Ordinal).Replace(" ", "_", StringComparison.Ordinal).ToLowerInvariant();
+    }
+
+    private static string FormatSearchOptionLabel(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "Item";
+        }
+
+        var normalized = value.Trim().Replace("_", " ", StringComparison.Ordinal).ToLowerInvariant();
+        return normalized switch
+        {
+            "tryout" => "Tryout",
+            "roster opening" => "Roster opening",
+            "pickup player" => "Pickup player",
+            "camp" => "Camp",
+            "clinic" => "Clinic",
+            "tournament" => "Tournament",
+            "private workout" => "Private workout",
+            _ => char.ToUpperInvariant(normalized[0]) + normalized[1..]
+        };
     }
 
     private async Task<OnboardingPageModel> BuildOnboardingPageModelAsync(
@@ -9202,6 +10344,50 @@ public sealed class AccountController(
     {
         return string.Equals(exception.SqlState, PostgresErrorCodes.UndefinedTable, StringComparison.Ordinal);
     }
+
+    private sealed record TeamItemSearchProjection(
+        Guid OpportunityId,
+        Guid TeamId,
+        string Title,
+        string Type,
+        string TeamName,
+        string? OrganizationName,
+        string SportName,
+        string? Description,
+        string? CompetitionLevel,
+        string? AgeGroup,
+        decimal RegistrationFee,
+        DateTime? RegistrationDeadline,
+        DateTime? EventDate,
+        DateTime? EventEndDate,
+        string? City,
+        string? State,
+        string? ZipCode,
+        DateTime? PublishedAt,
+        double? DistanceSort,
+        bool IsFavorited,
+        int RelevanceScore);
+
+    private sealed record PlayerSearchProjection(
+        Guid ListingId,
+        string ListingType,
+        string Title,
+        string? Description,
+        Guid? PlayerId,
+        string? PlayerName,
+        DateTime? PlayerDateOfBirth,
+        string? SportName,
+        decimal? AskingPrice,
+        string? Currency,
+        string? Condition,
+        string? City,
+        string? State,
+        string? ZipCode,
+        DateTime? PublishedAt,
+        double? DistanceSort,
+        bool IsPriorityListing,
+        bool IsFavorited,
+        int RelevanceScore);
 
     private sealed record PlayerListingValidationContext(
         PlayerListingTypeSelectionPageItem? ListingTypeOption,

@@ -828,6 +828,43 @@ body.splash-page {
   background: #ffffff;
 }
 
+.search-page .account-form {
+  gap: 1rem;
+}
+
+.search-suggestion-list {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+}
+
+.search-suggestion-list a {
+  display: grid;
+  gap: 0.1rem;
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  background: #f8fafc;
+  color: #0f172a;
+  text-decoration: none;
+}
+
+.search-suggestion-list a:hover {
+  border-color: #2f6fbb;
+  background: #f0f7ff;
+  color: #0b3f75;
+}
+
+.search-suggestion-list span {
+  color: #64748b;
+  font-size: 0.88rem;
+}
+
+.priority-result {
+  border-color: #f5c451;
+  box-shadow: inset 3px 0 0 #f5c451;
+}
+
 .opportunity-summary-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -1418,6 +1455,30 @@ body.splash-page {
   max-width: 580px;
   line-height: 1.55;
   font-size: 0.98rem;
+}
+
+.start-selling-points {
+  margin-top: 0.75rem;
+}
+
+.start-selling-points h2 {
+  margin: 0 0 0.4rem;
+  color: #f2f7ff;
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.start-selling-points ul {
+  margin: 0;
+  padding-left: 1.15rem;
+  color: #d5e5fb;
+  display: grid;
+  gap: 0.18rem;
+}
+
+.start-selling-points li {
+  line-height: 1.45;
+  font-size: 0.92rem;
 }
 
 .start-actions {

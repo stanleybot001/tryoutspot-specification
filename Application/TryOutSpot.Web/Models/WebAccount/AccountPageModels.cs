@@ -1336,6 +1336,259 @@ public sealed class TeamOpportunityDetailPageModel
     public bool IsFavorited { get; set; }
 }
 
+public sealed class SearchTeamItemsPageModel
+{
+    [MaxLength(200)]
+    [Display(Name = "Keywords")]
+    public string? Q { get; set; }
+
+    [Display(Name = "Sport")]
+    public Guid? SportId { get; set; }
+
+    [MaxLength(50)]
+    [Display(Name = "Type")]
+    public string? Type { get; set; } = "tryout";
+
+    [MaxLength(50)]
+    [Display(Name = "Age group")]
+    public string? AgeGroup { get; set; }
+
+    [MaxLength(100)]
+    [Display(Name = "Competition level")]
+    public string? CompetitionLevel { get; set; }
+
+    [MaxLength(10)]
+    [Display(Name = "ZIP code")]
+    public string? OriginZipCode { get; set; }
+
+    [Range(1, 250)]
+    [Display(Name = "Radius")]
+    public int? RadiusMiles { get; set; } = 25;
+
+    [MaxLength(100)]
+    [Display(Name = "City")]
+    public string? City { get; set; }
+
+    [MaxLength(2)]
+    [Display(Name = "State")]
+    public string? State { get; set; }
+
+    [DataType(DataType.Date)]
+    [Display(Name = "From")]
+    public DateTime? EventDateFrom { get; set; }
+
+    [DataType(DataType.Date)]
+    [Display(Name = "To")]
+    public DateTime? EventDateTo { get; set; }
+
+    public int Page { get; set; } = 1;
+
+    public int PageSize { get; set; } = 20;
+
+    public int TotalCount { get; set; }
+
+    public int TotalPages { get; set; } = 1;
+
+    public bool CanSearchTeamItems { get; set; }
+
+    public bool HasAdvancedOpportunitySearch { get; set; }
+
+    public bool CanUseOpportunityTypeFilters { get; set; }
+
+    public bool CanUseCompetitionLevelFilter { get; set; }
+
+    public bool CanUseExpandedRadius { get; set; }
+
+    public bool TypeFilterConstrained { get; set; }
+
+    public bool CompetitionLevelFilterIgnored { get; set; }
+
+    public bool RadiusWasConstrained { get; set; }
+
+    public int MaxRadiusMiles { get; set; } = 120;
+
+    public int? SearchRadiusMiles { get; set; }
+
+    public string? SearchOriginZipCode { get; set; }
+
+    public IReadOnlyCollection<SportSelectionPageItem> AvailableSports { get; set; } = [];
+
+    public IReadOnlyCollection<SearchFilterOptionPageItem> AvailableOpportunityTypes { get; set; } = [];
+
+    public IReadOnlyCollection<SearchRadiusOptionPageItem> AvailableRadiusOptions { get; set; } = [];
+
+    public IReadOnlyCollection<TeamItemSearchResultPageItem> Results { get; set; } = [];
+
+    public IReadOnlyCollection<TeamItemSearchSuggestionGroupPageItem> RadiusSuggestions { get; set; } = [];
+
+    public bool HasPreviousPage => Page > 1;
+
+    public bool HasNextPage => Page < TotalPages;
+
+    public int FirstItemNumber => TotalCount == 0 ? 0 : ((Page - 1) * PageSize) + 1;
+
+    public int LastItemNumber => Math.Min(Page * PageSize, TotalCount);
+}
+
+public sealed class SearchPlayersPageModel
+{
+    [MaxLength(200)]
+    [Display(Name = "Keywords")]
+    public string? Q { get; set; }
+
+    [MaxLength(50)]
+    [Display(Name = "Listing type")]
+    public string? ListingType { get; set; } = "all";
+
+    [Display(Name = "Sport")]
+    public Guid? SportId { get; set; }
+
+    [Range(0, 100)]
+    [Display(Name = "Min age")]
+    public int? MinAge { get; set; }
+
+    [Range(0, 100)]
+    [Display(Name = "Max age")]
+    public int? MaxAge { get; set; }
+
+    [MaxLength(50)]
+    [Display(Name = "Skill level")]
+    public string? SkillLevel { get; set; }
+
+    [MaxLength(10)]
+    [Display(Name = "ZIP code")]
+    public string? OriginZipCode { get; set; }
+
+    [Range(1, 250)]
+    [Display(Name = "Radius")]
+    public int? RadiusMiles { get; set; } = 25;
+
+    [MaxLength(100)]
+    [Display(Name = "City")]
+    public string? City { get; set; }
+
+    [MaxLength(2)]
+    [Display(Name = "State")]
+    public string? State { get; set; }
+
+    [Range(typeof(decimal), "0", "9999999")]
+    [Display(Name = "Min price")]
+    public decimal? MinPrice { get; set; }
+
+    [Range(typeof(decimal), "0", "9999999")]
+    [Display(Name = "Max price")]
+    public decimal? MaxPrice { get; set; }
+
+    public int Page { get; set; } = 1;
+
+    public int PageSize { get; set; } = 20;
+
+    public int TotalCount { get; set; }
+
+    public int TotalPages { get; set; } = 1;
+
+    public bool CanSearchPlayers { get; set; }
+
+    public bool HasAdvancedPlayerSearch { get; set; }
+
+    public bool CanUseSkillLevelFilter { get; set; }
+
+    public bool CanUseExpandedRadius { get; set; }
+
+    public bool SkillLevelFilterIgnored { get; set; }
+
+    public bool RadiusWasConstrained { get; set; }
+
+    public int MaxRadiusMiles { get; set; } = 120;
+
+    public int? SearchRadiusMiles { get; set; }
+
+    public string? SearchOriginZipCode { get; set; }
+
+    public IReadOnlyCollection<SportSelectionPageItem> AvailableSports { get; set; } = [];
+
+    public IReadOnlyCollection<SearchFilterOptionPageItem> AvailableListingTypes { get; set; } = [];
+
+    public IReadOnlyCollection<SearchRadiusOptionPageItem> AvailableRadiusOptions { get; set; } = [];
+
+    public IReadOnlyCollection<PlayerSearchResultPageItem> Results { get; set; } = [];
+
+    public IReadOnlyCollection<PlayerSearchSuggestionGroupPageItem> RadiusSuggestions { get; set; } = [];
+
+    public bool HasPreviousPage => Page > 1;
+
+    public bool HasNextPage => Page < TotalPages;
+
+    public int FirstItemNumber => TotalCount == 0 ? 0 : ((Page - 1) * PageSize) + 1;
+
+    public int LastItemNumber => Math.Min(Page * PageSize, TotalCount);
+}
+
+public sealed record SearchFilterOptionPageItem(
+    string Code,
+    string Label,
+    bool IsSelected,
+    bool IsEnabled,
+    string? DisabledReason = null);
+
+public sealed record SearchRadiusOptionPageItem(
+    int Miles,
+    string Label,
+    bool IsSelected,
+    bool IsEnabled);
+
+public sealed record TeamItemSearchResultPageItem(
+    Guid OpportunityId,
+    Guid TeamId,
+    string Title,
+    string Type,
+    string TypeLabel,
+    string TeamName,
+    string? OrganizationName,
+    string SportName,
+    string? Description,
+    string? CompetitionLevel,
+    string? AgeGroup,
+    decimal RegistrationFee,
+    DateTime? RegistrationDeadline,
+    DateTime? EventDate,
+    DateTime? EventEndDate,
+    string? City,
+    string? State,
+    string? ZipCode,
+    double? DistanceMiles,
+    bool IsFavorited,
+    int RelevanceScore);
+
+public sealed record TeamItemSearchSuggestionGroupPageItem(
+    int RadiusMiles,
+    IReadOnlyCollection<TeamItemSearchResultPageItem> Results);
+
+public sealed record PlayerSearchResultPageItem(
+    Guid ListingId,
+    string ListingType,
+    string ListingTypeLabel,
+    string Title,
+    string? Description,
+    Guid? PlayerId,
+    string? PlayerName,
+    int? PlayerAge,
+    string? SportName,
+    decimal? AskingPrice,
+    string? Currency,
+    string? Condition,
+    string? City,
+    string? State,
+    string? ZipCode,
+    double? DistanceMiles,
+    bool IsPriorityListing,
+    bool IsFavorited,
+    int RelevanceScore);
+
+public sealed record PlayerSearchSuggestionGroupPageItem(
+    int RadiusMiles,
+    IReadOnlyCollection<PlayerSearchResultPageItem> Results);
+
 public sealed record DashboardPlayerListingFavoritePageItem(
     Guid ListingId,
     string ListingTypeLabel,
