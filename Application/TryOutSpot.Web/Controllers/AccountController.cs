@@ -48,6 +48,7 @@ public sealed class AccountController(
     private const int EnterpriseTeamPublishingLimit = 50;
     private const int EnterpriseTeamPublishingWindowMonths = 12;
     private const int DashboardFavoritePreviewLimit = 12;
+    private const int DefaultFavoritePageSize = 25;
     private const int FavoriteListLimit = 100;
     private const int ListingPdfMaxSizeMegabytes = 10;
     private const long ListingPdfMaxSizeBytes = ListingPdfMaxSizeMegabytes * 1024L * 1024L;
@@ -770,7 +771,10 @@ public sealed class AccountController(
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
     [HttpGet("onboarding/favorites")]
-    public async Task<IActionResult> Favorites(CancellationToken cancellationToken)
+    public async Task<IActionResult> Favorites(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = DefaultFavoritePageSize,
+        CancellationToken cancellationToken = default)
     {
         var user = await GetCurrentWebUserAsync();
         if (user is null)
@@ -778,7 +782,7 @@ public sealed class AccountController(
             return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Favorites)) });
         }
 
-        return View(await BuildFavoritesPageModelAsync(user, cancellationToken));
+        return View(await BuildFavoritesPageModelAsync(user, page, pageSize, cancellationToken));
     }
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
@@ -4370,24 +4374,135 @@ public sealed class AccountController(
 
     private async Task<FavoritesPageModel> BuildFavoritesPageModelAsync(
         User user,
+        int page,
+        int pageSize,
         CancellationToken cancellationToken)
     {
-        var favoritePlayerListings = await GetDashboardPlayerListingFavoritesAsync(
-            user.Id,
-            FavoriteListLimit,
-            cancellationToken);
-        var favoriteOpportunities = await GetDashboardOpportunityFavoritesAsync(
-            user.Id,
-            FavoriteListLimit,
-            cancellationToken);
-
-        return new FavoritesPageModel
+        var normalizedPageSize = NormalizeFavoritePageSize(pageSize);
+        var normalizedPage = Math.Max(1, page);
+        var model = new FavoritesPageModel
         {
             FirstName = user.FirstName,
             LastName = user.LastName,
-            FavoritePlayerListings = favoritePlayerListings,
-            FavoriteOpportunities = favoriteOpportunities
+            CurrentPage = normalizedPage,
+            PageSize = normalizedPageSize,
+            PageSizeOptions = [10, 25, 50, 100]
         };
+
+        try
+        {
+            var favoriteQuery = dbContext.UserFavorites
+                .AsNoTracking()
+                .Where(favorite => favorite.UserId == user.Id);
+            model.FavoriteCount = await favoriteQuery.CountAsync(cancellationToken);
+            model.PlayerListingFavoriteCount = await favoriteQuery
+                .CountAsync(favorite => favorite.PlayerListingId != null, cancellationToken);
+            model.OpportunityFavoriteCount = await favoriteQuery
+                .CountAsync(favorite => favorite.OpportunityId != null, cancellationToken);
+            model.TotalPages = Math.Max(1, (int)Math.Ceiling(model.FavoriteCount / (double)normalizedPageSize));
+            model.CurrentPage = Math.Min(normalizedPage, model.TotalPages);
+
+            var now = DateTime.UtcNow;
+            var skip = (model.CurrentPage - 1) * normalizedPageSize;
+            var favorites = await favoriteQuery
+                .Include(favorite => favorite.PlayerListing)
+                    .ThenInclude(listing => listing!.Player)
+                .Include(favorite => favorite.PlayerListing)
+                    .ThenInclude(listing => listing!.Sport)
+                .Include(favorite => favorite.Opportunity)
+                    .ThenInclude(opportunity => opportunity!.Team)
+                        .ThenInclude(team => team.Organization)
+                .Include(favorite => favorite.Opportunity)
+                    .ThenInclude(opportunity => opportunity!.Sport)
+                .OrderByDescending(favorite => favorite.CreatedAt)
+                .Skip(skip)
+                .Take(normalizedPageSize)
+                .ToArrayAsync(cancellationToken);
+
+            model.Favorites = favorites
+                .Select(favorite => BuildFavoriteListPageItem(favorite, now))
+                .Where(favorite => favorite is not null)
+                .Cast<FavoriteListPageItem>()
+                .ToArray();
+        }
+        catch (PostgresException exception) when (IsUndefinedTableException(exception))
+        {
+            model.FavoriteCount = 0;
+            model.PlayerListingFavoriteCount = 0;
+            model.OpportunityFavoriteCount = 0;
+            model.TotalPages = 1;
+            model.CurrentPage = 1;
+            model.Favorites = [];
+        }
+
+        return model;
+    }
+
+    private static int NormalizeFavoritePageSize(int pageSize)
+    {
+        return pageSize switch
+        {
+            10 or 25 or 50 or 100 => pageSize,
+            _ => DefaultFavoritePageSize
+        };
+    }
+
+    private FavoriteListPageItem? BuildFavoriteListPageItem(UserFavorite favorite, DateTime now)
+    {
+        if (favorite.Opportunity is not null)
+        {
+            var opportunity = favorite.Opportunity;
+            var effectiveEndDate = opportunity.ListingEndDate ?? opportunity.ExpiresAt;
+            var isAvailable = opportunity.IsActive
+                && opportunity.IsPublished
+                && (effectiveEndDate == null || effectiveEndDate > now)
+                && (opportunity.ListingStartDate == null || opportunity.ListingStartDate <= now)
+                && opportunity.Team.IsActive
+                && opportunity.Team.IsSearchable;
+
+            return new FavoriteListPageItem(
+                opportunity.Id,
+                true,
+                "Opportunity",
+                GetOpportunityTypeLabel(opportunity.Type),
+                opportunity.Title,
+                opportunity.Team.Name,
+                opportunity.Team.Organization?.Name,
+                opportunity.Sport.Name,
+                opportunity.EventDate,
+                opportunity.City ?? opportunity.Team.City,
+                opportunity.State ?? opportunity.Team.State,
+                opportunity.ZipCode ?? opportunity.Team.ZipCode,
+                isAvailable,
+                favorite.CreatedAt);
+        }
+
+        if (favorite.PlayerListing is not null)
+        {
+            var listing = favorite.PlayerListing;
+            var isAvailable = listing.IsActive
+                && listing.IsPublished
+                && listing.IsSearchable
+                && (listing.ExpiresAt == null || listing.ExpiresAt > now);
+
+            return new FavoriteListPageItem(
+                listing.Id,
+                false,
+                "Player",
+                GetPlayerListingTypeLabel(listing.ListingType),
+                listing.Title,
+                listing.Player is null ? null : $"{listing.Player.FirstName} {listing.Player.LastName}".Trim(),
+                null,
+                listing.Sport?.Name,
+                null,
+                listing.City,
+                listing.State,
+                listing.ZipCode,
+                isAvailable,
+                favorite.CreatedAt);
+        }
+
+        return null;
     }
 
     private async Task<IReadOnlyCollection<OnboardingTryoutRegistrationPageItem>> GetOnboardingTryoutRegistrationsAsync(

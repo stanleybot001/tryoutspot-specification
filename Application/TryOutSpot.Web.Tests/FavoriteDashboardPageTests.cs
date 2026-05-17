@@ -91,6 +91,7 @@ public sealed class FavoriteDashboardPageTests
         Assert.Contains("Dashboard favorite opportunity", favoritesHtml);
         Assert.Contains($"/player-listings/{seeded.PlayerListingId}", favoritesHtml);
         Assert.Contains($"/opportunities/{seeded.OpportunityId}", favoritesHtml);
+        Assert.Contains("Showing 1-2 of 2.", favoritesHtml);
 
         var removeResponse = await client.PostAsync(
             $"/opportunities/{seeded.OpportunityId}/favorite/remove",
@@ -107,6 +108,40 @@ public sealed class FavoriteDashboardPageTests
         var opportunityFavoriteExists = await dbContext.UserFavorites
             .AnyAsync(favorite => favorite.UserId == viewer.Id && favorite.OpportunityId == seeded.OpportunityId);
         Assert.False(opportunityFavoriteExists);
+    }
+
+    [Fact]
+    public async Task FavoritesPage_PaginatesCompactFavoriteList()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var viewer = await factory.CreateUserAsync(
+            "paged-favorites-dashboard@example.com",
+            [TryOutSpotRoles.TeamRepresentative]);
+        SeedOpportunityFavorites(factory, viewer.Id, 28);
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, viewer.Email!);
+
+        var firstPageResponse = await client.GetAsync("/account/onboarding/favorites?pageSize=10");
+        Assert.Equal(HttpStatusCode.OK, firstPageResponse.StatusCode);
+        var firstPageHtml = await firstPageResponse.Content.ReadAsStringAsync();
+
+        Assert.Contains("Showing 1-10 of 28.", firstPageHtml);
+        Assert.Contains("Page 1 of 3", firstPageHtml);
+        Assert.Contains("Paged favorite opportunity 01", firstPageHtml);
+        Assert.DoesNotContain("Paged favorite opportunity 11", firstPageHtml);
+
+        var secondPageResponse = await client.GetAsync("/account/onboarding/favorites?page=2&pageSize=10");
+        Assert.Equal(HttpStatusCode.OK, secondPageResponse.StatusCode);
+        var secondPageHtml = await secondPageResponse.Content.ReadAsStringAsync();
+
+        Assert.Contains("Showing 11-20 of 28.", secondPageHtml);
+        Assert.Contains("Page 2 of 3", secondPageHtml);
+        Assert.Contains("Paged favorite opportunity 11", secondPageHtml);
+        Assert.DoesNotContain("Paged favorite opportunity 01", secondPageHtml);
     }
 
     private static (Guid PlayerListingId, Guid OpportunityId) SeedFavorites(
@@ -199,6 +234,73 @@ public sealed class FavoriteDashboardPageTests
         dbContext.SaveChanges();
 
         return (playerListingId, opportunityId);
+    }
+
+    private static void SeedOpportunityFavorites(
+        TryOutSpotWebApplicationFactory factory,
+        Guid userId,
+        int count)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+        var sportId = dbContext.Sports
+            .Where(sport => sport.IsActive && sport.Name == "Softball")
+            .Select(sport => sport.Id)
+            .Single();
+
+        var teamId = Guid.NewGuid();
+        dbContext.Teams.Add(new Team
+        {
+            Id = teamId,
+            Name = "Paged Favorite Team",
+            TeamLevel = "14U",
+            GeographicScope = "Local",
+            City = "McPherson",
+            State = "KS",
+            ZipCode = "67460",
+            IsSearchable = true,
+            IsContactInfoVisible = true,
+            IsElite = false,
+            IsVerified = false,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        });
+
+        for (var index = 1; index <= count; index++)
+        {
+            var opportunityId = Guid.NewGuid();
+            var createdAt = now.AddMinutes(-index);
+            dbContext.Opportunities.Add(new Opportunity
+            {
+                Id = opportunityId,
+                TeamId = teamId,
+                SportId = sportId,
+                Type = "tryout",
+                Title = $"Paged favorite opportunity {index:00}",
+                RegistrationRequired = true,
+                RegistrationFee = 10m,
+                EventDate = now.AddDays(index),
+                City = "McPherson",
+                State = "KS",
+                ZipCode = "67460",
+                IsPublished = true,
+                PublishedAt = createdAt,
+                CreatedAt = createdAt,
+                UpdatedAt = createdAt,
+                IsActive = true
+            });
+            dbContext.UserFavorites.Add(new UserFavorite
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                OpportunityId = opportunityId,
+                CreatedAt = createdAt
+            });
+        }
+
+        dbContext.SaveChanges();
     }
 
     private static Guid SeedOpportunity(TryOutSpotWebApplicationFactory factory)

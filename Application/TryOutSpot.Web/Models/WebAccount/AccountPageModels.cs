@@ -225,12 +225,46 @@ public sealed class FavoritesPageModel
 
     public string LastName { get; set; } = string.Empty;
 
-    public IReadOnlyCollection<DashboardPlayerListingFavoritePageItem> FavoritePlayerListings { get; set; } = [];
+    public IReadOnlyCollection<FavoriteListPageItem> Favorites { get; set; } = [];
 
-    public IReadOnlyCollection<DashboardOpportunityFavoritePageItem> FavoriteOpportunities { get; set; } = [];
+    public int FavoriteCount { get; set; }
 
-    public int FavoriteCount => FavoritePlayerListings.Count + FavoriteOpportunities.Count;
+    public int OpportunityFavoriteCount { get; set; }
+
+    public int PlayerListingFavoriteCount { get; set; }
+
+    public int CurrentPage { get; set; } = 1;
+
+    public int PageSize { get; set; } = 25;
+
+    public int TotalPages { get; set; } = 1;
+
+    public IReadOnlyCollection<int> PageSizeOptions { get; set; } = [];
+
+    public bool HasPreviousPage => CurrentPage > 1;
+
+    public bool HasNextPage => CurrentPage < TotalPages;
+
+    public int FirstItemNumber => FavoriteCount == 0 ? 0 : ((CurrentPage - 1) * PageSize) + 1;
+
+    public int LastItemNumber => Math.Min(CurrentPage * PageSize, FavoriteCount);
 }
+
+public sealed record FavoriteListPageItem(
+    Guid TargetId,
+    bool IsOpportunity,
+    string CategoryLabel,
+    string TypeLabel,
+    string Title,
+    string? PrimaryName,
+    string? SecondaryName,
+    string? SportName,
+    DateTime? EventDate,
+    string? City,
+    string? State,
+    string? ZipCode,
+    bool IsAvailable,
+    DateTime CreatedAt);
 
 public sealed class AddPlayerProfilePageModel
 {

@@ -2,6 +2,7 @@
 
 @{
     ViewData["Title"] = "My Favorites";
+    var returnUrl = $"/account/onboarding/favorites?page={Model.CurrentPage}&pageSize={Model.PageSize}";
 }
 
 <section class="account-page">
@@ -23,151 +24,186 @@
         </div>
         <div>
             <span>Opportunity listings</span>
-            <strong>@Model.FavoriteOpportunities.Count</strong>
+            <strong>@Model.OpportunityFavoriteCount</strong>
         </div>
         <div>
             <span>Player listings</span>
-            <strong>@Model.FavoritePlayerListings.Count</strong>
+            <strong>@Model.PlayerListingFavoriteCount</strong>
         </div>
     </section>
 
-    @if (Model.FavoriteCount == 0)
-    {
-        <section class="form-section">
-            <h2>No favorites yet</h2>
-            <p class="section-help">Listings you save while browsing will appear here.</p>
+    <section class="form-section">
+        <div class="team-row-head">
+            <div>
+                <h2>Saved listings</h2>
+                <p class="section-help">
+                    @if (Model.FavoriteCount == 0)
+                    {
+                        @:Listings you save while browsing will appear here.
+                    }
+                    else
+                    {
+                        @:Showing @Model.FirstItemNumber-@Model.LastItemNumber of @Model.FavoriteCount.
+                    }
+                </p>
+            </div>
+            <form method="get" class="inline-form">
+                <input type="hidden" name="page" value="1" />
+                <label class="form-label mb-0" for="favorite-page-size">Rows</label>
+                <select class="form-select form-select-sm w-auto" id="favorite-page-size" name="pageSize">
+                    @foreach (var option in Model.PageSizeOptions)
+                    {
+                        <option value="@option" selected="@(option == Model.PageSize ? "selected" : null)">@option</option>
+                    }
+                </select>
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Apply</button>
+            </form>
+        </div>
+
+        @if (Model.Favorites.Count == 0)
+        {
             <div class="form-actions">
                 <a class="btn btn-outline-secondary" href="/account/onboarding">Back to dashboard</a>
             </div>
-        </section>
-    }
-    else
-    {
-        <section class="form-section">
-            <h2>Opportunity listings</h2>
-            @if (Model.FavoriteOpportunities.Count == 0)
-            {
-                <p class="section-help">You have not saved any tryouts, tournaments, camps, clinics, or roster opportunities yet.</p>
-            }
-            else
-            {
-                <div class="plan-list">
-                    @foreach (var favorite in Model.FavoriteOpportunities)
-                    {
-                        <article class="plan-row plan-row-stack">
-                            <div class="team-row-head">
-                                <div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead>
+                        <tr>
+                            <th scope="col">Kind</th>
+                            <th scope="col">Listing</th>
+                            <th scope="col">Owner</th>
+                            <th scope="col">Date</th>
+                            <th scope="col">Location</th>
+                            <th scope="col">Saved</th>
+                            <th scope="col" class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var favorite in Model.Favorites)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@favorite.CategoryLabel</strong>
+                                    <span class="d-block small text-muted">@favorite.TypeLabel</span>
+                                </td>
+                                <td>
                                     <strong>
                                         @if (favorite.IsAvailable)
                                         {
-                                            <a href="/opportunities/@favorite.OpportunityId">@favorite.Title</a>
+                                            <a href="@GetFavoriteViewUrl(favorite)">@favorite.Title</a>
                                         }
                                         else
                                         {
                                             @favorite.Title
                                         }
                                     </strong>
-                                    <span>@favorite.TypeLabel - @favorite.SportName</span>
-                                </div>
-                                <div class="team-metric-inline">
-                                    <span>@FormatListingAvailability(favorite.IsAvailable)</span>
-                                    <span>Saved @FormatDate(favorite.CreatedAt)</span>
-                                </div>
-                            </div>
-
-                            <div class="team-summary-grid">
-                                <div><span>Team</span><strong>@favorite.TeamName</strong></div>
-                                <div><span>Organization</span><strong>@(string.IsNullOrWhiteSpace(favorite.OrganizationName) ? "Not listed" : favorite.OrganizationName)</strong></div>
-                                <div><span>Event date</span><strong>@FormatDate(favorite.EventDate)</strong></div>
-                                <div><span>Location</span><strong>@FormatLocation(favorite.City, favorite.State, favorite.ZipCode)</strong></div>
-                            </div>
-
-                            <div class="form-actions">
-                                @if (favorite.IsAvailable)
-                                {
-                                    <a class="btn btn-primary" href="/opportunities/@favorite.OpportunityId">View listing</a>
-                                }
-                                <form class="inline-form"
-                                      asp-action="RemoveFavoriteTeamOpportunity"
-                                      asp-controller="Account"
-                                      asp-route-opportunityId="@favorite.OpportunityId"
-                                      method="post">
-                                    <input type="hidden" name="returnUrl" value="/account/onboarding/favorites" />
-                                    <button type="submit" class="btn btn-outline-secondary">Remove favorite</button>
-                                </form>
-                            </div>
-                        </article>
-                    }
-                </div>
-            }
-        </section>
-
-        <section class="form-section">
-            <h2>Player listings</h2>
-            @if (Model.FavoritePlayerListings.Count == 0)
-            {
-                <p class="section-help">You have not saved any player listings yet.</p>
-            }
-            else
-            {
-                <div class="plan-list">
-                    @foreach (var favorite in Model.FavoritePlayerListings)
-                    {
-                        <article class="plan-row plan-row-stack">
-                            <div class="team-row-head">
-                                <div>
-                                    <strong>
+                                    <span class="d-block small text-muted">@FormatSport(favorite.SportName)</span>
+                                </td>
+                                <td>
+                                    <span>@FormatOwner(favorite)</span>
+                                    @if (!string.IsNullOrWhiteSpace(favorite.SecondaryName))
+                                    {
+                                        <span class="d-block small text-muted">@favorite.SecondaryName</span>
+                                    }
+                                </td>
+                                <td>@FormatDate(favorite.EventDate)</td>
+                                <td>@FormatLocation(favorite.City, favorite.State, favorite.ZipCode)</td>
+                                <td>
+                                    <span>@FormatDate(favorite.CreatedAt)</span>
+                                    <span class="d-block small text-muted">@FormatListingAvailability(favorite.IsAvailable)</span>
+                                </td>
+                                <td class="text-end">
+                                    <div class="d-flex justify-content-end gap-2">
                                         @if (favorite.IsAvailable)
                                         {
-                                            <a href="/player-listings/@favorite.ListingId">@favorite.Title</a>
+                                            <a class="btn btn-sm btn-outline-primary" href="@GetFavoriteViewUrl(favorite)">View</a>
+                                        }
+                                        @if (favorite.IsOpportunity)
+                                        {
+                                            <form class="inline-form m-0"
+                                                  asp-action="RemoveFavoriteTeamOpportunity"
+                                                  asp-controller="Account"
+                                                  asp-route-opportunityId="@favorite.TargetId"
+                                                  method="post">
+                                                <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                                <button type="submit" class="btn btn-sm btn-outline-secondary">Remove</button>
+                                            </form>
                                         }
                                         else
                                         {
-                                            @favorite.Title
+                                            <form class="inline-form m-0"
+                                                  asp-action="RemoveFavoritePlayerListing"
+                                                  asp-controller="Account"
+                                                  asp-route-listingId="@favorite.TargetId"
+                                                  method="post">
+                                                <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                                <button type="submit" class="btn btn-sm btn-outline-secondary">Remove</button>
+                                            </form>
                                         }
-                                    </strong>
-                                    <span>@favorite.ListingTypeLabel@(!string.IsNullOrWhiteSpace(favorite.SportName) ? $" - {favorite.SportName}" : string.Empty)</span>
-                                </div>
-                                <div class="team-metric-inline">
-                                    <span>@FormatListingAvailability(favorite.IsAvailable)</span>
-                                    <span>Saved @FormatDate(favorite.CreatedAt)</span>
-                                </div>
-                            </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
 
-                            <div class="team-summary-grid">
-                                <div><span>Player</span><strong>@(string.IsNullOrWhiteSpace(favorite.PlayerName) ? "Not listed" : favorite.PlayerName)</strong></div>
-                                <div><span>Sport</span><strong>@(string.IsNullOrWhiteSpace(favorite.SportName) ? "Not listed" : favorite.SportName)</strong></div>
-                                <div><span>Listing type</span><strong>@favorite.ListingTypeLabel</strong></div>
-                                <div><span>Location</span><strong>@FormatLocation(favorite.City, favorite.State, favorite.ZipCode)</strong></div>
-                            </div>
-
-                            <div class="form-actions">
-                                @if (favorite.IsAvailable)
-                                {
-                                    <a class="btn btn-primary" href="/player-listings/@favorite.ListingId">View listing</a>
-                                }
-                                <form class="inline-form"
-                                      asp-action="RemoveFavoritePlayerListing"
-                                      asp-controller="Account"
-                                      asp-route-listingId="@favorite.ListingId"
-                                      method="post">
-                                    <input type="hidden" name="returnUrl" value="/account/onboarding/favorites" />
-                                    <button type="submit" class="btn btn-outline-secondary">Remove favorite</button>
-                                </form>
-                            </div>
-                        </article>
-                    }
-                </div>
-            }
-        </section>
-
-        <div class="form-actions mt-3">
-            <a class="btn btn-outline-secondary" href="/account/onboarding">Back to dashboard</a>
-        </div>
-    }
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <a class="btn btn-outline-secondary" href="/account/onboarding">Back to dashboard</a>
+                @if (Model.TotalPages > 1)
+                {
+                    <nav aria-label="Favorites pages">
+                        <ul class="pagination pagination-sm mb-0">
+                            <li class="page-item @(Model.HasPreviousPage ? string.Empty : "disabled")">
+                                <a class="page-link" href="@BuildPageUrl(Model.CurrentPage - 1, Model.PageSize)">Previous</a>
+                            </li>
+                            <li class="page-item disabled">
+                                <span class="page-link">Page @Model.CurrentPage of @Model.TotalPages</span>
+                            </li>
+                            <li class="page-item @(Model.HasNextPage ? string.Empty : "disabled")">
+                                <a class="page-link" href="@BuildPageUrl(Model.CurrentPage + 1, Model.PageSize)">Next</a>
+                            </li>
+                        </ul>
+                    </nav>
+                }
+            </div>
+        }
+    </section>
 </section>
 
 @functions {
+    private static string BuildPageUrl(int page, int pageSize)
+    {
+        return $"/account/onboarding/favorites?page={Math.Max(1, page)}&pageSize={pageSize}";
+    }
+
+    private static string GetFavoriteViewUrl(FavoriteListPageItem favorite)
+    {
+        return favorite.IsOpportunity
+            ? $"/opportunities/{favorite.TargetId}"
+            : $"/player-listings/{favorite.TargetId}";
+    }
+
+    private static string FormatOwner(FavoriteListPageItem favorite)
+    {
+        if (!string.IsNullOrWhiteSpace(favorite.PrimaryName))
+        {
+            return favorite.IsOpportunity
+                ? $"Team: {favorite.PrimaryName}"
+                : $"Player: {favorite.PrimaryName}";
+        }
+
+        return favorite.IsOpportunity ? "Team not listed" : "Player not listed";
+    }
+
+    private static string FormatSport(string? sportName)
+    {
+        return string.IsNullOrWhiteSpace(sportName) ? "Sport not listed" : sportName;
+    }
+
     private static string FormatLocation(string? city, string? state, string? zipCode)
     {
         var parts = new List<string>();
@@ -193,7 +229,7 @@
     {
         return value.HasValue
             ? value.Value.ToLocalTime().ToString("MMM d, yyyy")
-            : "Date not set";
+            : "-";
     }
 
     private static string FormatDate(DateTime value)
