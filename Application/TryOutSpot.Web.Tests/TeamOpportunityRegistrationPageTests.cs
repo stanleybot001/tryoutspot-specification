@@ -155,9 +155,12 @@ public sealed class TeamOpportunityRegistrationPageTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("registration-roster-toggle", html, StringComparison.Ordinal);
+        Assert.Contains("registration-roster-table", html, StringComparison.Ordinal);
         Assert.Contains("Share roster", html, StringComparison.Ordinal);
         Assert.Contains("Favorited player listing", html, StringComparison.Ordinal);
         Assert.Contains("Pending Registrant", html, StringComparison.Ordinal);
+        Assert.Contains("Mark present", html, StringComparison.Ordinal);
+        Assert.Contains("Mark waiver", html, StringComparison.Ordinal);
     }
 
     [Fact]
