@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
+using TryOutSpot.Web.Listings;
 
 namespace TryOutSpot.Web.Tests;
 
@@ -134,6 +135,56 @@ public sealed class TeamOpportunityRegistrationPageTests
         var registration = await dbContext.Registrations
             .SingleAsync(current => current.Id == seeded.RegistrationId);
         Assert.Equal("accepted", registration.Status);
+    }
+
+    [Fact]
+    public async Task TeamRepresentativeOpportunityPage_CollapsesRosterAndMarksFavoritedPlayers()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var teamUser = await factory.CreateUserAsync("team-roster-favorite@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var seeded = SeedTeamOpportunityRegistrationForReview(factory, teamUser.Id, favoritePlayer: true);
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, teamUser.Email!);
+
+        var response = await client.GetAsync($"/account/onboarding/team-opportunities/{seeded.TeamId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("registration-roster-toggle", html, StringComparison.Ordinal);
+        Assert.Contains("Share roster", html, StringComparison.Ordinal);
+        Assert.Contains("Favorited player listing", html, StringComparison.Ordinal);
+        Assert.Contains("Pending Registrant", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TeamRepresentativeCanOpenFormattedRegistrationShareRoster()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var teamUser = await factory.CreateUserAsync("team-roster-share@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var seeded = SeedTeamOpportunityRegistrationForReview(factory, teamUser.Id, favoritePlayer: true);
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, teamUser.Email!);
+
+        var response = await client.GetAsync(
+            $"/account/onboarding/team-opportunities/{seeded.TeamId}/{seeded.OpportunityId}/registrations/share");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Registration roster", html, StringComparison.Ordinal);
+        Assert.Contains("Email link", html, StringComparison.Ordinal);
+        Assert.Contains("sms:?body=", html, StringComparison.Ordinal);
+        Assert.Contains("Pending Registrant", html, StringComparison.Ordinal);
+        Assert.Contains("North High", html, StringComparison.Ordinal);
+        Assert.Contains("guardian-share@example.com", html, StringComparison.Ordinal);
+        Assert.Contains("Favorited player listing", html, StringComparison.Ordinal);
     }
 
     private static (Guid OpportunityId, Guid ManagedPlayerId) SeedPublishedTryoutOpportunity(
@@ -312,9 +363,10 @@ public sealed class TeamOpportunityRegistrationPageTests
         dbContext.SaveChanges();
     }
 
-    private static (Guid TeamId, Guid OpportunityId, Guid RegistrationId) SeedTeamOpportunityRegistrationForReview(
+    private static (Guid TeamId, Guid OpportunityId, Guid RegistrationId, Guid PlayerId) SeedTeamOpportunityRegistrationForReview(
         TryOutSpotWebApplicationFactory factory,
-        Guid teamUserId)
+        Guid teamUserId,
+        bool favoritePlayer = false)
     {
         using var scope = factory.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -361,6 +413,9 @@ public sealed class TeamOpportunityRegistrationPageTests
             FirstName = "Pending",
             LastName = "Registrant",
             DateOfBirth = new DateTime(2011, 4, 10, 0, 0, 0, DateTimeKind.Utc),
+            SchoolName = "North High",
+            ContactPhone = "555-555-1200",
+            ContactEmail = "pending.registrant@example.com",
             ContactVisibility = "VerifiedCoachesOnly",
             IsSearchable = true,
             CreatedAt = now,
@@ -397,16 +452,55 @@ public sealed class TeamOpportunityRegistrationPageTests
             PlayerId = playerId,
             RegisteredByUserId = teamUserId,
             Status = "pending",
-            RegistrationData = "{}",
+            RegistrationData = JsonSerializer.Serialize(new
+            {
+                playerPhone = "555-555-1200",
+                playerEmail = "pending.registrant@example.com",
+                guardianName = "Guardian Share",
+                guardianEmail = "guardian-share@example.com",
+                guardianPhone = "555-555-1201"
+            }),
             PaymentStatus = "not_required",
             WaiverSigned = false,
+            EmergencyContactName = "Emergency Share",
+            EmergencyContactPhone = "555-555-1202",
             AttendanceStatus = "pending",
             CreatedAt = now,
             UpdatedAt = now
         });
 
+        if (favoritePlayer)
+        {
+            var listingId = Guid.NewGuid();
+            dbContext.PlayerListings.Add(new PlayerListing
+            {
+                Id = listingId,
+                UserId = teamUserId,
+                PlayerId = playerId,
+                SportId = sportId,
+                ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
+                Title = "Favorite pending registrant",
+                City = "McPherson",
+                State = "KS",
+                ZipCode = "67460",
+                IsPublished = true,
+                IsSearchable = true,
+                PublishedAt = now,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+            dbContext.UserFavorites.Add(new UserFavorite
+            {
+                Id = Guid.NewGuid(),
+                UserId = teamUserId,
+                PlayerListingId = listingId,
+                CreatedAt = now
+            });
+        }
+
         dbContext.SaveChanges();
-        return (teamId, opportunityId, registrationId);
+        return (teamId, opportunityId, registrationId, playerId);
     }
 
     private static async Task<string> GetAntiForgeryTokenAsync(HttpClient client, string path)

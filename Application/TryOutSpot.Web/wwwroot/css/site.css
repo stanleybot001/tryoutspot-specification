@@ -949,6 +949,36 @@ body.splash-page {
   margin-top: 0.85rem;
 }
 
+.registration-roster-toggle {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  list-style-position: inside;
+}
+
+.registration-roster-toggle .listing-reporting-title {
+  margin: 0;
+}
+
+.registration-roster-toggle-action {
+  color: #2563eb;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.registration-roster[open] .registration-roster-toggle {
+  margin-bottom: 0.65rem;
+}
+
+.registration-roster-toolbar {
+  margin-bottom: 0.65rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .registration-roster-list {
   display: grid;
   gap: 0.6rem;
@@ -963,8 +993,25 @@ body.splash-page {
   gap: 0.45rem;
 }
 
+.registration-roster-item.favorited {
+  border-color: #f5c451;
+  box-shadow: inset 3px 0 0 #f5c451;
+}
+
 .registration-roster-main strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   color: #0f172a;
+}
+
+.favorite-player-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #b7791f;
+  font-size: 0.95em;
+  line-height: 1;
 }
 
 .registration-roster-meta {
@@ -1005,6 +1052,120 @@ body.splash-page {
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
+}
+
+.registration-share-page {
+  max-width: 1120px;
+}
+
+.registration-share-heading {
+  border-bottom: 2px solid #d7dee8;
+  padding-bottom: 1rem;
+}
+
+.registration-share-actions {
+  margin-top: 0.9rem;
+}
+
+.registration-share-summary .team-summary-grid {
+  margin-top: 0;
+}
+
+.registration-share-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.registration-share-player {
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  padding: 0.8rem;
+  background: #ffffff;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.registration-share-player.favorited {
+  border-color: #f5c451;
+  box-shadow: inset 3px 0 0 #f5c451;
+}
+
+.registration-share-player-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.registration-share-player-head h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1.05rem;
+}
+
+.registration-share-player-head p {
+  margin: 0.2rem 0 0;
+  color: #475569;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.7rem;
+  font-size: 0.86rem;
+}
+
+.registration-share-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.registration-share-badges span {
+  border: 1px solid #d7dee8;
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  color: #334155;
+  background: #f8fafc;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.registration-share-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.registration-share-grid > div {
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  background: #f8fafc;
+}
+
+.registration-share-grid span {
+  display: block;
+  color: #64748b;
+  font-size: 0.76rem;
+}
+
+.registration-share-grid strong {
+  display: block;
+  margin-top: 0.1rem;
+  color: #0f172a;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.registration-share-notes {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 0.55rem;
+  color: #334155;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.registration-share-notes p {
+  margin: 0;
 }
 
 .plans-track-title {
@@ -1083,12 +1244,49 @@ body.splash-page {
   .listing-reporting-overview,
   .listing-reporting-grid,
   .registration-roster-state,
-  .registration-agenda-row {
+  .registration-agenda-row,
+  .registration-share-grid {
     grid-template-columns: 1fr;
+  }
+
+  .registration-share-player-head {
+    flex-direction: column;
+  }
+
+  .registration-share-badges {
+    justify-content: flex-start;
   }
 
   .plan-diff-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  header,
+  footer,
+  .registration-share-actions {
+    display: none !important;
+  }
+
+  body,
+  .container,
+  main {
+    background: #ffffff !important;
+  }
+
+  .container {
+    max-width: none;
+    width: 100%;
+  }
+
+  .registration-share-page {
+    max-width: none;
+  }
+
+  .registration-share-player {
+    break-inside: avoid;
+    box-shadow: none;
   }
 }
 

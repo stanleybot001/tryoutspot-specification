@@ -2746,6 +2746,38 @@ public sealed class AccountController(
         return RedirectToAction(nameof(TeamOpportunities), new { teamId, page, pageSize });
     }
 
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
+    [HttpGet("onboarding/team-opportunities/{teamId:guid}/{opportunityId:guid}/registrations/share")]
+    public async Task<IActionResult> ShareTeamOpportunityRegistrations(
+        Guid teamId,
+        Guid opportunityId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(ShareTeamOpportunityRegistrations), new { teamId, opportunityId })
+            });
+        }
+
+        var model = await BuildTeamOpportunityRegistrationSharePageModelAsync(
+            user,
+            teamId,
+            opportunityId,
+            cancellationToken);
+        if (model is null)
+        {
+            TempData["StatusMessage"] = "Registration roster was not found for this team.";
+            return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+        }
+
+        return View(model);
+    }
+
     [AllowAnonymous]
     [HttpGet("/opportunities/{opportunityId:guid}")]
     public async Task<IActionResult> TeamOpportunityDetail(
@@ -5721,79 +5753,41 @@ public sealed class AccountController(
         if (opportunities.Length > 0)
         {
             var opportunityIds = opportunities.Select(opportunity => opportunity.Id).ToHashSet();
-            var registrationRows = await dbContext.Registrations
-                .AsNoTracking()
-                .Where(registration => opportunityIds.Contains(registration.OpportunityId))
-                .Select(registration => new
-                {
-                    registration.Id,
-                    registration.OpportunityId,
-                    registration.PlayerId,
-                    registration.Status,
-                    registration.AttendanceStatus,
-                    registration.CheckInTime,
-                    registration.WaiverSigned,
-                    registration.WaiverSignedAt,
-                    registration.CreatedAt,
-                    registration.Player.FirstName,
-                    registration.Player.LastName,
-                    registration.Player.SchoolName
-                })
-                .ToArrayAsync(cancellationToken);
-
-            registrationDetailsByOpportunityId = registrationRows
-                .GroupBy(row => row.OpportunityId)
-                .ToDictionary(
-                    group => group.Key,
-                    group => group
-                        .OrderByDescending(row => row.CreatedAt)
-                        .ThenBy(row => row.LastName)
-                        .ThenBy(row => row.FirstName)
-                        .Select(row => new TeamOpportunityRegistrantPageItem(
-                            row.Id,
-                            row.PlayerId,
-                            BuildPlayerDisplayName(row.FirstName, row.LastName),
-                            NormalizeOptional(row.SchoolName),
-                            ToRegistrationStatusCode(row.Status),
-                            FormatRegistrationStatusLabel(row.Status),
-                            IsRegistrationMarkedPresent(row.AttendanceStatus),
-                            row.CheckInTime,
-                            row.WaiverSigned,
-                            row.WaiverSignedAt,
-                            row.CreatedAt))
-                        .ToArray());
+            registrationDetailsByOpportunityId = await BuildTeamOpportunityRegistrantDetailsByOpportunityAsync(
+                user.Id,
+                opportunityIds,
+                cancellationToken);
 
             if (hasBasicAnalytics)
             {
-                registrationStatsByOpportunityId = registrationRows
-                .GroupBy(row => row.OpportunityId)
-                .ToDictionary(
-                    group => group.Key,
-                    group =>
-                    {
-                        var pendingCount = 0;
-                        var approvedCount = 0;
-                        var declinedCount = 0;
-
-                        foreach (var row in group)
+                registrationStatsByOpportunityId = registrationDetailsByOpportunityId
+                    .ToDictionary(
+                        pair => pair.Key,
+                        pair =>
                         {
-                            switch (ClassifyRegistrationStatus(row.Status))
+                            var pendingCount = 0;
+                            var approvedCount = 0;
+                            var declinedCount = 0;
+
+                            foreach (var registrant in pair.Value)
                             {
-                                case RegistrationStatusCategory.Approved:
-                                    approvedCount++;
-                                    break;
-                                case RegistrationStatusCategory.Declined:
-                                    declinedCount++;
-                                    break;
-                                default:
-                                    pendingCount++;
-                                    break;
+                                switch (ClassifyRegistrationStatus(registrant.StatusCode))
+                                {
+                                    case RegistrationStatusCategory.Approved:
+                                        approvedCount++;
+                                        break;
+                                    case RegistrationStatusCategory.Declined:
+                                        declinedCount++;
+                                        break;
+                                    default:
+                                        pendingCount++;
+                                        break;
+                                }
                             }
-                        }
 
                             return new ListingRegistrationStats(
-                                group.Count(),
-                                group.Select(row => row.PlayerId).Distinct().Count(),
+                                pair.Value.Length,
+                                pair.Value.Select(registrant => registrant.PlayerId).Distinct().Count(),
                                 pendingCount,
                                 approvedCount,
                                 declinedCount);
@@ -5859,6 +5853,208 @@ public sealed class AccountController(
             PageViewToRegistrationConversionRate = CalculateConversionRate(pageRegistrationCountTotal, pageViewCountTotal),
             Opportunities = opportunitySummaries
         };
+    }
+
+    private async Task<TeamOpportunityRegistrationSharePageModel?> BuildTeamOpportunityRegistrationSharePageModelAsync(
+        User user,
+        Guid teamId,
+        Guid opportunityId,
+        CancellationToken cancellationToken)
+    {
+        var managedTeam = await GetManagedTeamRoleContextAsync(user.Id, teamId, cancellationToken);
+        if (managedTeam is null)
+        {
+            return null;
+        }
+
+        var opportunity = await dbContext.Opportunities
+            .AsNoTracking()
+            .Include(currentOpportunity => currentOpportunity.Sport)
+            .Where(currentOpportunity => currentOpportunity.Id == opportunityId)
+            .Where(currentOpportunity => currentOpportunity.TeamId == teamId)
+            .Where(currentOpportunity => currentOpportunity.IsActive)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (opportunity is null)
+        {
+            return null;
+        }
+
+        var registrationDetailsByOpportunityId = await BuildTeamOpportunityRegistrantDetailsByOpportunityAsync(
+            user.Id,
+            [opportunityId],
+            cancellationToken);
+        registrationDetailsByOpportunityId.TryGetValue(opportunityId, out var registrants);
+
+        return new TeamOpportunityRegistrationSharePageModel
+        {
+            TeamId = teamId,
+            OpportunityId = opportunityId,
+            TeamName = managedTeam.Team.Name,
+            OrganizationName = managedTeam.Team.Organization?.Name,
+            SportName = opportunity.Sport.Name,
+            Type = opportunity.Type,
+            Title = opportunity.Title,
+            CompetitionLevel = opportunity.CompetitionLevel,
+            AgeGroup = opportunity.AgeGroup,
+            EventDate = opportunity.EventDate,
+            EventEndDate = opportunity.EventEndDate,
+            Location = opportunity.Location,
+            Address = opportunity.Address,
+            City = opportunity.City,
+            State = opportunity.State,
+            ZipCode = opportunity.ZipCode,
+            GeneratedAt = DateTime.UtcNow,
+            Registrants = registrants ?? []
+        };
+    }
+
+    private async Task<Dictionary<Guid, TeamOpportunityRegistrantPageItem[]>> BuildTeamOpportunityRegistrantDetailsByOpportunityAsync(
+        Guid viewerUserId,
+        IReadOnlyCollection<Guid> opportunityIds,
+        CancellationToken cancellationToken)
+    {
+        if (opportunityIds.Count == 0)
+        {
+            return [];
+        }
+
+        var registrationRows = await dbContext.Registrations
+            .AsNoTracking()
+            .Where(registration => opportunityIds.Contains(registration.OpportunityId))
+            .Select(registration => new
+            {
+                registration.Id,
+                registration.OpportunityId,
+                registration.PlayerId,
+                registration.Status,
+                registration.AttendanceStatus,
+                registration.CheckInTime,
+                registration.WaiverSigned,
+                registration.WaiverSignedAt,
+                registration.CreatedAt,
+                registration.RegistrationData,
+                registration.EmergencyContactName,
+                registration.EmergencyContactPhone,
+                registration.MedicalInfo,
+                registration.Notes,
+                registration.Player.FirstName,
+                registration.Player.LastName,
+                PlayerSchoolName = registration.Player.SchoolName,
+                registration.Player.ContactPhone,
+                registration.Player.ContactEmail
+            })
+            .ToArrayAsync(cancellationToken);
+        if (registrationRows.Length == 0)
+        {
+            return [];
+        }
+
+        var playerIds = registrationRows
+            .Select(row => row.PlayerId)
+            .Distinct()
+            .ToArray();
+        var favoritePlayerIds = await dbContext.PlayerListings
+            .AsNoTracking()
+            .Where(listing => listing.PlayerId.HasValue)
+            .Where(listing => playerIds.Contains(listing.PlayerId!.Value))
+            .Where(listing => dbContext.UserFavorites.Any(favorite =>
+                favorite.UserId == viewerUserId
+                && favorite.PlayerListingId == listing.Id))
+            .Select(listing => listing.PlayerId!.Value)
+            .Distinct()
+            .ToArrayAsync(cancellationToken);
+        var favoritePlayerIdSet = favoritePlayerIds.ToHashSet();
+
+        return registrationRows
+            .GroupBy(row => row.OpportunityId)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderByDescending(row => row.CreatedAt)
+                    .ThenBy(row => row.LastName)
+                    .ThenBy(row => row.FirstName)
+                    .Select(row =>
+                    {
+                        var registrationData = ParseRegistrationDataSnapshot(row.RegistrationData);
+                        return new TeamOpportunityRegistrantPageItem(
+                            row.Id,
+                            row.PlayerId,
+                            BuildPlayerDisplayName(row.FirstName, row.LastName),
+                            FirstPopulatedValue(registrationData.PlayerSchool, row.PlayerSchoolName),
+                            ToRegistrationStatusCode(row.Status),
+                            FormatRegistrationStatusLabel(row.Status),
+                            IsRegistrationMarkedPresent(row.AttendanceStatus),
+                            row.CheckInTime,
+                            row.WaiverSigned,
+                            row.WaiverSignedAt,
+                            row.CreatedAt,
+                            favoritePlayerIdSet.Contains(row.PlayerId),
+                            FirstPopulatedValue(registrationData.PlayerPhone, row.ContactPhone),
+                            FirstPopulatedValue(registrationData.PlayerEmail, row.ContactEmail),
+                            registrationData.GuardianName,
+                            registrationData.GuardianEmail,
+                            registrationData.GuardianPhone,
+                            FirstPopulatedValue(row.EmergencyContactName, registrationData.EmergencyContactName),
+                            FirstPopulatedValue(row.EmergencyContactPhone, registrationData.EmergencyContactPhone),
+                            FirstPopulatedValue(row.MedicalInfo, registrationData.MedicalInfo),
+                            FirstPopulatedValue(row.Notes, registrationData.AdditionalNotes));
+                    })
+                    .ToArray());
+    }
+
+    private static RegistrationDataSnapshot ParseRegistrationDataSnapshot(string? registrationData)
+    {
+        if (string.IsNullOrWhiteSpace(registrationData))
+        {
+            return RegistrationDataSnapshot.Empty;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(registrationData);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return RegistrationDataSnapshot.Empty;
+            }
+
+            return new RegistrationDataSnapshot(
+                GetJsonStringProperty(root, "playerSchool"),
+                GetJsonStringProperty(root, "playerPhone"),
+                GetJsonStringProperty(root, "playerEmail"),
+                GetJsonStringProperty(root, "guardianName"),
+                GetJsonStringProperty(root, "guardianEmail"),
+                GetJsonStringProperty(root, "guardianPhone"),
+                GetJsonStringProperty(root, "emergencyContactName"),
+                GetJsonStringProperty(root, "emergencyContactPhone"),
+                GetJsonStringProperty(root, "medicalInfo"),
+                GetJsonStringProperty(root, "additionalNotes"));
+        }
+        catch (JsonException)
+        {
+            return RegistrationDataSnapshot.Empty;
+        }
+    }
+
+    private static string? GetJsonStringProperty(JsonElement root, string propertyName)
+    {
+        return root.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+            ? NormalizeOptional(value.GetString())
+            : null;
+    }
+
+    private static string? FirstPopulatedValue(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            var normalizedValue = NormalizeOptional(value);
+            if (!string.IsNullOrWhiteSpace(normalizedValue))
+            {
+                return normalizedValue;
+            }
+        }
+
+        return null;
     }
 
     private async Task<TeamOpportunityEditorPageModel?> BuildTeamOpportunityEditorPageModelAsync(
@@ -8955,6 +9151,21 @@ public sealed class AccountController(
         int PendingCount,
         int ApprovedCount,
         int DeclinedCount);
+
+    private sealed record RegistrationDataSnapshot(
+        string? PlayerSchool,
+        string? PlayerPhone,
+        string? PlayerEmail,
+        string? GuardianName,
+        string? GuardianEmail,
+        string? GuardianPhone,
+        string? EmergencyContactName,
+        string? EmergencyContactPhone,
+        string? MedicalInfo,
+        string? AdditionalNotes)
+    {
+        public static RegistrationDataSnapshot Empty { get; } = new(null, null, null, null, null, null, null, null, null, null);
+    }
 
     private enum RegistrationStatusCategory
     {

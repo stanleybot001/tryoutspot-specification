@@ -771,7 +771,58 @@ public sealed record TeamOpportunityRegistrantPageItem(
     DateTime? CheckedInAt,
     bool IsWaiverReceived,
     DateTime? WaiverReceivedAt,
-    DateTime RegisteredAt);
+    DateTime RegisteredAt,
+    bool IsFavoritedByViewer = false,
+    string? PlayerPhone = null,
+    string? PlayerEmail = null,
+    string? GuardianName = null,
+    string? GuardianEmail = null,
+    string? GuardianPhone = null,
+    string? EmergencyContactName = null,
+    string? EmergencyContactPhone = null,
+    string? MedicalInfo = null,
+    string? AdditionalNotes = null);
+
+public sealed class TeamOpportunityRegistrationSharePageModel
+{
+    public Guid TeamId { get; set; }
+
+    public Guid OpportunityId { get; set; }
+
+    public string TeamName { get; set; } = string.Empty;
+
+    public string? OrganizationName { get; set; }
+
+    public string SportName { get; set; } = string.Empty;
+
+    public string Type { get; set; } = string.Empty;
+
+    public string Title { get; set; } = string.Empty;
+
+    public string? CompetitionLevel { get; set; }
+
+    public string? AgeGroup { get; set; }
+
+    public DateTime? EventDate { get; set; }
+
+    public DateTime? EventEndDate { get; set; }
+
+    public string? Location { get; set; }
+
+    public string? Address { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+
+    public string? ZipCode { get; set; }
+
+    public DateTime GeneratedAt { get; set; }
+
+    public IReadOnlyCollection<TeamOpportunityRegistrantPageItem> Registrants { get; set; } = [];
+
+    public int RegistrantCount => Registrants.Count;
+}
 
 public sealed class TeamOpportunityEditorPageModel
 {

@@ -185,20 +185,45 @@
 
                         @if (opportunity.Registrants.Count > 0)
                         {
-                            <section class="listing-reporting registration-roster">
-                                <h3 class="listing-reporting-title">Registered players (@opportunity.Registrants.Count)</h3>
+                            <details class="listing-reporting registration-roster">
+                                <summary class="registration-roster-toggle">
+                                    <span class="listing-reporting-title">Registered players (@opportunity.Registrants.Count)</span>
+                                    <span class="registration-roster-toggle-action">Open roster</span>
+                                </summary>
+                                <div class="registration-roster-toolbar">
+                                    <a class="btn btn-outline-secondary btn-sm"
+                                       href="/account/onboarding/team-opportunities/@Model.Team.TeamId/@opportunity.OpportunityId/registrations/share"
+                                       target="_blank"
+                                       rel="noopener">Share roster</a>
+                                </div>
                                 <div class="registration-roster-list">
                                     @foreach (var registrant in opportunity.Registrants)
                                     {
-                                        <article class="registration-roster-item">
+                                        <article class="registration-roster-item @(registrant.IsFavoritedByViewer ? "favorited" : string.Empty)">
                                             <div class="registration-roster-main">
-                                                <strong>@registrant.PlayerName</strong>
+                                                <strong>
+                                                    @registrant.PlayerName
+                                                    @if (registrant.IsFavoritedByViewer)
+                                                    {
+                                                        <span class="favorite-player-marker"
+                                                              title="Favorited player listing"
+                                                              aria-label="Favorited player listing">&#9733;</span>
+                                                    }
+                                                </strong>
                                                 <div class="registration-roster-meta">
                                                     <span>@registrant.StatusLabel</span>
                                                     <span>Registered @FormatDateTime(registrant.RegisteredAt)</span>
                                                     @if (!string.IsNullOrWhiteSpace(registrant.SchoolName))
                                                     {
                                                         <span>@registrant.SchoolName</span>
+                                                    }
+                                                    @if (!string.IsNullOrWhiteSpace(registrant.PlayerPhone))
+                                                    {
+                                                        <span>@registrant.PlayerPhone</span>
+                                                    }
+                                                    @if (!string.IsNullOrWhiteSpace(registrant.PlayerEmail))
+                                                    {
+                                                        <span>@registrant.PlayerEmail</span>
                                                     }
                                                 </div>
                                             </div>
@@ -294,7 +319,7 @@
                                         </article>
                                     }
                                 </div>
-                            </section>
+                            </details>
                         }
 
                         @if (!string.IsNullOrWhiteSpace(opportunity.Description))

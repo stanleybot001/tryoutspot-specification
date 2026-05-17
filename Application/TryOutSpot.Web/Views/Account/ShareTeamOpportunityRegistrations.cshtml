@@ -1,0 +1,208 @@
+@model TeamOpportunityRegistrationSharePageModel
+
+@{
+    ViewData["Title"] = "Registration roster";
+    var rosterUrl = BuildAbsoluteRosterUrl();
+    var shareSubject = $"TryOutSpot roster: {Model.Title}";
+    var shareBody = BuildShareBody(rosterUrl);
+    var emailHref = $"mailto:?subject={Uri.EscapeDataString(shareSubject)}&body={Uri.EscapeDataString(shareBody)}";
+    var smsHref = $"sms:?body={Uri.EscapeDataString(shareBody)}";
+}
+
+<section class="account-page registration-share-page">
+    <div class="account-heading registration-share-heading">
+        <p class="account-kicker">Registration roster</p>
+        <h1>@Model.Title</h1>
+        <p>@Model.TeamName@if (!string.IsNullOrWhiteSpace(Model.OrganizationName))
+            {
+                @: - @Model.OrganizationName
+            }</p>
+        <div class="form-actions registration-share-actions">
+            <a class="btn btn-primary" href="@emailHref">Email link</a>
+            <a class="btn btn-outline-primary" href="@smsHref">Text link</a>
+            <a class="btn btn-outline-secondary" href="/account/onboarding/team-opportunities/@Model.TeamId">Back to listing</a>
+        </div>
+    </div>
+
+    <section class="form-section registration-share-summary">
+        <div class="team-summary-grid opportunity-summary-grid">
+            <div><span>Sport</span><strong>@Model.SportName</strong></div>
+            <div><span>Type</span><strong>@FormatOpportunityType(Model.Type)</strong></div>
+            <div><span>Registered players</span><strong>@Model.RegistrantCount</strong></div>
+            <div><span>Generated</span><strong>@FormatDateTime(Model.GeneratedAt)</strong></div>
+            <div><span>Age group</span><strong>@FormatValue(Model.AgeGroup)</strong></div>
+            <div><span>Competition</span><strong>@FormatValue(Model.CompetitionLevel)</strong></div>
+            <div><span>Event start</span><strong>@FormatDate(Model.EventDate)</strong></div>
+            <div><span>Event end</span><strong>@FormatDate(Model.EventEndDate)</strong></div>
+            <div><span>Location</span><strong>@FormatValue(Model.Location)</strong></div>
+            <div><span>Address</span><strong>@FormatValue(Model.Address)</strong></div>
+            <div><span>City/State/ZIP</span><strong>@FormatLocation(Model.City, Model.State, Model.ZipCode)</strong></div>
+        </div>
+    </section>
+
+    <section class="form-section registration-share-roster">
+        <h2>Players</h2>
+        @if (Model.Registrants.Count == 0)
+        {
+            <p class="section-help">No players have registered for this event yet.</p>
+        }
+        else
+        {
+            <div class="registration-share-list">
+                @foreach (var registrant in Model.Registrants)
+                {
+                    <article class="registration-share-player @(registrant.IsFavoritedByViewer ? "favorited" : string.Empty)">
+                        <div class="registration-share-player-head">
+                            <div>
+                                <h3>
+                                    @registrant.PlayerName
+                                    @if (registrant.IsFavoritedByViewer)
+                                    {
+                                        <span class="favorite-player-marker"
+                                              title="Favorited player listing"
+                                              aria-label="Favorited player listing">&#9733;</span>
+                                    }
+                                </h3>
+                                <p>
+                                    <span>@registrant.StatusLabel</span>
+                                    <span>Registered @FormatDateTime(registrant.RegisteredAt)</span>
+                                </p>
+                            </div>
+                            <div class="registration-share-badges">
+                                <span>@(registrant.IsPresent ? "Present" : "Not checked in")</span>
+                                <span>@(registrant.IsWaiverReceived ? "Waiver received" : "Waiver missing")</span>
+                            </div>
+                        </div>
+
+                        <div class="registration-share-grid">
+                            <div><span>School</span><strong>@FormatValue(registrant.SchoolName)</strong></div>
+                            <div><span>Player contact</span><strong>@FormatContact(registrant.PlayerPhone, registrant.PlayerEmail)</strong></div>
+                            <div><span>Guardian</span><strong>@FormatValue(registrant.GuardianName)</strong></div>
+                            <div><span>Guardian contact</span><strong>@FormatContact(registrant.GuardianPhone, registrant.GuardianEmail)</strong></div>
+                            <div><span>Emergency contact</span><strong>@FormatValue(registrant.EmergencyContactName)</strong></div>
+                            <div><span>Emergency phone</span><strong>@FormatValue(registrant.EmergencyContactPhone)</strong></div>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(registrant.MedicalInfo)
+                            || !string.IsNullOrWhiteSpace(registrant.AdditionalNotes)
+                            || registrant.CheckedInAt.HasValue
+                            || registrant.WaiverReceivedAt.HasValue)
+                        {
+                            <div class="registration-share-notes">
+                                @if (registrant.CheckedInAt.HasValue)
+                                {
+                                    <p><strong>Checked in:</strong> @FormatDateTime(registrant.CheckedInAt.Value)</p>
+                                }
+                                @if (registrant.WaiverReceivedAt.HasValue)
+                                {
+                                    <p><strong>Waiver logged:</strong> @FormatDateTime(registrant.WaiverReceivedAt.Value)</p>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(registrant.MedicalInfo))
+                                {
+                                    <p><strong>Medical notes:</strong> @registrant.MedicalInfo</p>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(registrant.AdditionalNotes))
+                                {
+                                    <p><strong>Additional notes:</strong> @registrant.AdditionalNotes</p>
+                                }
+                            </div>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</section>
+
+@functions {
+    private string BuildAbsoluteRosterUrl()
+    {
+        return $"{Context.Request.Scheme}://{Context.Request.Host}{Context.Request.PathBase}{Context.Request.Path}{Context.Request.QueryString}";
+    }
+
+    private string BuildShareBody(string rosterUrl)
+    {
+        return string.Join(
+            Environment.NewLine,
+            [
+                $"Registration roster for {Model.Title}",
+                $"{Model.TeamName} - {FormatDate(Model.EventDate)}",
+                rosterUrl
+            ]);
+    }
+
+    private static string FormatOpportunityType(string type)
+    {
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            return "Opportunity";
+        }
+
+        return type
+            .Replace("_", " ", StringComparison.Ordinal)
+            .Trim()
+            .ToLowerInvariant() switch
+        {
+            "tryout" => "Tryout",
+            "roster opening" => "Roster opening",
+            "pickup player" => "Pickup player",
+            "camp" => "Camp",
+            "clinic" => "Clinic",
+            "tournament" => "Tournament",
+            "private workout" => "Private workout",
+            var fallback => char.ToUpperInvariant(fallback[0]) + fallback[1..]
+        };
+    }
+
+    private static string FormatLocation(string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim().ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        return parts.Count == 0 ? "Not set" : string.Join(", ", parts);
+    }
+
+    private static string FormatDate(DateTime? date)
+    {
+        return date?.ToLocalTime().ToString("MMM d, yyyy") ?? "Not set";
+    }
+
+    private static string FormatDateTime(DateTime date)
+    {
+        return date.ToLocalTime().ToString("MMM d, yyyy h:mm tt");
+    }
+
+    private static string FormatValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "Not set" : value.Trim();
+    }
+
+    private static string FormatContact(string? phone, string? email)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(phone))
+        {
+            parts.Add(phone.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(email))
+        {
+            parts.Add(email.Trim());
+        }
+
+        return parts.Count == 0 ? "Not set" : string.Join(" / ", parts);
+    }
+}
