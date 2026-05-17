@@ -4440,8 +4440,11 @@ public sealed class AccountController(
             model.Page = model.TotalPages;
         }
 
-        var rows = await ApplyTeamItemSearchOrdering(
-                ProjectTeamItemSearchRows(query, normalizedSearch, zipRadius, user.Id),
+        var rows = await BuildOrderedTeamItemSearchRows(
+                query,
+                normalizedSearch,
+                zipRadius,
+                user.Id,
                 hasSearch: !string.IsNullOrWhiteSpace(normalizedSearch),
                 hasRadius: zipRadius is not null)
             .Skip((model.Page - 1) * model.PageSize)
@@ -4564,8 +4567,11 @@ public sealed class AccountController(
             model.Page = model.TotalPages;
         }
 
-        var rows = await ApplyPlayerSearchOrdering(
-                ProjectPlayerSearchRows(query, normalizedSearch, zipRadius, user.Id),
+        var rows = await BuildOrderedPlayerSearchRows(
+                query,
+                normalizedSearch,
+                zipRadius,
+                user.Id,
                 hasSearch: !string.IsNullOrWhiteSpace(normalizedSearch),
                 hasRadius: zipRadius is not null)
             .Skip((model.Page - 1) * model.PageSize)
@@ -4934,128 +4940,65 @@ public sealed class AccountController(
         return query;
     }
 
-    private IQueryable<TeamItemSearchProjection> ProjectTeamItemSearchRows(
+    private IQueryable<TeamItemSearchProjection> BuildOrderedTeamItemSearchRows(
         IQueryable<Opportunity> query,
         string? normalizedSearch,
         ZipRadiusSearchResult? zipRadius,
-        Guid viewerUserId)
-    {
-        var search = normalizedSearch?.ToLowerInvariant();
-        var hasRadius = zipRadius is not null;
-        var originLatitude = zipRadius?.OriginLatitude ?? 0d;
-        var originLongitude = zipRadius?.OriginLongitude ?? 0d;
-        var longitudeScale = hasRadius
-            ? Math.Cos(originLatitude * Math.PI / 180d)
-            : 1d;
-
-        return from opportunity in query
-               join zip in dbContext.ZipCodeGeographies.AsNoTracking()
-                   on (opportunity.ZipCode ?? opportunity.Team.ZipCode) equals zip.ZipCode into zipJoin
-               from zip in zipJoin.DefaultIfEmpty()
-               select new TeamItemSearchProjection(
-                   opportunity.Id,
-                   opportunity.TeamId,
-                   opportunity.Title,
-                   opportunity.Type,
-                   opportunity.Team.Name,
-                   opportunity.Team.Organization == null ? null : opportunity.Team.Organization.Name,
-                   opportunity.Sport.Name,
-                   opportunity.Description,
-                   opportunity.CompetitionLevel,
-                   opportunity.AgeGroup,
-                   opportunity.RegistrationFee,
-                   opportunity.RegistrationDeadline,
-                   opportunity.EventDate,
-                   opportunity.EventEndDate,
-                   opportunity.City ?? opportunity.Team.City,
-                   opportunity.State ?? opportunity.Team.State,
-                   opportunity.ZipCode ?? opportunity.Team.ZipCode,
-                   opportunity.PublishedAt,
-                   hasRadius && zip != null
-                       ? (((double)zip.Latitude - originLatitude) * ((double)zip.Latitude - originLatitude))
-                           + ((((double)zip.Longitude - originLongitude) * longitudeScale)
-                               * (((double)zip.Longitude - originLongitude) * longitudeScale))
-                       : null,
-                   dbContext.UserFavorites.Any(favorite =>
-                       favorite.UserId == viewerUserId
-                       && favorite.OpportunityId == opportunity.Id),
-                   search == null
-                       ? 0
-                       : (opportunity.Title.ToLower().Contains(search) ? 10 : 0)
-                           + (opportunity.Team.Name.ToLower().Contains(search) ? 7 : 0)
-                           + (opportunity.Sport.Name.ToLower().Contains(search) ? 5 : 0)
-                           + (opportunity.Description != null && opportunity.Description.ToLower().Contains(search) ? 4 : 0)
-                           + (opportunity.City != null && opportunity.City.ToLower().Contains(search) ? 2 : 0)
-                           + (opportunity.State != null && opportunity.State.ToLower().Contains(search) ? 1 : 0)
-                           + (opportunity.ZipCode != null && opportunity.ZipCode.Contains(search) ? 1 : 0));
-    }
-
-    private IQueryable<PlayerSearchProjection> ProjectPlayerSearchRows(
-        IQueryable<PlayerListing> query,
-        string? normalizedSearch,
-        ZipRadiusSearchResult? zipRadius,
-        Guid viewerUserId)
-    {
-        var search = normalizedSearch?.ToLowerInvariant();
-        var hasRadius = zipRadius is not null;
-        var originLatitude = zipRadius?.OriginLatitude ?? 0d;
-        var originLongitude = zipRadius?.OriginLongitude ?? 0d;
-        var longitudeScale = hasRadius
-            ? Math.Cos(originLatitude * Math.PI / 180d)
-            : 1d;
-        var entitlingStatusActive = "active";
-        var entitlingStatusTrialing = "trialing";
-
-        return from listing in query
-               join zip in dbContext.ZipCodeGeographies.AsNoTracking()
-                   on listing.ZipCode equals zip.ZipCode into zipJoin
-               from zip in zipJoin.DefaultIfEmpty()
-               select new PlayerSearchProjection(
-                   listing.Id,
-                   listing.ListingType,
-                   listing.Title,
-                   listing.Description,
-                   listing.PlayerId,
-                   listing.Player == null ? null : (listing.Player.FirstName + " " + listing.Player.LastName).Trim(),
-                   listing.Player == null ? null : listing.Player.DateOfBirth,
-                   listing.Sport == null ? null : listing.Sport.Name,
-                   listing.AskingPrice,
-                   listing.Currency,
-                   listing.Condition,
-                   listing.City,
-                   listing.State,
-                   listing.ZipCode,
-                   listing.PublishedAt,
-                   hasRadius && zip != null
-                       ? (((double)zip.Latitude - originLatitude) * ((double)zip.Latitude - originLatitude))
-                           + ((((double)zip.Longitude - originLongitude) * longitudeScale)
-                               * (((double)zip.Longitude - originLongitude) * longitudeScale))
-                       : null,
-                   dbContext.Subscriptions.Any(subscription =>
-                       subscription.UserId == listing.UserId
-                       && (subscription.Status == entitlingStatusActive || subscription.Status == entitlingStatusTrialing)
-                       && (subscription.PlanType == TryOutSpotPlanCodes.PremiumPlayer || subscription.IsElite)),
-                   dbContext.UserFavorites.Any(favorite =>
-                       favorite.UserId == viewerUserId
-                       && favorite.PlayerListingId == listing.Id),
-                   search == null
-                       ? 0
-                       : (listing.Title.ToLower().Contains(search) ? 10 : 0)
-                           + (listing.Player != null && listing.Player.LastName.ToLower().Contains(search) ? 8 : 0)
-                           + (listing.Player != null && listing.Player.FirstName.ToLower().Contains(search) ? 8 : 0)
-                           + (listing.Sport != null && listing.Sport.Name.ToLower().Contains(search) ? 5 : 0)
-                           + (listing.Description != null && listing.Description.ToLower().Contains(search) ? 4 : 0)
-                           + (listing.City != null && listing.City.ToLower().Contains(search) ? 2 : 0)
-                           + (listing.State != null && listing.State.ToLower().Contains(search) ? 1 : 0)
-                           + (listing.ZipCode != null && listing.ZipCode.Contains(search) ? 1 : 0));
-    }
-
-    private static IOrderedQueryable<TeamItemSearchProjection> ApplyTeamItemSearchOrdering(
-        IQueryable<TeamItemSearchProjection> rows,
+        Guid viewerUserId,
         bool hasSearch,
         bool hasRadius)
     {
-        IOrderedQueryable<TeamItemSearchProjection> ordered = hasSearch
+        var search = normalizedSearch?.ToLowerInvariant();
+        var originLatitude = zipRadius?.OriginLatitude ?? 0d;
+        var originLongitude = zipRadius?.OriginLongitude ?? 0d;
+        var longitudeScale = hasRadius
+            ? Math.Cos(originLatitude * Math.PI / 180d)
+            : 1d;
+
+        var rows = from opportunity in query
+                   join zip in dbContext.ZipCodeGeographies.AsNoTracking()
+                       on (opportunity.ZipCode ?? opportunity.Team.ZipCode) equals zip.ZipCode into zipJoin
+                   from zip in zipJoin.DefaultIfEmpty()
+                   select new
+                   {
+                       OpportunityId = opportunity.Id,
+                       opportunity.TeamId,
+                       opportunity.Title,
+                       opportunity.Type,
+                       TeamName = opportunity.Team.Name,
+                       OrganizationName = opportunity.Team.Organization == null ? null : opportunity.Team.Organization.Name,
+                       SportName = opportunity.Sport.Name,
+                       opportunity.Description,
+                       opportunity.CompetitionLevel,
+                       opportunity.AgeGroup,
+                       opportunity.RegistrationFee,
+                       opportunity.RegistrationDeadline,
+                       opportunity.EventDate,
+                       opportunity.EventEndDate,
+                       City = opportunity.City ?? opportunity.Team.City,
+                       State = opportunity.State ?? opportunity.Team.State,
+                       ZipCode = opportunity.ZipCode ?? opportunity.Team.ZipCode,
+                       opportunity.PublishedAt,
+                       DistanceSort = hasRadius && zip != null
+                           ? (double?)((((double)zip.Latitude - originLatitude) * ((double)zip.Latitude - originLatitude))
+                               + ((((double)zip.Longitude - originLongitude) * longitudeScale)
+                                   * (((double)zip.Longitude - originLongitude) * longitudeScale)))
+                           : null,
+                       IsFavorited = dbContext.UserFavorites.Any(favorite =>
+                           favorite.UserId == viewerUserId
+                           && favorite.OpportunityId == opportunity.Id),
+                       RelevanceScore = search == null
+                           ? 0
+                           : (opportunity.Title.ToLower().Contains(search) ? 10 : 0)
+                               + (opportunity.Team.Name.ToLower().Contains(search) ? 7 : 0)
+                               + (opportunity.Sport.Name.ToLower().Contains(search) ? 5 : 0)
+                               + (opportunity.Description != null && opportunity.Description.ToLower().Contains(search) ? 4 : 0)
+                               + (opportunity.City != null && opportunity.City.ToLower().Contains(search) ? 2 : 0)
+                               + (opportunity.State != null && opportunity.State.ToLower().Contains(search) ? 1 : 0)
+                               + (opportunity.ZipCode != null && opportunity.ZipCode.Contains(search) ? 1 : 0)
+                   };
+
+        var ordered = hasSearch
             ? rows.OrderByDescending(row => row.RelevanceScore)
             : hasRadius
                 ? rows.OrderBy(row => row.DistanceSort ?? 999999d)
@@ -5068,15 +5011,94 @@ public sealed class AccountController(
 
         return ordered
             .ThenBy(row => row.EventDate ?? DateTime.MaxValue)
-            .ThenByDescending(row => row.PublishedAt);
+            .ThenByDescending(row => row.PublishedAt)
+            .Select(row => new TeamItemSearchProjection(
+                row.OpportunityId,
+                row.TeamId,
+                row.Title,
+                row.Type,
+                row.TeamName,
+                row.OrganizationName,
+                row.SportName,
+                row.Description,
+                row.CompetitionLevel,
+                row.AgeGroup,
+                row.RegistrationFee,
+                row.RegistrationDeadline,
+                row.EventDate,
+                row.EventEndDate,
+                row.City,
+                row.State,
+                row.ZipCode,
+                row.PublishedAt,
+                row.DistanceSort,
+                row.IsFavorited,
+                row.RelevanceScore));
     }
 
-    private static IOrderedQueryable<PlayerSearchProjection> ApplyPlayerSearchOrdering(
-        IQueryable<PlayerSearchProjection> rows,
+    private IQueryable<PlayerSearchProjection> BuildOrderedPlayerSearchRows(
+        IQueryable<PlayerListing> query,
+        string? normalizedSearch,
+        ZipRadiusSearchResult? zipRadius,
+        Guid viewerUserId,
         bool hasSearch,
         bool hasRadius)
     {
-        IOrderedQueryable<PlayerSearchProjection> ordered = hasSearch
+        var search = normalizedSearch?.ToLowerInvariant();
+        var originLatitude = zipRadius?.OriginLatitude ?? 0d;
+        var originLongitude = zipRadius?.OriginLongitude ?? 0d;
+        var longitudeScale = hasRadius
+            ? Math.Cos(originLatitude * Math.PI / 180d)
+            : 1d;
+        var entitlingStatusActive = "active";
+        var entitlingStatusTrialing = "trialing";
+
+        var rows = from listing in query
+                   join zip in dbContext.ZipCodeGeographies.AsNoTracking()
+                       on listing.ZipCode equals zip.ZipCode into zipJoin
+                   from zip in zipJoin.DefaultIfEmpty()
+                   select new
+                   {
+                       ListingId = listing.Id,
+                       listing.ListingType,
+                       listing.Title,
+                       listing.Description,
+                       listing.PlayerId,
+                       PlayerName = listing.Player == null ? null : (listing.Player.FirstName + " " + listing.Player.LastName).Trim(),
+                       PlayerDateOfBirth = listing.Player == null ? null : (DateTime?)listing.Player.DateOfBirth,
+                       SportName = listing.Sport == null ? null : listing.Sport.Name,
+                       listing.AskingPrice,
+                       listing.Currency,
+                       listing.Condition,
+                       listing.City,
+                       listing.State,
+                       listing.ZipCode,
+                       listing.PublishedAt,
+                       DistanceSort = hasRadius && zip != null
+                           ? (double?)((((double)zip.Latitude - originLatitude) * ((double)zip.Latitude - originLatitude))
+                               + ((((double)zip.Longitude - originLongitude) * longitudeScale)
+                                   * (((double)zip.Longitude - originLongitude) * longitudeScale)))
+                           : null,
+                       IsPriorityListing = dbContext.Subscriptions.Any(subscription =>
+                           subscription.UserId == listing.UserId
+                           && (subscription.Status == entitlingStatusActive || subscription.Status == entitlingStatusTrialing)
+                           && (subscription.PlanType == TryOutSpotPlanCodes.PremiumPlayer || subscription.IsElite)),
+                       IsFavorited = dbContext.UserFavorites.Any(favorite =>
+                           favorite.UserId == viewerUserId
+                           && favorite.PlayerListingId == listing.Id),
+                       RelevanceScore = search == null
+                           ? 0
+                           : (listing.Title.ToLower().Contains(search) ? 10 : 0)
+                               + (listing.Player != null && listing.Player.LastName.ToLower().Contains(search) ? 8 : 0)
+                               + (listing.Player != null && listing.Player.FirstName.ToLower().Contains(search) ? 8 : 0)
+                               + (listing.Sport != null && listing.Sport.Name.ToLower().Contains(search) ? 5 : 0)
+                               + (listing.Description != null && listing.Description.ToLower().Contains(search) ? 4 : 0)
+                               + (listing.City != null && listing.City.ToLower().Contains(search) ? 2 : 0)
+                               + (listing.State != null && listing.State.ToLower().Contains(search) ? 1 : 0)
+                               + (listing.ZipCode != null && listing.ZipCode.Contains(search) ? 1 : 0)
+                   };
+
+        var ordered = hasSearch
             ? rows.OrderByDescending(row => row.RelevanceScore)
             : rows.OrderByDescending(row => row.IsPriorityListing);
 
@@ -5090,7 +5112,28 @@ public sealed class AccountController(
             ordered = ordered.ThenBy(row => row.DistanceSort ?? 999999d);
         }
 
-        return ordered.ThenByDescending(row => row.PublishedAt);
+        return ordered
+            .ThenByDescending(row => row.PublishedAt)
+            .Select(row => new PlayerSearchProjection(
+                row.ListingId,
+                row.ListingType,
+                row.Title,
+                row.Description,
+                row.PlayerId,
+                row.PlayerName,
+                row.PlayerDateOfBirth,
+                row.SportName,
+                row.AskingPrice,
+                row.Currency,
+                row.Condition,
+                row.City,
+                row.State,
+                row.ZipCode,
+                row.PublishedAt,
+                row.DistanceSort,
+                row.IsPriorityListing,
+                row.IsFavorited,
+                row.RelevanceScore));
     }
 
     private async Task<IReadOnlyCollection<TeamItemSearchSuggestionGroupPageItem>> BuildTeamItemRadiusSuggestionsAsync(
@@ -5137,8 +5180,11 @@ public sealed class AccountController(
                 model.State,
                 additionalZipCodes,
                 hasAdvancedOpportunitySearch);
-            var rows = await ApplyTeamItemSearchOrdering(
-                    ProjectTeamItemSearchRows(query, normalizedSearch, expandedRadius, viewerUserId),
+            var rows = await BuildOrderedTeamItemSearchRows(
+                    query,
+                    normalizedSearch,
+                    expandedRadius,
+                    viewerUserId,
                     hasSearch: !string.IsNullOrWhiteSpace(normalizedSearch),
                     hasRadius: true)
                 .Take(SearchSuggestionResultLimit)
@@ -5197,8 +5243,11 @@ public sealed class AccountController(
                 model.MinPrice,
                 model.MaxPrice,
                 additionalZipCodes);
-            var rows = await ApplyPlayerSearchOrdering(
-                    ProjectPlayerSearchRows(query, normalizedSearch, expandedRadius, viewerUserId),
+            var rows = await BuildOrderedPlayerSearchRows(
+                    query,
+                    normalizedSearch,
+                    expandedRadius,
+                    viewerUserId,
                     hasSearch: !string.IsNullOrWhiteSpace(normalizedSearch),
                     hasRadius: true)
                 .Take(SearchSuggestionResultLimit)
