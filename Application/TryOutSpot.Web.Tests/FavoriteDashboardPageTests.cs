@@ -37,13 +37,35 @@ public sealed class FavoriteDashboardPageTests
         Assert.True(favoriteExists);
     }
 
+    [Theory]
+    [InlineData(TryOutSpotRoles.Parent, "parent-favorites-tile@example.com")]
+    [InlineData(TryOutSpotRoles.TeamRepresentative, "team-favorites-tile@example.com")]
+    public async Task Onboarding_ShowsFavoritesTileForDashboardRoles(string role, string email)
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var viewer = await factory.CreateUserAsync(email, [role]);
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, viewer.Email!);
+
+        var onboardingResponse = await client.GetAsync("/account/onboarding");
+        Assert.Equal(HttpStatusCode.OK, onboardingResponse.StatusCode);
+        var html = await onboardingResponse.Content.ReadAsStringAsync();
+
+        Assert.Contains("My Favorites", html);
+        Assert.Contains("/account/onboarding/favorites", html);
+    }
+
     [Fact]
-    public async Task Onboarding_ShowsFavoritesAndCanRemoveOpportunityFavorite()
+    public async Task FavoritesPage_ShowsTeamOpportunityFavoriteAndCanRemoveIt()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
         var viewer = await factory.CreateUserAsync(
-            "favorites-dashboard@example.com",
-            [TryOutSpotRoles.Parent, TryOutSpotRoles.TeamRepresentative]);
+            "team-favorites-dashboard@example.com",
+            [TryOutSpotRoles.TeamRepresentative]);
         var seeded = SeedFavorites(factory, viewer.Id);
 
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -56,23 +78,29 @@ public sealed class FavoriteDashboardPageTests
         Assert.Equal(HttpStatusCode.OK, onboardingResponse.StatusCode);
         var html = await onboardingResponse.Content.ReadAsStringAsync();
 
-        Assert.Contains("My favorites", html);
-        Assert.Contains("Dashboard favorite player listing", html);
-        Assert.Contains("Dashboard favorite opportunity", html);
-        Assert.Contains($"/player-listings/{seeded.PlayerListingId}", html);
-        Assert.Contains($"/opportunities/{seeded.OpportunityId}", html);
+        Assert.Contains("My Favorites", html);
+        Assert.Contains("/account/onboarding/favorites", html);
+        Assert.DoesNotContain("Dashboard favorite player listing", html);
+        Assert.DoesNotContain("Dashboard favorite opportunity", html);
 
-        var antiForgeryToken = ReadAntiForgeryToken(html);
+        var favoritesResponse = await client.GetAsync("/account/onboarding/favorites");
+        Assert.Equal(HttpStatusCode.OK, favoritesResponse.StatusCode);
+        var favoritesHtml = await favoritesResponse.Content.ReadAsStringAsync();
+
+        Assert.Contains("Dashboard favorite player listing", favoritesHtml);
+        Assert.Contains("Dashboard favorite opportunity", favoritesHtml);
+        Assert.Contains($"/player-listings/{seeded.PlayerListingId}", favoritesHtml);
+        Assert.Contains($"/opportunities/{seeded.OpportunityId}", favoritesHtml);
+
         var removeResponse = await client.PostAsync(
             $"/opportunities/{seeded.OpportunityId}/favorite/remove",
             new FormUrlEncodedContent(
             [
-                new("__RequestVerificationToken", antiForgeryToken),
-                new("returnUrl", "/account/onboarding")
+                new("returnUrl", "/account/onboarding/favorites")
             ]));
 
         Assert.Equal(HttpStatusCode.Redirect, removeResponse.StatusCode);
-        Assert.Equal("/account/onboarding", removeResponse.Headers.Location?.ToString());
+        Assert.Equal("/account/onboarding/favorites", removeResponse.Headers.Location?.ToString());
 
         using var scope = factory.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();

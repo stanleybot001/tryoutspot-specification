@@ -18,14 +18,6 @@
         .ToArray();
     var showAccountTypeEditor = !Model.Steps.Any(step =>
         string.Equals(step.Code, "choose_account_types", StringComparison.OrdinalIgnoreCase) && step.IsComplete);
-    var hasPlayerOrParentRole = Model.AccountTypes.Any(role =>
-        string.Equals(role, "Parent", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(role, "Player", StringComparison.OrdinalIgnoreCase));
-    var hasTeamRole = Model.AccountTypes.Any(TryOutSpotRoles.IsTeamBundleRole);
-    var showFavoriteSection = hasPlayerOrParentRole
-        || hasTeamRole
-        || Model.FavoriteOpportunities.Count > 0
-        || Model.FavoritePlayerListings.Count > 0;
 }
 
 <section class="account-page">
@@ -231,118 +223,6 @@
         </section>
     }
 
-    @if (showFavoriteSection)
-    {
-        <section class="form-section">
-            <h2>My favorites</h2>
-
-            @if (hasTeamRole)
-            {
-                <h3>Player listings</h3>
-                @if (Model.FavoritePlayerListings.Count == 0)
-                {
-                    <p class="section-help">Player listings you favorite while searching will appear here.</p>
-                }
-                else
-                {
-                    <div class="plan-list">
-                        @foreach (var favorite in Model.FavoritePlayerListings)
-                        {
-                            <article class="plan-row">
-                                <div>
-                                    <strong>
-                                        @if (favorite.IsAvailable)
-                                        {
-                                            <a href="/player-listings/@favorite.ListingId">@favorite.Title</a>
-                                        }
-                                        else
-                                        {
-                                            @favorite.Title
-                                        }
-                                    </strong>
-                                    <span>@favorite.ListingTypeLabel@(!string.IsNullOrWhiteSpace(favorite.SportName) ? $" - {favorite.SportName}" : string.Empty)</span>
-                                    @if (!string.IsNullOrWhiteSpace(favorite.PlayerName))
-                                    {
-                                        <p>Player: <strong>@favorite.PlayerName</strong></p>
-                                    }
-                                    <p class="section-help">
-                                        @FormatLocation(favorite.City, favorite.State, favorite.ZipCode) · Saved @favorite.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")
-                                        @if (!favorite.IsAvailable)
-                                        {
-                                            <span> · Listing is no longer public</span>
-                                        }
-                                    </p>
-                                </div>
-                                <form class="inline-form"
-                                      asp-action="RemoveFavoritePlayerListing"
-                                      asp-controller="Account"
-                                      asp-route-listingId="@favorite.ListingId"
-                                      method="post">
-                                    <input type="hidden" name="returnUrl" value="/account/onboarding" />
-                                    <button type="submit" class="btn btn-outline-secondary btn-sm">Remove</button>
-                                </form>
-                            </article>
-                        }
-                    </div>
-                }
-            }
-
-            @if (hasPlayerOrParentRole)
-            {
-                <h3 class="mt-3">Opportunity listings</h3>
-                @if (Model.FavoriteOpportunities.Count == 0)
-                {
-                    <p class="section-help">Tryouts, tournaments, camps, clinics, and roster opportunities you favorite will appear here.</p>
-                }
-                else
-                {
-                    <div class="plan-list">
-                        @foreach (var favorite in Model.FavoriteOpportunities)
-                        {
-                            <article class="plan-row">
-                                <div>
-                                    <strong>
-                                        @if (favorite.IsAvailable)
-                                        {
-                                            <a href="/opportunities/@favorite.OpportunityId">@favorite.Title</a>
-                                        }
-                                        else
-                                        {
-                                            @favorite.Title
-                                        }
-                                    </strong>
-                                    <span>@favorite.TypeLabel - @favorite.SportName</span>
-                                    <p>
-                                        Team: <strong>@favorite.TeamName</strong>
-                                        @if (!string.IsNullOrWhiteSpace(favorite.OrganizationName))
-                                        {
-                                            <span> - @favorite.OrganizationName</span>
-                                        }
-                                    </p>
-                                    <p class="section-help">
-                                        @FormatDate(favorite.EventDate) · @FormatLocation(favorite.City, favorite.State, favorite.ZipCode) · Saved @favorite.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")
-                                        @if (!favorite.IsAvailable)
-                                        {
-                                            <span> · Listing is no longer public</span>
-                                        }
-                                    </p>
-                                </div>
-                                <form class="inline-form"
-                                      asp-action="RemoveFavoriteTeamOpportunity"
-                                      asp-controller="Account"
-                                      asp-route-opportunityId="@favorite.OpportunityId"
-                                      method="post">
-                                    <input type="hidden" name="returnUrl" value="/account/onboarding" />
-                                    <button type="submit" class="btn btn-outline-secondary btn-sm">Remove</button>
-                                </form>
-                            </article>
-                        }
-                    </div>
-                }
-            }
-        </section>
-    }
-
     @if (Model.ShowRecommendedPlans)
     {
         <section class="form-section">
@@ -416,6 +296,7 @@
             "manage_player_listings" => "/account/onboarding/player-listings",
             "add_team_or_organization" => "/account/onboarding/add-team-or-organization",
             "manage_team_opportunities" => "/account/onboarding/team-opportunities",
+            "my_favorites" => "/account/onboarding/favorites",
             "choose_plan" => "/account/onboarding/choose-plan",
             _ => string.Empty
         };
@@ -465,34 +346,6 @@
         }
 
         return $"{normalizedCity}, {normalizedState}";
-    }
-
-    private static string FormatLocation(string? city, string? state, string? zipCode)
-    {
-        var parts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(city))
-        {
-            parts.Add(city.Trim());
-        }
-
-        if (!string.IsNullOrWhiteSpace(state))
-        {
-            parts.Add(state.Trim().ToUpperInvariant());
-        }
-
-        if (!string.IsNullOrWhiteSpace(zipCode))
-        {
-            parts.Add(zipCode.Trim());
-        }
-
-        return parts.Count == 0 ? "Location not set" : string.Join(", ", parts);
-    }
-
-    private static string FormatDate(DateTime? value)
-    {
-        return value.HasValue
-            ? value.Value.ToLocalTime().ToString("MMM d, yyyy")
-            : "Date not set";
     }
 
     private static string GetRegistrationStatusClass(string statusLabel)

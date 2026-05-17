@@ -47,6 +47,8 @@ public sealed class AccountController(
     private const int ProfessionalTeamPublishingWindowMonths = 12;
     private const int EnterpriseTeamPublishingLimit = 50;
     private const int EnterpriseTeamPublishingWindowMonths = 12;
+    private const int DashboardFavoritePreviewLimit = 12;
+    private const int FavoriteListLimit = 100;
     private const int ListingPdfMaxSizeMegabytes = 10;
     private const long ListingPdfMaxSizeBytes = ListingPdfMaxSizeMegabytes * 1024L * 1024L;
     private const string PlayerListingDocumentType = "player-listings";
@@ -764,6 +766,19 @@ public sealed class AccountController(
         }
 
         return View(await BuildOnboardingPageModelAsync(user, cancellationToken));
+    }
+
+    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [HttpGet("onboarding/favorites")]
+    public async Task<IActionResult> Favorites(CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Favorites)) });
+        }
+
+        return View(await BuildFavoritesPageModelAsync(user, cancellationToken));
     }
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
@@ -4199,12 +4214,15 @@ public sealed class AccountController(
         var upcomingTryoutRegistrations = hasPlayerOrParentRole
             ? await GetOnboardingTryoutRegistrationsAsync(user.Id, cancellationToken)
             : [];
-        var favoritePlayerListings = hasTeamOrOrganizationRole
-            ? await GetDashboardPlayerListingFavoritesAsync(user.Id, cancellationToken)
-            : [];
-        var favoriteOpportunities = hasPlayerOrParentRole
-            ? await GetDashboardOpportunityFavoritesAsync(user.Id, cancellationToken)
-            : [];
+        var favoritePlayerListings = await GetDashboardPlayerListingFavoritesAsync(
+            user.Id,
+            DashboardFavoritePreviewLimit,
+            cancellationToken);
+        var favoriteOpportunities = await GetDashboardOpportunityFavoritesAsync(
+            user.Id,
+            DashboardFavoritePreviewLimit,
+            cancellationToken);
+        var favoriteCount = favoritePlayerListings.Count + favoriteOpportunities.Count;
 
         var hasLinkedPlayers = hasPlayerOrParentRole
             && await dbContext.UserPlayerRelationships
@@ -4309,6 +4327,16 @@ public sealed class AccountController(
                 hasManagedTeamOpportunities));
         }
 
+        if (hasPlayerOrParentRole || hasTeamOrOrganizationRole || favoriteCount > 0)
+        {
+            steps.Add(new OnboardingStepPageItem(
+                "my_favorites",
+                "My Favorites",
+                "Review saved player listings and team opportunity listings.",
+                false,
+                favoriteCount > 0));
+        }
+
         if (!hasCompletedPlanSelection && recommendedPlans.Any(plan => plan.RequiresStripeSubscription))
         {
             steps.Add(new OnboardingStepPageItem(
@@ -4337,6 +4365,28 @@ public sealed class AccountController(
             FavoritePlayerListings = favoritePlayerListings,
             FavoriteOpportunities = favoriteOpportunities,
             Steps = steps
+        };
+    }
+
+    private async Task<FavoritesPageModel> BuildFavoritesPageModelAsync(
+        User user,
+        CancellationToken cancellationToken)
+    {
+        var favoritePlayerListings = await GetDashboardPlayerListingFavoritesAsync(
+            user.Id,
+            FavoriteListLimit,
+            cancellationToken);
+        var favoriteOpportunities = await GetDashboardOpportunityFavoritesAsync(
+            user.Id,
+            FavoriteListLimit,
+            cancellationToken);
+
+        return new FavoritesPageModel
+        {
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            FavoritePlayerListings = favoritePlayerListings,
+            FavoriteOpportunities = favoriteOpportunities
         };
     }
 
@@ -4414,11 +4464,13 @@ public sealed class AccountController(
 
     private async Task<IReadOnlyCollection<DashboardPlayerListingFavoritePageItem>> GetDashboardPlayerListingFavoritesAsync(
         Guid userId,
+        int take,
         CancellationToken cancellationToken)
     {
         try
         {
             var now = DateTime.UtcNow;
+            var normalizedTake = Math.Clamp(take, 1, FavoriteListLimit);
             var favorites = await dbContext.UserFavorites
                 .AsNoTracking()
                 .Where(favorite => favorite.UserId == userId)
@@ -4428,7 +4480,7 @@ public sealed class AccountController(
                 .Include(favorite => favorite.PlayerListing)
                     .ThenInclude(listing => listing!.Sport)
                 .OrderByDescending(favorite => favorite.CreatedAt)
-                .Take(12)
+                .Take(normalizedTake)
                 .ToArrayAsync(cancellationToken);
 
             return favorites
@@ -4462,11 +4514,13 @@ public sealed class AccountController(
 
     private async Task<IReadOnlyCollection<DashboardOpportunityFavoritePageItem>> GetDashboardOpportunityFavoritesAsync(
         Guid userId,
+        int take,
         CancellationToken cancellationToken)
     {
         try
         {
             var now = DateTime.UtcNow;
+            var normalizedTake = Math.Clamp(take, 1, FavoriteListLimit);
             var favorites = await dbContext.UserFavorites
                 .AsNoTracking()
                 .Where(favorite => favorite.UserId == userId)
@@ -4477,7 +4531,7 @@ public sealed class AccountController(
                 .Include(favorite => favorite.Opportunity)
                     .ThenInclude(opportunity => opportunity!.Sport)
                 .OrderByDescending(favorite => favorite.CreatedAt)
-                .Take(12)
+                .Take(normalizedTake)
                 .ToArrayAsync(cancellationToken);
 
             return favorites

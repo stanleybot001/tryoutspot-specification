@@ -219,6 +219,19 @@ public sealed class OnboardingPageModel
     public IReadOnlyCollection<DashboardOpportunityFavoritePageItem> FavoriteOpportunities { get; set; } = [];
 }
 
+public sealed class FavoritesPageModel
+{
+    public string FirstName { get; set; } = string.Empty;
+
+    public string LastName { get; set; } = string.Empty;
+
+    public IReadOnlyCollection<DashboardPlayerListingFavoritePageItem> FavoritePlayerListings { get; set; } = [];
+
+    public IReadOnlyCollection<DashboardOpportunityFavoritePageItem> FavoriteOpportunities { get; set; } = [];
+
+    public int FavoriteCount => FavoritePlayerListings.Count + FavoriteOpportunities.Count;
+}
+
 public sealed class AddPlayerProfilePageModel
 {
     public Guid? PlayerId { get; set; }

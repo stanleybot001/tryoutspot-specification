@@ -1,0 +1,208 @@
+@model FavoritesPageModel
+
+@{
+    ViewData["Title"] = "My Favorites";
+}
+
+<section class="account-page">
+    <div class="account-heading">
+        <p class="account-kicker">Saved listings</p>
+        <h1>My favorites</h1>
+        <p>Review the player listings and opportunity listings you saved for later.</p>
+    </div>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    <section class="account-summary-strip">
+        <div>
+            <span>Total saved</span>
+            <strong>@Model.FavoriteCount</strong>
+        </div>
+        <div>
+            <span>Opportunity listings</span>
+            <strong>@Model.FavoriteOpportunities.Count</strong>
+        </div>
+        <div>
+            <span>Player listings</span>
+            <strong>@Model.FavoritePlayerListings.Count</strong>
+        </div>
+    </section>
+
+    @if (Model.FavoriteCount == 0)
+    {
+        <section class="form-section">
+            <h2>No favorites yet</h2>
+            <p class="section-help">Listings you save while browsing will appear here.</p>
+            <div class="form-actions">
+                <a class="btn btn-outline-secondary" href="/account/onboarding">Back to dashboard</a>
+            </div>
+        </section>
+    }
+    else
+    {
+        <section class="form-section">
+            <h2>Opportunity listings</h2>
+            @if (Model.FavoriteOpportunities.Count == 0)
+            {
+                <p class="section-help">You have not saved any tryouts, tournaments, camps, clinics, or roster opportunities yet.</p>
+            }
+            else
+            {
+                <div class="plan-list">
+                    @foreach (var favorite in Model.FavoriteOpportunities)
+                    {
+                        <article class="plan-row plan-row-stack">
+                            <div class="team-row-head">
+                                <div>
+                                    <strong>
+                                        @if (favorite.IsAvailable)
+                                        {
+                                            <a href="/opportunities/@favorite.OpportunityId">@favorite.Title</a>
+                                        }
+                                        else
+                                        {
+                                            @favorite.Title
+                                        }
+                                    </strong>
+                                    <span>@favorite.TypeLabel - @favorite.SportName</span>
+                                </div>
+                                <div class="team-metric-inline">
+                                    <span>@FormatListingAvailability(favorite.IsAvailable)</span>
+                                    <span>Saved @FormatDate(favorite.CreatedAt)</span>
+                                </div>
+                            </div>
+
+                            <div class="team-summary-grid">
+                                <div><span>Team</span><strong>@favorite.TeamName</strong></div>
+                                <div><span>Organization</span><strong>@(string.IsNullOrWhiteSpace(favorite.OrganizationName) ? "Not listed" : favorite.OrganizationName)</strong></div>
+                                <div><span>Event date</span><strong>@FormatDate(favorite.EventDate)</strong></div>
+                                <div><span>Location</span><strong>@FormatLocation(favorite.City, favorite.State, favorite.ZipCode)</strong></div>
+                            </div>
+
+                            <div class="form-actions">
+                                @if (favorite.IsAvailable)
+                                {
+                                    <a class="btn btn-primary" href="/opportunities/@favorite.OpportunityId">View listing</a>
+                                }
+                                <form class="inline-form"
+                                      asp-action="RemoveFavoriteTeamOpportunity"
+                                      asp-controller="Account"
+                                      asp-route-opportunityId="@favorite.OpportunityId"
+                                      method="post">
+                                    <input type="hidden" name="returnUrl" value="/account/onboarding/favorites" />
+                                    <button type="submit" class="btn btn-outline-secondary">Remove favorite</button>
+                                </form>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+
+        <section class="form-section">
+            <h2>Player listings</h2>
+            @if (Model.FavoritePlayerListings.Count == 0)
+            {
+                <p class="section-help">You have not saved any player listings yet.</p>
+            }
+            else
+            {
+                <div class="plan-list">
+                    @foreach (var favorite in Model.FavoritePlayerListings)
+                    {
+                        <article class="plan-row plan-row-stack">
+                            <div class="team-row-head">
+                                <div>
+                                    <strong>
+                                        @if (favorite.IsAvailable)
+                                        {
+                                            <a href="/player-listings/@favorite.ListingId">@favorite.Title</a>
+                                        }
+                                        else
+                                        {
+                                            @favorite.Title
+                                        }
+                                    </strong>
+                                    <span>@favorite.ListingTypeLabel@(!string.IsNullOrWhiteSpace(favorite.SportName) ? $" - {favorite.SportName}" : string.Empty)</span>
+                                </div>
+                                <div class="team-metric-inline">
+                                    <span>@FormatListingAvailability(favorite.IsAvailable)</span>
+                                    <span>Saved @FormatDate(favorite.CreatedAt)</span>
+                                </div>
+                            </div>
+
+                            <div class="team-summary-grid">
+                                <div><span>Player</span><strong>@(string.IsNullOrWhiteSpace(favorite.PlayerName) ? "Not listed" : favorite.PlayerName)</strong></div>
+                                <div><span>Sport</span><strong>@(string.IsNullOrWhiteSpace(favorite.SportName) ? "Not listed" : favorite.SportName)</strong></div>
+                                <div><span>Listing type</span><strong>@favorite.ListingTypeLabel</strong></div>
+                                <div><span>Location</span><strong>@FormatLocation(favorite.City, favorite.State, favorite.ZipCode)</strong></div>
+                            </div>
+
+                            <div class="form-actions">
+                                @if (favorite.IsAvailable)
+                                {
+                                    <a class="btn btn-primary" href="/player-listings/@favorite.ListingId">View listing</a>
+                                }
+                                <form class="inline-form"
+                                      asp-action="RemoveFavoritePlayerListing"
+                                      asp-controller="Account"
+                                      asp-route-listingId="@favorite.ListingId"
+                                      method="post">
+                                    <input type="hidden" name="returnUrl" value="/account/onboarding/favorites" />
+                                    <button type="submit" class="btn btn-outline-secondary">Remove favorite</button>
+                                </form>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+
+        <div class="form-actions mt-3">
+            <a class="btn btn-outline-secondary" href="/account/onboarding">Back to dashboard</a>
+        </div>
+    }
+</section>
+
+@functions {
+    private static string FormatLocation(string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim().ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        return parts.Count == 0 ? "Not set" : string.Join(", ", parts);
+    }
+
+    private static string FormatDate(DateTime? value)
+    {
+        return value.HasValue
+            ? value.Value.ToLocalTime().ToString("MMM d, yyyy")
+            : "Date not set";
+    }
+
+    private static string FormatDate(DateTime value)
+    {
+        return value.ToLocalTime().ToString("MMM d, yyyy");
+    }
+
+    private static string FormatListingAvailability(bool isAvailable)
+    {
+        return isAvailable ? "Available" : "No longer public";
+    }
+}
