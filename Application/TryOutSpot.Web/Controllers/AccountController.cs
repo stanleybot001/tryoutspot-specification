@@ -1488,6 +1488,7 @@ public sealed class AccountController(
     [Authorize(
         AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
         Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
+    [IgnoreAntiforgeryToken]
     [HttpPost("/player-listings/{listingId:guid}/favorite")]
     public async Task<IActionResult> FavoritePlayerListing(Guid listingId, CancellationToken cancellationToken = default)
     {
@@ -1531,6 +1532,7 @@ public sealed class AccountController(
     [Authorize(
         AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
         Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
+    [IgnoreAntiforgeryToken]
     [HttpPost("/player-listings/{listingId:guid}/favorite/remove")]
     public async Task<IActionResult> RemoveFavoritePlayerListing(
         Guid listingId,
@@ -2754,6 +2756,7 @@ public sealed class AccountController(
     [Authorize(
         AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
         Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
+    [IgnoreAntiforgeryToken]
     [HttpPost("/opportunities/{opportunityId:guid}/favorite")]
     public async Task<IActionResult> FavoriteTeamOpportunity(
         Guid opportunityId,
@@ -2802,6 +2805,7 @@ public sealed class AccountController(
     [Authorize(
         AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
         Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
+    [IgnoreAntiforgeryToken]
     [HttpPost("/opportunities/{opportunityId:guid}/favorite/remove")]
     public async Task<IActionResult> RemoveFavoriteTeamOpportunity(
         Guid opportunityId,

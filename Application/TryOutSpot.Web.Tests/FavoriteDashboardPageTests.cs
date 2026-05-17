@@ -13,6 +13,31 @@ namespace TryOutSpot.Web.Tests;
 public sealed class FavoriteDashboardPageTests
 {
     [Fact]
+    public async Task OpportunityFavoritePost_WithWebCookie_DoesNotRequireAntiforgeryToken()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var viewer = await factory.CreateUserAsync("favorites-no-token@example.com", [TryOutSpotRoles.Parent]);
+        var opportunityId = SeedOpportunity(factory);
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, viewer.Email!);
+
+        var response = await client.PostAsync($"/opportunities/{opportunityId}/favorite", content: null);
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal($"/opportunities/{opportunityId}", response.Headers.Location?.ToString());
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var favoriteExists = await dbContext.UserFavorites
+            .AnyAsync(favorite => favorite.UserId == viewer.Id && favorite.OpportunityId == opportunityId);
+        Assert.True(favoriteExists);
+    }
+
+    [Fact]
     public async Task Onboarding_ShowsFavoritesAndCanRemoveOpportunityFavorite()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -146,6 +171,60 @@ public sealed class FavoriteDashboardPageTests
         dbContext.SaveChanges();
 
         return (playerListingId, opportunityId);
+    }
+
+    private static Guid SeedOpportunity(TryOutSpotWebApplicationFactory factory)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+        var sportId = dbContext.Sports
+            .Where(sport => sport.IsActive && sport.Name == "Softball")
+            .Select(sport => sport.Id)
+            .Single();
+
+        var teamId = Guid.NewGuid();
+        dbContext.Teams.Add(new Team
+        {
+            Id = teamId,
+            Name = "Favorite Token Team",
+            TeamLevel = "14U",
+            GeographicScope = "Local",
+            City = "McPherson",
+            State = "KS",
+            ZipCode = "67460",
+            IsSearchable = true,
+            IsContactInfoVisible = true,
+            IsElite = false,
+            IsVerified = false,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        });
+
+        var opportunityId = Guid.NewGuid();
+        dbContext.Opportunities.Add(new Opportunity
+        {
+            Id = opportunityId,
+            TeamId = teamId,
+            SportId = sportId,
+            Type = "tryout",
+            Title = "No token favorite opportunity",
+            RegistrationRequired = true,
+            RegistrationFee = 10m,
+            EventDate = now.AddDays(10),
+            City = "McPherson",
+            State = "KS",
+            ZipCode = "67460",
+            IsPublished = true,
+            PublishedAt = now,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        });
+        dbContext.SaveChanges();
+
+        return opportunityId;
     }
 
     private static async Task LoginWebUserAsync(HttpClient client, string email)
