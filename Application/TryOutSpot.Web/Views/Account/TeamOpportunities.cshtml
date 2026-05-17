@@ -88,11 +88,11 @@
         <h2>Opportunity listings</h2>
         @if (Model.ShowBasicAnalytics)
         {
-            <div class="listing-reporting-overview">
-                <div><span>Page views</span><strong>@Model.PageViewCountTotal</strong></div>
-                <div><span>Page applications</span><strong>@Model.PageRegistrationCountTotal</strong></div>
-                <div><span>Page conversion</span><strong>@FormatPercent(Model.PageViewToRegistrationConversionRate)</strong></div>
-                <div><span>Analytics tier</span><strong>@(Model.ShowDetailedAnalytics ? "Detailed" : "Basic")</strong></div>
+            <div class="d-flex flex-wrap gap-2 mb-2 small text-muted">
+                <span><strong class="text-body">Page views:</strong> @Model.PageViewCountTotal</span>
+                <span><strong class="text-body">Applications:</strong> @Model.PageRegistrationCountTotal</span>
+                <span><strong class="text-body">Conversion:</strong> @FormatPercent(Model.PageViewToRegistrationConversionRate)</span>
+                <span><strong class="text-body">Analytics:</strong> @(Model.ShowDetailedAnalytics ? "Detailed" : "Basic")</span>
             </div>
         }
         else
@@ -108,7 +108,7 @@
             <div class="plan-list">
                 @foreach (var opportunity in Model.Opportunities)
                 {
-                    <article class="plan-row plan-row-stack opportunity-row @(opportunity.IsPublished ? "published" : "draft")">
+                    <article class="plan-row plan-row-stack opportunity-row p-2 @(opportunity.IsPublished ? "published" : "draft")">
                         <div class="opportunity-row-head">
                             <div>
                                 <strong>@opportunity.Title</strong>
@@ -120,33 +120,29 @@
                             </div>
                         </div>
 
-                        <div class="team-summary-grid opportunity-summary-grid">
-                            <div><span>Age group</span><strong>@(string.IsNullOrWhiteSpace(opportunity.AgeGroup) ? "Not set" : opportunity.AgeGroup)</strong></div>
-                            <div><span>Competition</span><strong>@(string.IsNullOrWhiteSpace(opportunity.CompetitionLevel) ? "Not set" : opportunity.CompetitionLevel)</strong></div>
-                            <div><span>Fee</span><strong>@FormatFee(opportunity.RegistrationFee)</strong></div>
-                            <div><span>Registration deadline</span><strong>@FormatDate(opportunity.RegistrationDeadline)</strong></div>
-                            <div><span>Event start</span><strong>@FormatDate(opportunity.EventDate)</strong></div>
-                            <div><span>Event end</span><strong>@FormatDate(opportunity.EventEndDate)</strong></div>
-                            <div><span>Location</span><strong>@FormatLocation(opportunity.City, opportunity.State, opportunity.ZipCode)</strong></div>
-                            <div><span>Expires</span><strong>@FormatDate(opportunity.ExpiresAt)</strong></div>
+                        <div class="d-flex flex-wrap gap-2 mt-2 small text-muted">
+                            <span><strong class="text-body">Age:</strong> @(string.IsNullOrWhiteSpace(opportunity.AgeGroup) ? "Not set" : opportunity.AgeGroup)</span>
+                            <span><strong class="text-body">Competition:</strong> @(string.IsNullOrWhiteSpace(opportunity.CompetitionLevel) ? "Not set" : opportunity.CompetitionLevel)</span>
+                            <span><strong class="text-body">Fee:</strong> @FormatFee(opportunity.RegistrationFee)</span>
+                            <span><strong class="text-body">Deadline:</strong> @FormatDate(opportunity.RegistrationDeadline)</span>
+                            <span><strong class="text-body">Start:</strong> @FormatDate(opportunity.EventDate)</span>
+                            <span><strong class="text-body">End:</strong> @FormatDate(opportunity.EventEndDate)</span>
+                            <span><strong class="text-body">Location:</strong> @FormatLocation(opportunity.City, opportunity.State, opportunity.ZipCode)</span>
+                            <span><strong class="text-body">Expires:</strong> @FormatDate(opportunity.ExpiresAt)</span>
                         </div>
 
                         @if (Model.ShowBasicAnalytics)
                         {
-                            <section class="listing-reporting">
-                                <h3 class="listing-reporting-title">Listing reporting</h3>
-                                <div class="listing-reporting-grid">
-                                    <div><span>Views</span><strong>@opportunity.ViewCount</strong></div>
-                                    <div><span>Applications</span><strong>@opportunity.RegistrationCount</strong></div>
-                                    <div><span>Unique players</span><strong>@opportunity.UniqueApplicantCount</strong></div>
-                                    @if (Model.ShowDetailedAnalytics)
-                                    {
-                                        <div><span>View to apply</span><strong>@FormatPercent(opportunity.ViewToRegistrationConversionRate)</strong></div>
-                                    }
-                                    else
-                                    {
-                                        <div><span>Pending review</span><strong>@opportunity.PendingRegistrationCount</strong></div>
-                                    }
+                            <section class="listing-reporting p-2">
+                                <div class="d-flex flex-wrap gap-2 small text-muted">
+                                    <strong class="text-body">Reporting</strong>
+                                    <span>Views: <strong class="text-body">@opportunity.ViewCount</strong></span>
+                                    <span>Applications: <strong class="text-body">@opportunity.RegistrationCount</strong></span>
+                                    <span>Unique players: <strong class="text-body">@opportunity.UniqueApplicantCount</strong></span>
+                                    <span>
+                                        @(Model.ShowDetailedAnalytics ? "View to apply" : "Pending review"):
+                                        <strong class="text-body">@(Model.ShowDetailedAnalytics ? FormatPercent(opportunity.ViewToRegistrationConversionRate) : opportunity.PendingRegistrationCount.ToString())</strong>
+                                    </span>
                                 </div>
 
                                 @if (Model.ShowDetailedAnalytics)
@@ -350,7 +346,7 @@
 
                         @if (!string.IsNullOrWhiteSpace(opportunity.Description))
                         {
-                            <p class="section-help">@opportunity.Description</p>
+                            <p class="section-help small mb-1">@opportunity.Description</p>
                         }
 
                         @if (!string.IsNullOrWhiteSpace(opportunity.WebsiteUrl)
@@ -375,14 +371,14 @@
                             </div>
                         }
 
-                        <div class="form-actions">
+                        <div class="form-actions mt-2">
                             @if (Model.Team.IsSearchable
                                 && opportunity.IsPublished
                                 && (!opportunity.ExpiresAt.HasValue || opportunity.ExpiresAt > DateTime.UtcNow))
                             {
-                                <a class="btn btn-outline-primary" href="/opportunities/@opportunity.OpportunityId" target="_blank" rel="noopener">View public page</a>
+                                <a class="btn btn-outline-primary btn-sm" href="/opportunities/@opportunity.OpportunityId" target="_blank" rel="noopener">View public page</a>
                             }
-                            <a class="btn btn-outline-primary" href="/account/onboarding/team-opportunities/@Model.Team.TeamId/@opportunity.OpportunityId/edit">Edit</a>
+                            <a class="btn btn-outline-primary btn-sm" href="/account/onboarding/team-opportunities/@Model.Team.TeamId/@opportunity.OpportunityId/edit">Edit</a>
 
                             @if (opportunity.IsPublished)
                             {
@@ -393,7 +389,7 @@
                                       asp-route-opportunityId="@opportunity.OpportunityId"
                                       method="post">
                                     <input type="hidden" name="isPublished" value="false" />
-                                    <button type="submit" class="btn btn-outline-secondary">Unpublish</button>
+                                    <button type="submit" class="btn btn-outline-secondary btn-sm">Unpublish</button>
                                 </form>
                             }
                             else if (Model.CanPostOpportunities)
@@ -405,7 +401,7 @@
                                       asp-route-opportunityId="@opportunity.OpportunityId"
                                       method="post">
                                     <input type="hidden" name="isPublished" value="true" />
-                                    <button type="submit" class="btn btn-primary">Publish</button>
+                                    <button type="submit" class="btn btn-primary btn-sm">Publish</button>
                                 </form>
                             }
 
@@ -415,7 +411,7 @@
                                   asp-route-teamId="@Model.Team.TeamId"
                                   asp-route-opportunityId="@opportunity.OpportunityId"
                                   method="post">
-                                <button type="submit" class="btn btn-outline-danger">Deactivate</button>
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Deactivate</button>
                             </form>
                         </div>
                     </article>

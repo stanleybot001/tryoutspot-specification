@@ -48,7 +48,7 @@
             <div class="plan-list">
                 @foreach (var listing in Model.Listings)
                 {
-                    <article class="plan-row plan-row-stack opportunity-row @(listing.IsPublished ? "published" : "draft")">
+                    <article class="plan-row plan-row-stack opportunity-row p-2 @(listing.IsPublished ? "published" : "draft")">
                         <div class="opportunity-row-head">
                             <div>
                                 <strong>@listing.Title</strong>
@@ -60,20 +60,20 @@
                             </div>
                         </div>
 
-                        <div class="team-summary-grid opportunity-summary-grid">
-                            <div><span>Player</span><strong>@(string.IsNullOrWhiteSpace(listing.PlayerName) ? "Not linked" : listing.PlayerName)</strong></div>
-                            <div><span>Sport</span><strong>@(string.IsNullOrWhiteSpace(listing.SportName) ? "Not set" : listing.SportName)</strong></div>
-                            <div><span>Price</span><strong>@FormatAskingPrice(listing.AskingPrice, listing.Currency)</strong></div>
-                            <div><span>Condition</span><strong>@(string.IsNullOrWhiteSpace(listing.Condition) ? "Not set" : listing.Condition)</strong></div>
-                            <div><span>Location</span><strong>@FormatLocation(listing.City, listing.State, listing.ZipCode)</strong></div>
-                            <div><span>Published</span><strong>@FormatDate(listing.PublishedAt)</strong></div>
-                            <div><span>Expires</span><strong>@FormatDate(listing.ExpiresAt)</strong></div>
-                            <div><span>Updated</span><strong>@listing.UpdatedAt.ToLocalTime().ToString("MMM d, yyyy")</strong></div>
+                        <div class="d-flex flex-wrap gap-2 mt-2 small text-muted">
+                            <span><strong class="text-body">Player:</strong> @(string.IsNullOrWhiteSpace(listing.PlayerName) ? "Not linked" : listing.PlayerName)</span>
+                            <span><strong class="text-body">Sport:</strong> @(string.IsNullOrWhiteSpace(listing.SportName) ? "Not set" : listing.SportName)</span>
+                            <span><strong class="text-body">Price:</strong> @FormatAskingPrice(listing.AskingPrice, listing.Currency)</span>
+                            <span><strong class="text-body">Condition:</strong> @(string.IsNullOrWhiteSpace(listing.Condition) ? "Not set" : listing.Condition)</span>
+                            <span><strong class="text-body">Location:</strong> @FormatLocation(listing.City, listing.State, listing.ZipCode)</span>
+                            <span><strong class="text-body">Published:</strong> @FormatDate(listing.PublishedAt)</span>
+                            <span><strong class="text-body">Expires:</strong> @FormatDate(listing.ExpiresAt)</span>
+                            <span><strong class="text-body">Updated:</strong> @listing.UpdatedAt.ToLocalTime().ToString("MMM d, yyyy")</span>
                         </div>
 
                         @if (!string.IsNullOrWhiteSpace(listing.Description))
                         {
-                            <p class="section-help">@listing.Description</p>
+                            <p class="section-help small mb-1">@listing.Description</p>
                         }
 
                         @if (!string.IsNullOrWhiteSpace(listing.UploadedPdfUrl))
@@ -85,12 +85,12 @@
                             </div>
                         }
 
-                        <div class="form-actions">
+                        <div class="form-actions mt-2">
                             @if (listing.IsPublished && listing.IsSearchable)
                             {
-                                <a class="btn btn-outline-primary" href="/player-listings/@listing.ListingId" target="_blank" rel="noopener">View public page</a>
+                                <a class="btn btn-outline-primary btn-sm" href="/player-listings/@listing.ListingId" target="_blank" rel="noopener">View public page</a>
                             }
-                            <a class="btn btn-outline-primary" href="/account/onboarding/player-listings/@listing.ListingId/edit">Edit</a>
+                            <a class="btn btn-outline-primary btn-sm" href="/account/onboarding/player-listings/@listing.ListingId/edit">Edit</a>
 
                             @if (listing.IsPublished)
                             {
@@ -100,7 +100,7 @@
                                       asp-route-listingId="@listing.ListingId"
                                       method="post">
                                     <input type="hidden" name="isPublished" value="false" />
-                                    <button type="submit" class="btn btn-outline-secondary">Unpublish</button>
+                                    <button type="submit" class="btn btn-outline-secondary btn-sm">Unpublish</button>
                                 </form>
                             }
                             else
@@ -111,7 +111,7 @@
                                       asp-route-listingId="@listing.ListingId"
                                       method="post">
                                     <input type="hidden" name="isPublished" value="true" />
-                                    <button type="submit" class="btn btn-primary">Publish</button>
+                                    <button type="submit" class="btn btn-primary btn-sm">Publish</button>
                                 </form>
                             }
 
@@ -120,7 +120,7 @@
                                   asp-controller="Account"
                                   asp-route-listingId="@listing.ListingId"
                                   method="post">
-                                <button type="submit" class="btn btn-outline-danger">Deactivate</button>
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Deactivate</button>
                             </form>
                         </div>
                     </article>
