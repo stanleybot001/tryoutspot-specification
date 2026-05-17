@@ -37,6 +37,30 @@ public sealed class FavoriteDashboardPageTests
         Assert.True(favoriteExists);
     }
 
+    [Fact]
+    public async Task PublicListingPages_WithWebCookie_RenderAuthenticatedNav()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var viewer = await factory.CreateUserAsync(
+            "public-listing-nav@example.com",
+            [TryOutSpotRoles.Parent]);
+        var seeded = SeedFavorites(factory, viewer.Id);
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, viewer.Email!);
+
+        var playerListingResponse = await client.GetAsync($"/player-listings/{seeded.PlayerListingId}");
+        Assert.Equal(HttpStatusCode.OK, playerListingResponse.StatusCode);
+        AssertAuthenticatedNavigation(await playerListingResponse.Content.ReadAsStringAsync());
+
+        var opportunityResponse = await client.GetAsync($"/opportunities/{seeded.OpportunityId}");
+        Assert.Equal(HttpStatusCode.OK, opportunityResponse.StatusCode);
+        AssertAuthenticatedNavigation(await opportunityResponse.Content.ReadAsStringAsync());
+    }
+
     [Theory]
     [InlineData(TryOutSpotRoles.Parent, "parent-favorites-tile@example.com")]
     [InlineData(TryOutSpotRoles.TeamRepresentative, "team-favorites-tile@example.com")]
@@ -373,6 +397,15 @@ public sealed class FavoriteDashboardPageTests
             ]));
 
         Assert.Equal(HttpStatusCode.Redirect, loginResponse.StatusCode);
+    }
+
+    private static void AssertAuthenticatedNavigation(string html)
+    {
+        Assert.Contains(">Dashboard</a>", html);
+        Assert.Contains(">Account Settings</a>", html);
+        Assert.Contains(">Sign out</button>", html);
+        Assert.DoesNotContain(">Create Account</a>", html);
+        Assert.DoesNotContain(">Login</a>", html);
     }
 
     private static string ReadAntiForgeryToken(string html)

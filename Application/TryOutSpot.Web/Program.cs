@@ -100,7 +100,16 @@ var webCookieDomain = builder.Configuration["Authentication:CookieDomain"];
 var testFriendlyCookieSecurePolicy = builder.Environment.IsEnvironment("Testing")
     ? CookieSecurePolicy.SameAsRequest
     : CookieSecurePolicy.Always;
-var authenticationBuilder = builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+var authenticationBuilder = builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultScheme = TryOutSpotAuthenticationSchemes.BrowserOrApi;
+        options.DefaultAuthenticateScheme = TryOutSpotAuthenticationSchemes.BrowserOrApi;
+        options.DefaultChallengeScheme = TryOutSpotAuthenticationSchemes.BrowserOrApi;
+    })
+    .AddPolicyScheme(TryOutSpotAuthenticationSchemes.BrowserOrApi, displayName: null, options =>
+    {
+        options.ForwardDefaultSelector = context => SelectAuthenticationScheme(context);
+    })
     .AddCookie(IdentityConstants.ExternalScheme, options =>
     {
         options.Cookie.Name = "TryOutSpot.ExternalLogin";
@@ -431,6 +440,19 @@ static bool HasConfiguredValue(string? value)
 static bool IsApiRequest(HttpRequest request)
 {
     return request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase);
+}
+
+static string SelectAuthenticationScheme(HttpContext context)
+{
+    if (IsApiRequest(context.Request))
+    {
+        return JwtBearerDefaults.AuthenticationScheme;
+    }
+
+    var authorizationHeader = context.Request.Headers.Authorization.ToString();
+    return authorizationHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+        ? JwtBearerDefaults.AuthenticationScheme
+        : TryOutSpotAuthenticationSchemes.WebCookie;
 }
 
 public partial class Program;
