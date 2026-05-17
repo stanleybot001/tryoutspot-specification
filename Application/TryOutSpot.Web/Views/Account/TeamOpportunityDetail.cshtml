@@ -30,6 +30,39 @@
     }
 
     <section class="form-section">
+        <div class="form-actions">
+            @if (Model.ViewerIsAuthenticated)
+            {
+                if (Model.IsFavorited)
+                {
+                    <form class="inline-form"
+                          asp-action="RemoveFavoriteTeamOpportunity"
+                          asp-controller="Account"
+                          asp-route-opportunityId="@Model.OpportunityId"
+                          method="post">
+                        <input type="hidden" name="returnUrl" value="@($"{Context.Request.Path}{Context.Request.QueryString}")" />
+                        <button type="submit" class="btn btn-outline-secondary">Remove favorite</button>
+                    </form>
+                }
+                else
+                {
+                    <form class="inline-form"
+                          asp-action="FavoriteTeamOpportunity"
+                          asp-controller="Account"
+                          asp-route-opportunityId="@Model.OpportunityId"
+                          method="post">
+                        <button type="submit" class="btn btn-primary">Add to favorites</button>
+                    </form>
+                }
+            }
+            else
+            {
+                <a class="btn btn-outline-primary" href="/account/login?returnUrl=@Uri.EscapeDataString($"/opportunities/{Model.OpportunityId}")">Sign in to favorite</a>
+            }
+        </div>
+    </section>
+
+    <section class="form-section">
         @if (!string.IsNullOrWhiteSpace(Model.Description))
         {
             <div class="readonly-field mb-3">

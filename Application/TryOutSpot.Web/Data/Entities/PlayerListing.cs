@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace TryOutSpot.Web.Data.Entities;
 
@@ -55,4 +56,6 @@ public partial class PlayerListing
     public virtual Sport? Sport { get; set; }
 
     public virtual User User { get; set; } = null!;
+
+    public virtual ICollection<UserFavorite> UserFavorites { get; set; } = new List<UserFavorite>();
 }

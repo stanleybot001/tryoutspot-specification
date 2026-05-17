@@ -406,6 +406,122 @@ Failure responses:
 - `400 Bad Request` for unsupported account types
 - `401 Unauthorized`
 
+## Favorites
+
+Favorites let signed-in users bookmark public listing records and review them later from the account dashboard. Team representatives typically save player listings; parents and players typically save opportunities. State-changing favorite endpoints use `POST`.
+
+### `GET /api/favorites/mine`
+
+Returns the authenticated user's saved player listings and opportunities. Query parameters:
+
+- `page`: defaults to `1`
+- `pageSize`: defaults to `20`, maximum `100`
+
+Success response: `200 OK`
+
+```json
+{
+  "playerListings": [
+    {
+      "favoriteId": "00000000-0000-0000-0000-000000000000",
+      "listingId": "00000000-0000-0000-0000-000000000000",
+      "listingType": "pickup_player",
+      "title": "Guest pitcher available",
+      "playerName": "Taylor Morgan",
+      "sportName": "Softball",
+      "city": "McPherson",
+      "state": "KS",
+      "zipCode": "67460",
+      "createdAt": "2026-05-17T18:00:00Z"
+    }
+  ],
+  "opportunities": [
+    {
+      "favoriteId": "00000000-0000-0000-0000-000000000000",
+      "opportunityId": "00000000-0000-0000-0000-000000000000",
+      "teamId": "00000000-0000-0000-0000-000000000000",
+      "teamName": "McPherson Aces",
+      "organizationName": "Central Kansas Baseball Club",
+      "sportName": "Softball",
+      "type": "tryout",
+      "title": "14U open tryout",
+      "eventDate": "2026-06-01T14:00:00Z",
+      "city": "McPherson",
+      "state": "KS",
+      "zipCode": "67460",
+      "createdAt": "2026-05-17T18:00:00Z"
+    }
+  ]
+}
+```
+
+### `POST /api/favorites/player-listings/{listingId}`
+
+Saves an active, published, searchable player listing to the authenticated user's favorites. The operation is idempotent.
+
+Success response: `200 OK`
+
+```json
+{
+  "message": "Player listing saved to favorites.",
+  "isFavorited": true
+}
+```
+
+Failure responses:
+
+- `401 Unauthorized`
+- `404 Not Found` when the listing is not currently public
+
+### `POST /api/favorites/player-listings/{listingId}/remove`
+
+Removes a player listing favorite for the authenticated user. The operation is idempotent.
+
+Success response: `200 OK`
+
+```json
+{
+  "message": "Player listing removed from favorites.",
+  "isFavorited": false
+}
+```
+
+### `POST /api/favorites/opportunities/{opportunityId}`
+
+Saves an active, published opportunity listing to the authenticated user's favorites. The operation is idempotent.
+
+Success response: `200 OK`
+
+```json
+{
+  "message": "Opportunity saved to favorites.",
+  "isFavorited": true
+}
+```
+
+Failure responses:
+
+- `401 Unauthorized`
+- `404 Not Found` when the opportunity is not currently public for that user
+
+### `POST /api/favorites/opportunities/{opportunityId}/remove`
+
+Removes an opportunity favorite for the authenticated user. The operation is idempotent.
+
+Success response: `200 OK`
+
+```json
+{
+  "message": "Opportunity removed from favorites.",
+  "isFavorited": false
+}
+```
+
+Discovery and player-listing search summaries include `isFavorited` when the caller is authenticated:
+
+- `GET /api/player-listings/search`
+- `GET /api/discovery/opportunities`
+
 ## User Management
 
 User management endpoints require a bearer token for a user in the `PlatformAdmin` account type. State-changing user management actions use `POST`.

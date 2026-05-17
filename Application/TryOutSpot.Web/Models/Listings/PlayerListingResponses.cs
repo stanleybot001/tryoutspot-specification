@@ -36,7 +36,8 @@ public sealed record PlayerListingSummaryResponse(
     DateTime? PublishedAt,
     DateTime? ExpiresAt,
     DateTime UpdatedAt,
-    double? DistanceMiles = null);
+    double? DistanceMiles = null,
+    bool IsFavorited = false);
 
 /// <summary>
 /// Single listing result.

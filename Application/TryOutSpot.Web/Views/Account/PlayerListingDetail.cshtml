@@ -24,7 +24,43 @@
         }
     </div>
 
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
     <section class="form-section">
+        <div class="form-actions mb-3">
+            @if (Model.ViewerIsAuthenticated)
+            {
+                if (Model.IsFavorited)
+                {
+                    <form class="inline-form"
+                          asp-action="RemoveFavoritePlayerListing"
+                          asp-controller="Account"
+                          asp-route-listingId="@Model.ListingId"
+                          method="post">
+                        <input type="hidden" name="returnUrl" value="@($"{Context.Request.Path}{Context.Request.QueryString}")" />
+                        <button type="submit" class="btn btn-outline-secondary">Remove favorite</button>
+                    </form>
+                }
+                else
+                {
+                    <form class="inline-form"
+                          asp-action="FavoritePlayerListing"
+                          asp-controller="Account"
+                          asp-route-listingId="@Model.ListingId"
+                          method="post">
+                        <button type="submit" class="btn btn-primary">Add to favorites</button>
+                    </form>
+                }
+            }
+            else
+            {
+                <a class="btn btn-outline-primary" href="/account/login?returnUrl=@Uri.EscapeDataString($"/player-listings/{Model.ListingId}")">Sign in to favorite</a>
+            }
+        </div>
+
         @if (!string.IsNullOrWhiteSpace(Model.Description))
         {
             <div class="readonly-field mb-3">

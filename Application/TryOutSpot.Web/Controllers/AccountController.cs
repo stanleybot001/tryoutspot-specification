@@ -1462,6 +1462,7 @@ public sealed class AccountController(
     [HttpGet("/player-listings/{listingId:guid}")]
     public async Task<IActionResult> PlayerListingDetail(Guid listingId, CancellationToken cancellationToken = default)
     {
+        var currentUser = await GetCurrentWebUserAsync();
         var now = DateTime.UtcNow;
         var listing = await dbContext.PlayerListings
             .AsNoTracking()
@@ -1471,7 +1472,7 @@ public sealed class AccountController(
             .Where(currentListing => currentListing.IsSearchable)
             .Where(currentListing => currentListing.ExpiresAt == null || currentListing.ExpiresAt > now)
             .Include(currentListing => currentListing.Player)
-                .ThenInclude(player => player.PlayerSports)
+                .ThenInclude(player => player!.PlayerSports)
                     .ThenInclude(playerSport => playerSport.Sport)
             .Include(currentListing => currentListing.Sport)
             .SingleOrDefaultAsync(cancellationToken);
@@ -1480,8 +1481,84 @@ public sealed class AccountController(
             return NotFound();
         }
 
-        var model = await BuildPlayerListingDetailPageModelAsync(listing, cancellationToken);
+        var model = await BuildPlayerListingDetailPageModelAsync(listing, currentUser, cancellationToken);
         return View(model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
+    [HttpPost("/player-listings/{listingId:guid}/favorite")]
+    public async Task<IActionResult> FavoritePlayerListing(Guid listingId, CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(PlayerListingDetail), new { listingId })
+            });
+        }
+
+        var listingExists = await QueryVisiblePlayerListingForFavorites(listingId)
+            .AnyAsync(cancellationToken);
+        if (!listingExists)
+        {
+            return NotFound();
+        }
+
+        var exists = await dbContext.UserFavorites
+            .AnyAsync(
+                favorite => favorite.UserId == user.Id
+                    && favorite.PlayerListingId == listingId,
+                cancellationToken);
+        if (!exists)
+        {
+            dbContext.UserFavorites.Add(new UserFavorite
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                PlayerListingId = listingId,
+                CreatedAt = DateTime.UtcNow
+            });
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        TempData["StatusMessage"] = "Player listing saved to favorites.";
+        return RedirectToAction(nameof(PlayerListingDetail), new { listingId });
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
+    [HttpPost("/player-listings/{listingId:guid}/favorite/remove")]
+    public async Task<IActionResult> RemoveFavoritePlayerListing(
+        Guid listingId,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(PlayerListingDetail), new { listingId })
+            });
+        }
+
+        var favorite = await dbContext.UserFavorites
+            .SingleOrDefaultAsync(
+                currentFavorite => currentFavorite.UserId == user.Id
+                    && currentFavorite.PlayerListingId == listingId,
+                cancellationToken);
+        if (favorite is not null)
+        {
+            dbContext.UserFavorites.Remove(favorite);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        TempData["StatusMessage"] = "Player listing removed from favorites.";
+        return RedirectToLocalOrOnboarding(returnUrl ?? Url.Action(nameof(PlayerListingDetail), new { listingId }));
     }
 
     [Authorize(
@@ -2676,6 +2753,87 @@ public sealed class AccountController(
 
     [Authorize(
         AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
+    [HttpPost("/opportunities/{opportunityId:guid}/favorite")]
+    public async Task<IActionResult> FavoriteTeamOpportunity(
+        Guid opportunityId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(TeamOpportunityDetail), new { opportunityId })
+            });
+        }
+
+        var hasAdvancedOpportunitySearch = await HasAdvancedOpportunitySearchAsync(user.Id, cancellationToken);
+        var opportunity = await GetPublishedOpportunityForDiscoveryAsync(
+            opportunityId,
+            hasAdvancedOpportunitySearch,
+            cancellationToken);
+        if (opportunity is null)
+        {
+            return NotFound();
+        }
+
+        var exists = await dbContext.UserFavorites
+            .AnyAsync(
+                favorite => favorite.UserId == user.Id
+                    && favorite.OpportunityId == opportunityId,
+                cancellationToken);
+        if (!exists)
+        {
+            dbContext.UserFavorites.Add(new UserFavorite
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                OpportunityId = opportunityId,
+                CreatedAt = DateTime.UtcNow
+            });
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        TempData["StatusMessage"] = "Opportunity saved to favorites.";
+        return RedirectToAction(nameof(TeamOpportunityDetail), new { opportunityId });
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
+    [HttpPost("/opportunities/{opportunityId:guid}/favorite/remove")]
+    public async Task<IActionResult> RemoveFavoriteTeamOpportunity(
+        Guid opportunityId,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(TeamOpportunityDetail), new { opportunityId })
+            });
+        }
+
+        var favorite = await dbContext.UserFavorites
+            .SingleOrDefaultAsync(
+                currentFavorite => currentFavorite.UserId == user.Id
+                    && currentFavorite.OpportunityId == opportunityId,
+                cancellationToken);
+        if (favorite is not null)
+        {
+            dbContext.UserFavorites.Remove(favorite);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        TempData["StatusMessage"] = "Opportunity removed from favorites.";
+        return RedirectToLocalOrOnboarding(returnUrl ?? Url.Action(nameof(TeamOpportunityDetail), new { opportunityId }));
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
         Policy = TryOutSpotAuthorizationPolicies.ManagePlayerProfile)]
     [IgnoreAntiforgeryToken]
     [HttpPost("/opportunities/{opportunityId:guid}/register")]
@@ -2866,6 +3024,18 @@ public sealed class AccountController(
                 .ThenInclude(team => team.Organization)
             .Include(currentOpportunity => currentOpportunity.Sport)
             .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    private IQueryable<PlayerListing> QueryVisiblePlayerListingForFavorites(Guid listingId)
+    {
+        var now = DateTime.UtcNow;
+        return dbContext.PlayerListings
+            .AsNoTracking()
+            .Where(currentListing => currentListing.Id == listingId)
+            .Where(currentListing => currentListing.IsActive)
+            .Where(currentListing => currentListing.IsPublished)
+            .Where(currentListing => currentListing.IsSearchable)
+            .Where(currentListing => currentListing.ExpiresAt == null || currentListing.ExpiresAt > now);
     }
 
     private async Task<int> GetActiveOpportunityRegistrationCountAsync(
@@ -4025,6 +4195,12 @@ public sealed class AccountController(
         var upcomingTryoutRegistrations = hasPlayerOrParentRole
             ? await GetOnboardingTryoutRegistrationsAsync(user.Id, cancellationToken)
             : [];
+        var favoritePlayerListings = hasTeamOrOrganizationRole
+            ? await GetDashboardPlayerListingFavoritesAsync(user.Id, cancellationToken)
+            : [];
+        var favoriteOpportunities = hasPlayerOrParentRole
+            ? await GetDashboardOpportunityFavoritesAsync(user.Id, cancellationToken)
+            : [];
 
         var hasLinkedPlayers = hasPlayerOrParentRole
             && await dbContext.UserPlayerRelationships
@@ -4154,6 +4330,8 @@ public sealed class AccountController(
             FeatureCodes = entitlements?.FeatureCodes ?? [],
             ShowTryoutRegistrationList = hasPlayerOrParentRole,
             UpcomingTryoutRegistrations = upcomingTryoutRegistrations,
+            FavoritePlayerListings = favoritePlayerListings,
+            FavoriteOpportunities = favoriteOpportunities,
             Steps = steps
         };
     }
@@ -4228,6 +4406,108 @@ public sealed class AccountController(
                 registrationRow.City,
                 registrationRow.State))
             .ToArray();
+    }
+
+    private async Task<IReadOnlyCollection<DashboardPlayerListingFavoritePageItem>> GetDashboardPlayerListingFavoritesAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var now = DateTime.UtcNow;
+            var favorites = await dbContext.UserFavorites
+                .AsNoTracking()
+                .Where(favorite => favorite.UserId == userId)
+                .Where(favorite => favorite.PlayerListingId != null)
+                .Include(favorite => favorite.PlayerListing)
+                    .ThenInclude(listing => listing!.Player)
+                .Include(favorite => favorite.PlayerListing)
+                    .ThenInclude(listing => listing!.Sport)
+                .OrderByDescending(favorite => favorite.CreatedAt)
+                .Take(12)
+                .ToArrayAsync(cancellationToken);
+
+            return favorites
+                .Where(favorite => favorite.PlayerListing is not null)
+                .Select(favorite =>
+                {
+                    var listing = favorite.PlayerListing!;
+                    var isAvailable = listing.IsActive
+                        && listing.IsPublished
+                        && listing.IsSearchable
+                        && (listing.ExpiresAt == null || listing.ExpiresAt > now);
+                    return new DashboardPlayerListingFavoritePageItem(
+                        listing.Id,
+                        GetPlayerListingTypeLabel(listing.ListingType),
+                        listing.Title,
+                        listing.Player is null ? null : $"{listing.Player.FirstName} {listing.Player.LastName}".Trim(),
+                        listing.Sport?.Name,
+                        listing.City,
+                        listing.State,
+                        listing.ZipCode,
+                        isAvailable,
+                        favorite.CreatedAt);
+                })
+                .ToArray();
+        }
+        catch (PostgresException exception) when (IsUndefinedTableException(exception))
+        {
+            return [];
+        }
+    }
+
+    private async Task<IReadOnlyCollection<DashboardOpportunityFavoritePageItem>> GetDashboardOpportunityFavoritesAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var now = DateTime.UtcNow;
+            var favorites = await dbContext.UserFavorites
+                .AsNoTracking()
+                .Where(favorite => favorite.UserId == userId)
+                .Where(favorite => favorite.OpportunityId != null)
+                .Include(favorite => favorite.Opportunity)
+                    .ThenInclude(opportunity => opportunity!.Team)
+                        .ThenInclude(team => team.Organization)
+                .Include(favorite => favorite.Opportunity)
+                    .ThenInclude(opportunity => opportunity!.Sport)
+                .OrderByDescending(favorite => favorite.CreatedAt)
+                .Take(12)
+                .ToArrayAsync(cancellationToken);
+
+            return favorites
+                .Where(favorite => favorite.Opportunity is not null)
+                .Select(favorite =>
+                {
+                    var opportunity = favorite.Opportunity!;
+                    var effectiveEndDate = opportunity.ListingEndDate ?? opportunity.ExpiresAt;
+                    var isAvailable = opportunity.IsActive
+                        && opportunity.IsPublished
+                        && (effectiveEndDate == null || effectiveEndDate > now)
+                        && (opportunity.ListingStartDate == null || opportunity.ListingStartDate <= now)
+                        && opportunity.Team.IsActive
+                        && opportunity.Team.IsSearchable;
+                    return new DashboardOpportunityFavoritePageItem(
+                        opportunity.Id,
+                        GetOpportunityTypeLabel(opportunity.Type),
+                        opportunity.Title,
+                        opportunity.Team.Name,
+                        opportunity.Team.Organization?.Name,
+                        opportunity.Sport.Name,
+                        opportunity.EventDate,
+                        opportunity.City ?? opportunity.Team.City,
+                        opportunity.State ?? opportunity.Team.State,
+                        opportunity.ZipCode ?? opportunity.Team.ZipCode,
+                        isAvailable,
+                        favorite.CreatedAt);
+                })
+                .ToArray();
+        }
+        catch (PostgresException exception) when (IsUndefinedTableException(exception))
+        {
+            return [];
+        }
     }
 
     private async Task<AddPlayerProfilePageModel> BuildAddPlayerProfilePageModelAsync(
@@ -4827,6 +5107,7 @@ public sealed class AccountController(
 
     private async Task<PlayerListingDetailPageModel> BuildPlayerListingDetailPageModelAsync(
         PlayerListing listing,
+        User? currentUser,
         CancellationToken cancellationToken)
     {
         var player = listing.Player;
@@ -4872,6 +5153,13 @@ public sealed class AccountController(
             ("ncsa", "NCSA"),
             ("other", "Other recruiting profile"))
             : [];
+        var isFavorited = currentUser is not null
+            && await dbContext.UserFavorites
+                .AsNoTracking()
+                .AnyAsync(
+                    favorite => favorite.UserId == currentUser.Id
+                        && favorite.PlayerListingId == listing.Id,
+                    cancellationToken);
 
         return new PlayerListingDetailPageModel
         {
@@ -4907,7 +5195,9 @@ public sealed class AccountController(
             PdfUrl = string.IsNullOrWhiteSpace(listing.UploadedPdfObjectKey)
                 ? null
                 : BuildListingDocumentPath(PlayerListingDocumentType, listing.Id),
-            PdfFileName = listing.UploadedPdfFileName
+            PdfFileName = listing.UploadedPdfFileName,
+            ViewerIsAuthenticated = currentUser is not null,
+            IsFavorited = isFavorited
         };
     }
 
@@ -4997,6 +5287,13 @@ public sealed class AccountController(
             && currentUser is not null
             && registrationPlayers.Any(player => !player.AlreadyRegistered)
             && registrationClosedReason is null;
+        var isFavorited = currentUser is not null
+            && await dbContext.UserFavorites
+                .AsNoTracking()
+                .AnyAsync(
+                    favorite => favorite.UserId == currentUser.Id
+                        && favorite.OpportunityId == opportunity.Id,
+                    cancellationToken);
 
         if (opportunity.RegistrationRequired && currentUser is null)
         {
@@ -5060,7 +5357,8 @@ public sealed class AccountController(
             WaiverReturnEmail = waiverReturnEmail,
             RequiredRegistrationFields = requiredRegistrationFieldOptions,
             RegistrationPlayers = registrationPlayers,
-            RegistrationForm = effectiveRegistrationForm
+            RegistrationForm = effectiveRegistrationForm,
+            IsFavorited = isFavorited
         };
     }
 
@@ -6286,6 +6584,35 @@ public sealed class AccountController(
         return string.IsNullOrWhiteSpace(fallback)
             ? "Listing"
             : $"{char.ToUpperInvariant(fallback[0])}{fallback[1..]}";
+    }
+
+    private static string GetOpportunityTypeLabel(string? type)
+    {
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            return "Opportunity";
+        }
+
+        var normalized = type
+            .Replace("_", " ", StringComparison.Ordinal)
+            .Trim()
+            .ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return "Opportunity";
+        }
+
+        return normalized switch
+        {
+            "tryout" => "Tryout",
+            "roster opening" => "Roster opening",
+            "pickup player" => "Pickup player",
+            "camp" => "Camp",
+            "clinic" => "Clinic",
+            "tournament" => "Tournament",
+            "private workout" => "Private workout",
+            _ => $"{char.ToUpperInvariant(normalized[0])}{normalized[1..]}"
+        };
     }
 
     private static PlayerListingTypeSelectionPageItem? GetPlayerListingTypeOption(string? listingType)

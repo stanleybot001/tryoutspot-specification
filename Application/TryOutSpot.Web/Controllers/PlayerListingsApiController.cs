@@ -295,8 +295,9 @@ public sealed class PlayerListingsApiController(
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToArrayAsync(cancellationToken);
+        var favoriteListingIds = await GetFavoritePlayerListingIdsAsync(listingEntities, cancellationToken);
         var listings = listingEntities
-            .Select(ToSummaryResponse)
+            .Select(listing => ToSummaryResponse(listing, favoriteListingIds))
             .ToArray();
         if (zipRadiusResult is not null)
         {
@@ -373,7 +374,7 @@ public sealed class PlayerListingsApiController(
             .Take(pageSize)
             .ToArrayAsync(cancellationToken);
         var listings = listingEntities
-            .Select(ToSummaryResponse)
+            .Select(listing => ToSummaryResponse(listing))
             .ToArray();
 
         return Ok(new PlayerListingListResponse(
@@ -779,7 +780,32 @@ public sealed class PlayerListingsApiController(
         };
     }
 
-    private static PlayerListingSummaryResponse ToSummaryResponse(PlayerListing listing)
+    private async Task<IReadOnlySet<Guid>> GetFavoritePlayerListingIdsAsync(
+        IReadOnlyCollection<PlayerListing> listings,
+        CancellationToken cancellationToken)
+    {
+        if (listings.Count == 0 || !TryGetCurrentUserId(out var userId))
+        {
+            return new HashSet<Guid>();
+        }
+
+        var listingIds = listings
+            .Select(listing => listing.Id)
+            .ToArray();
+
+        return (await dbContext.UserFavorites
+                .AsNoTracking()
+                .Where(favorite => favorite.UserId == userId)
+                .Where(favorite => favorite.PlayerListingId != null)
+                .Where(favorite => listingIds.Contains(favorite.PlayerListingId!.Value))
+                .Select(favorite => favorite.PlayerListingId!.Value)
+                .ToArrayAsync(cancellationToken))
+            .ToHashSet();
+    }
+
+    private static PlayerListingSummaryResponse ToSummaryResponse(
+        PlayerListing listing,
+        IReadOnlySet<Guid>? favoriteListingIds = null)
     {
         return new PlayerListingSummaryResponse(
             listing.Id,
@@ -800,7 +826,8 @@ public sealed class PlayerListingsApiController(
             listing.IsSearchable,
             listing.PublishedAt,
             listing.ExpiresAt,
-            listing.UpdatedAt);
+            listing.UpdatedAt,
+            IsFavorited: favoriteListingIds?.Contains(listing.Id) == true);
     }
 
     private static PlayerListingDetailResponse ToDetailResponse(PlayerListing listing)

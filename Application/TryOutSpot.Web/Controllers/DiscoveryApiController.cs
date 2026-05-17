@@ -436,8 +436,9 @@ public sealed class DiscoveryApiController(
             .ToArrayAsync(cancellationToken);
 
         var distanceByZipCode = zipRadius?.DistanceByZipCode;
+        var favoriteOpportunityIds = await GetFavoriteOpportunityIdsAsync(opportunities, cancellationToken);
         var opportunityResponses = opportunities
-            .Select(opportunity => ToOpportunityResponse(opportunity, distanceByZipCode))
+            .Select(opportunity => ToOpportunityResponse(opportunity, distanceByZipCode, favoriteOpportunityIds))
             .ToArray();
 
         return Ok(new OpportunityDiscoveryListResponse(
@@ -508,6 +509,35 @@ public sealed class DiscoveryApiController(
             userId,
             TryOutSpotFeatureCodes.AdvancedOpportunitySearch,
             cancellationToken);
+    }
+
+    private async Task<IReadOnlySet<Guid>> GetFavoriteOpportunityIdsAsync(
+        IReadOnlyCollection<Data.Entities.Opportunity> opportunities,
+        CancellationToken cancellationToken)
+    {
+        if (opportunities.Count == 0 || !TryGetCurrentUserId(out var userId))
+        {
+            return new HashSet<Guid>();
+        }
+
+        var opportunityIds = opportunities
+            .Select(opportunity => opportunity.Id)
+            .ToArray();
+
+        return (await dbContext.UserFavorites
+                .AsNoTracking()
+                .Where(favorite => favorite.UserId == userId)
+                .Where(favorite => favorite.OpportunityId != null)
+                .Where(favorite => opportunityIds.Contains(favorite.OpportunityId!.Value))
+                .Select(favorite => favorite.OpportunityId!.Value)
+                .ToArrayAsync(cancellationToken))
+            .ToHashSet();
+    }
+
+    private bool TryGetCurrentUserId(out Guid userId)
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return Guid.TryParse(userIdClaim, out userId);
     }
 
     private static TeamDiscoverySummaryResponse ToTeamResponse(
@@ -587,7 +617,8 @@ public sealed class DiscoveryApiController(
 
     private static OpportunityDiscoverySummaryResponse ToOpportunityResponse(
         Data.Entities.Opportunity opportunity,
-        IReadOnlyDictionary<string, double>? distanceByZipCode)
+        IReadOnlyDictionary<string, double>? distanceByZipCode,
+        IReadOnlySet<Guid>? favoriteOpportunityIds = null)
     {
         var isContactInfoVisible = opportunity.Team.IsContactInfoVisible
             && (opportunity.Team.Organization?.IsContactInfoVisible ?? true);
@@ -629,7 +660,8 @@ public sealed class DiscoveryApiController(
             contactPhone,
             websiteUrl,
             pdfUrl,
-            distanceMiles);
+            distanceMiles,
+            IsFavorited: favoriteOpportunityIds?.Contains(opportunity.Id) == true);
     }
 
     private static double? ResolveDistanceMiles(

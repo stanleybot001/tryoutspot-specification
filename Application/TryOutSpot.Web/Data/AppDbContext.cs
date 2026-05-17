@@ -49,6 +49,8 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
 
     public virtual DbSet<UserAdFrequency> UserAdFrequencies { get; set; }
 
+    public virtual DbSet<UserFavorite> UserFavorites { get; set; }
+
     public virtual DbSet<UserOauthProvider> UserOauthProviders { get; set; }
 
     public virtual DbSet<UserPlayerRelationship> UserPlayerRelationships { get; set; }
@@ -451,6 +453,39 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.Id).ValueGeneratedNever();
 
             entity.HasOne(d => d.User).WithOne(p => p.UserAdFrequency).HasForeignKey<UserAdFrequency>(d => d.UserId);
+        });
+
+        modelBuilder.Entity<UserFavorite>(entity =>
+        {
+            entity.HasIndex(e => new { e.UserId, e.CreatedAt }, "IX_UserFavorites_UserId_CreatedAt");
+
+            entity.HasIndex(e => new { e.UserId, e.OpportunityId }, "IX_UserFavorites_UserId_OpportunityId")
+                .IsUnique()
+                .HasFilter("\"OpportunityId\" IS NOT NULL");
+
+            entity.HasIndex(e => new { e.UserId, e.PlayerListingId }, "IX_UserFavorites_UserId_PlayerListingId")
+                .IsUnique()
+                .HasFilter("\"PlayerListingId\" IS NOT NULL");
+
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.ToTable(table =>
+                table.HasCheckConstraint(
+                    "CK_UserFavorites_OneFavoriteTarget",
+                    "(\"PlayerListingId\" IS NOT NULL AND \"OpportunityId\" IS NULL) OR (\"PlayerListingId\" IS NULL AND \"OpportunityId\" IS NOT NULL)"));
+
+            entity.HasOne(d => d.Opportunity).WithMany(p => p.UserFavorites)
+                .HasForeignKey(d => d.OpportunityId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(d => d.PlayerListing).WithMany(p => p.UserFavorites)
+                .HasForeignKey(d => d.PlayerListingId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(d => d.User).WithMany(p => p.UserFavorites)
+                .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<UserOauthProvider>(entity =>

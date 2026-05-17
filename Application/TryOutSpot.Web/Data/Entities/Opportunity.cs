@@ -104,4 +104,6 @@ public partial class Opportunity
     public virtual Sport Sport { get; set; } = null!;
 
     public virtual Team Team { get; set; } = null!;
+
+    public virtual ICollection<UserFavorite> UserFavorites { get; set; } = new List<UserFavorite>();
 }

@@ -213,6 +213,10 @@ public sealed class OnboardingPageModel
     public bool ShowTryoutRegistrationList { get; set; }
 
     public IReadOnlyCollection<OnboardingTryoutRegistrationPageItem> UpcomingTryoutRegistrations { get; set; } = [];
+
+    public IReadOnlyCollection<DashboardPlayerListingFavoritePageItem> FavoritePlayerListings { get; set; } = [];
+
+    public IReadOnlyCollection<DashboardOpportunityFavoritePageItem> FavoriteOpportunities { get; set; } = [];
 }
 
 public sealed class AddPlayerProfilePageModel
@@ -1125,6 +1129,10 @@ public sealed class PlayerListingDetailPageModel
     public string? PdfUrl { get; set; }
 
     public string? PdfFileName { get; set; }
+
+    public bool ViewerIsAuthenticated { get; set; }
+
+    public bool IsFavorited { get; set; }
 }
 
 public sealed class TeamOpportunityDetailPageModel
@@ -1224,7 +1232,35 @@ public sealed class TeamOpportunityDetailPageModel
     public IReadOnlyCollection<OpportunityRegistrationPlayerOptionPageItem> RegistrationPlayers { get; set; } = [];
 
     public TeamOpportunityRegistrationInputPageModel RegistrationForm { get; set; } = new();
+
+    public bool IsFavorited { get; set; }
 }
+
+public sealed record DashboardPlayerListingFavoritePageItem(
+    Guid ListingId,
+    string ListingTypeLabel,
+    string Title,
+    string? PlayerName,
+    string? SportName,
+    string? City,
+    string? State,
+    string? ZipCode,
+    bool IsAvailable,
+    DateTime CreatedAt);
+
+public sealed record DashboardOpportunityFavoritePageItem(
+    Guid OpportunityId,
+    string TypeLabel,
+    string Title,
+    string TeamName,
+    string? OrganizationName,
+    string SportName,
+    DateTime? EventDate,
+    string? City,
+    string? State,
+    string? ZipCode,
+    bool IsAvailable,
+    DateTime CreatedAt);
 
 public sealed class TeamOpportunityRegistrationInputPageModel
 {

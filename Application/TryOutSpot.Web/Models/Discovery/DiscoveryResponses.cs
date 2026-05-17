@@ -109,4 +109,5 @@ public sealed record OpportunityDiscoverySummaryResponse(
     string? ContactPhone,
     string? WebsiteUrl,
     string? PdfUrl,
-    double? DistanceMiles = null);
+    double? DistanceMiles = null,
+    bool IsFavorited = false);
