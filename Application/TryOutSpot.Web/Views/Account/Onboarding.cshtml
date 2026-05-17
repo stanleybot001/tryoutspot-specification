@@ -1,5 +1,6 @@
 @model OnboardingPageModel
 @using TryOutSpot.Web.Billing
+@using TryOutSpot.Web.Identity
 
 @{
     ViewData["Title"] = "Account Setup";
@@ -109,13 +110,61 @@
         {
             <section class="form-section" id="onboarding-account-types">
                 <h2>Account type <span class="required-marker">*</span></h2>
-                <p class="section-help">A user can have more than one role. Select every role that fits your current work.</p>
+                <p class="section-help">Choose one role per bundle. Roles control plan eligibility. Active subscription controls unlocked features.</p>
                 <form asp-action="UpdateOnboardingAccountTypes" asp-controller="Account" method="post">
+                    @{
+                        var selectedPlayerParentRole = Model.AccountTypes
+                            .FirstOrDefault(role => string.Equals(role, "Parent", StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(role, "Player", StringComparison.OrdinalIgnoreCase));
+                        var selectedTeamRole = Model.AccountTypes
+                            .FirstOrDefault(TryOutSpotRoles.IsTeamBundleRole);
+                    }
+                    <h3 class="form-label">Parent/Player bundle</h3>
                     <div class="account-type-grid compact-grid">
-                        @foreach (var accountType in Model.AvailableAccountTypes)
+                        <label class="account-type-option" for="onboarding-player-parent-none">
+                            <input class="form-check-input" id="onboarding-player-parent-none" name="playerParentRole" type="radio" value="" @(string.IsNullOrWhiteSpace(selectedPlayerParentRole) ? "checked" : null) />
+                            <span>
+                                <strong>None</strong>
+                                <small>No parent/player role selected.</small>
+                            </span>
+                        </label>
+                        @foreach (var accountType in Model.AvailableAccountTypes.Where(option =>
+                            string.Equals(option.Name, "Parent", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(option.Name, "Player", StringComparison.OrdinalIgnoreCase)))
                         {
                             <label class="account-type-option" for="onboarding-account-type-@accountType.Name">
-                                <input class="form-check-input" id="onboarding-account-type-@accountType.Name" name="accountTypes" type="checkbox" value="@accountType.Name" checked="@accountType.IsSelected" />
+                                <input class="form-check-input"
+                                       id="onboarding-account-type-@accountType.Name"
+                                       name="playerParentRole"
+                                       type="radio"
+                                       value="@accountType.Name"
+                                       @(string.Equals(selectedPlayerParentRole, accountType.Name, StringComparison.OrdinalIgnoreCase) ? "checked" : null) />
+                                <span>
+                                    <strong>@accountType.Label</strong>
+                                    <small>@accountType.Description</small>
+                                </span>
+                            </label>
+                        }
+                    </div>
+                    <h3 class="form-label mt-3">Team bundle</h3>
+                    <div class="account-type-grid compact-grid">
+                        <label class="account-type-option" for="onboarding-team-role-none">
+                            <input class="form-check-input" id="onboarding-team-role-none" name="teamRole" type="radio" value="" @(string.IsNullOrWhiteSpace(selectedTeamRole) ? "checked" : null) />
+                            <span>
+                                <strong>None</strong>
+                                <small>No team role selected.</small>
+                            </span>
+                        </label>
+                        @foreach (var accountType in Model.AvailableAccountTypes.Where(option =>
+                            TryOutSpotRoles.IsTeamBundleRole(option.Name)))
+                        {
+                            <label class="account-type-option" for="onboarding-account-type-@accountType.Name">
+                                <input class="form-check-input"
+                                       id="onboarding-account-type-@accountType.Name"
+                                       name="teamRole"
+                                       type="radio"
+                                       value="@accountType.Name"
+                                       @(string.Equals(selectedTeamRole, accountType.Name, StringComparison.OrdinalIgnoreCase) ? "checked" : null) />
                                 <span>
                                     <strong>@accountType.Label</strong>
                                     <small>@accountType.Description</small>
@@ -130,6 +179,49 @@
             </section>
         }
     </div>
+
+    @if (Model.ShowTryoutRegistrationList)
+    {
+        <section class="form-section">
+            <h2>Upcoming tryout registrations</h2>
+            @if (Model.UpcomingTryoutRegistrations.Count == 0)
+            {
+                <p class="section-help">
+                    No upcoming tryout registrations yet. Register a player from any tryout listing and it will appear here.
+                </p>
+            }
+            else
+            {
+                <div class="registration-agenda-list">
+                    @foreach (var registration in Model.UpcomingTryoutRegistrations)
+                    {
+                        <article class="registration-agenda-row">
+                            <div class="registration-agenda-date">
+                                <strong>@FormatAgendaDate(registration.EventDate ?? registration.EventEndDate ?? registration.RegistrationDeadline)</strong>
+                                <span>@FormatAgendaDateLabel(registration)</span>
+                            </div>
+                            <div class="registration-agenda-details">
+                                <div class="registration-agenda-head">
+                                    <strong>@registration.OpportunityTitle</strong>
+                                    <span class="registration-status-pill @GetRegistrationStatusClass(registration.StatusLabel)">@registration.StatusLabel</span>
+                                </div>
+                                <span>
+                                    Player: <strong>@registration.PlayerName</strong> · Team: <strong>@registration.TeamName</strong> · @registration.SportName
+                                </span>
+                                @if (!string.IsNullOrWhiteSpace(registration.City) || !string.IsNullOrWhiteSpace(registration.State))
+                                {
+                                    <span>@FormatLocation(registration.City, registration.State)</span>
+                                }
+                            </div>
+                            <div class="registration-agenda-actions">
+                                <a class="btn btn-sm btn-outline-primary" href="/opportunities/@registration.OpportunityId">View</a>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+    }
 
     @if (Model.ShowRecommendedPlans)
     {
@@ -209,5 +301,60 @@
         };
 
         return !string.IsNullOrWhiteSpace(url);
+    }
+
+    private static string FormatAgendaDate(DateTime? value)
+    {
+        return value.HasValue
+            ? value.Value.ToLocalTime().ToString("MMM d, yyyy")
+            : "Date not set";
+    }
+
+    private static string FormatAgendaDateLabel(OnboardingTryoutRegistrationPageItem registration)
+    {
+        if (registration.EventDate.HasValue)
+        {
+            return "Event start";
+        }
+
+        if (registration.EventEndDate.HasValue)
+        {
+            return "Event end";
+        }
+
+        if (registration.RegistrationDeadline.HasValue)
+        {
+            return "Registration deadline";
+        }
+
+        return $"Registered {registration.RegisteredAt.ToLocalTime():MMM d}";
+    }
+
+    private static string FormatLocation(string? city, string? state)
+    {
+        var normalizedCity = string.IsNullOrWhiteSpace(city) ? null : city.Trim();
+        var normalizedState = string.IsNullOrWhiteSpace(state) ? null : state.Trim().ToUpperInvariant();
+        if (normalizedCity is null)
+        {
+            return normalizedState ?? "Location not set";
+        }
+
+        if (normalizedState is null)
+        {
+            return normalizedCity;
+        }
+
+        return $"{normalizedCity}, {normalizedState}";
+    }
+
+    private static string GetRegistrationStatusClass(string statusLabel)
+    {
+        return statusLabel switch
+        {
+            "Accepted" => "registration-status-approved",
+            "Approved" => "registration-status-approved",
+            "Declined" => "registration-status-declined",
+            _ => "registration-status-pending"
+        };
     }
 }

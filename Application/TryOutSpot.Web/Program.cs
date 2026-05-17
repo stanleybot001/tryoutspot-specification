@@ -97,12 +97,15 @@ builder.Services.AddIdentityCore<User>(options =>
     .AddDefaultTokenProviders();
 var jwtOptions = builder.Configuration.GetSection(JwtTokenOptions.SectionName).Get<JwtTokenOptions>() ?? new JwtTokenOptions();
 var webCookieDomain = builder.Configuration["Authentication:CookieDomain"];
+var testFriendlyCookieSecurePolicy = builder.Environment.IsEnvironment("Testing")
+    ? CookieSecurePolicy.SameAsRequest
+    : CookieSecurePolicy.Always;
 var authenticationBuilder = builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddCookie(IdentityConstants.ExternalScheme, options =>
     {
         options.Cookie.Name = "TryOutSpot.ExternalLogin";
         options.Cookie.HttpOnly = true;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.Cookie.SecurePolicy = testFriendlyCookieSecurePolicy;
         options.Cookie.SameSite = SameSiteMode.Lax;
         options.ExpireTimeSpan = TimeSpan.FromMinutes(10);
         options.SlidingExpiration = false;
@@ -111,7 +114,7 @@ var authenticationBuilder = builder.Services.AddAuthentication(JwtBearerDefaults
     {
         options.Cookie.Name = "TryOutSpot.Web";
         options.Cookie.HttpOnly = true;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.Cookie.SecurePolicy = testFriendlyCookieSecurePolicy;
         options.Cookie.SameSite = SameSiteMode.Lax;
         if (!string.IsNullOrWhiteSpace(webCookieDomain))
         {
@@ -301,6 +304,7 @@ builder.Services.AddScoped<IEntitlementService, EntitlementService>();
 builder.Services.AddScoped<IZipRadiusSearchService, ZipRadiusSearchService>();
 builder.Services.AddScoped<IStripeBillingService, StripeBillingService>();
 builder.Services.AddScoped<IStripeSubscriptionSyncService, StripeSubscriptionSyncService>();
+builder.Services.AddScoped<IAccountTypeChangeWorkflowService, AccountTypeChangeWorkflowService>();
 builder.Services.AddScoped<IPdfStorageService, R2PdfStorageService>();
 builder.Services.AddScoped<IImageStorageService, R2ImageStorageService>();
 builder.Services.AddAuthorization(options =>
@@ -363,11 +367,36 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Home/Error");
     app.UseStatusCodePages(async context =>
     {
-        if (context.HttpContext.Response.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        var httpContext = context.HttpContext;
+        if (httpContext.Response.StatusCode == StatusCodes.Status413PayloadTooLarge)
         {
-            context.HttpContext.Response.ContentType = "text/plain; charset=utf-8";
-            await context.HttpContext.Response.WriteAsync(
+            httpContext.Response.ContentType = "text/plain; charset=utf-8";
+            await httpContext.Response.WriteAsync(
                 "File upload is too large. Upload PDF files up to 10 MB.");
+            return;
+        }
+
+        var isOpportunityRegistrationPost =
+            httpContext.Response.StatusCode == StatusCodes.Status400BadRequest
+            && HttpMethods.IsPost(httpContext.Request.Method)
+            && httpContext.Request.Path.StartsWithSegments("/opportunities", StringComparison.OrdinalIgnoreCase)
+            && httpContext.Request.Path.Value?.EndsWith("/register", StringComparison.OrdinalIgnoreCase) == true;
+        if (isOpportunityRegistrationPost)
+        {
+            var statusLogger = httpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("TryOutSpot.StatusCodes");
+            statusLogger.LogWarning(
+                "Team opportunity registration request returned 400. Path={Path} TraceIdentifier={TraceIdentifier} Authenticated={IsAuthenticated} Referer={Referer}",
+                httpContext.Request.Path,
+                httpContext.TraceIdentifier,
+                httpContext.User?.Identity?.IsAuthenticated ?? false,
+                httpContext.Request.Headers.Referer.ToString());
+
+            httpContext.Response.ContentType = "text/plain; charset=utf-8";
+            await httpContext.Response.WriteAsync(
+                "Registration could not be submitted. Refresh the opportunity page and try again. " +
+                "If the issue continues, sign out and sign back in before submitting.");
         }
     });
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.

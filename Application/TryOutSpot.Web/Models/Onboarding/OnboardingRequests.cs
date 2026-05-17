@@ -8,7 +8,7 @@ namespace TryOutSpot.Web.Models.Onboarding;
 public sealed class UpdateOnboardingAccountTypesRequest
 {
     /// <summary>
-    /// One or more public account types, such as Parent, Player, Coach, TeamManager, AcademyDirector, or OrganizationAdmin.
+    /// One or more public account types, such as Parent, Player, or TeamRepresentative.
     /// </summary>
     [MinLength(1)]
     public IReadOnlyCollection<string> AccountTypes { get; set; } = [];

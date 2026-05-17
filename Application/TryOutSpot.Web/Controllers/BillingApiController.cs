@@ -31,6 +31,7 @@ public sealed class BillingApiController(
     UserManager<User> userManager,
     IStripeBillingService stripeBillingService,
     IStripeSubscriptionSyncService stripeSubscriptionSyncService,
+    IAccountTypeChangeWorkflowService accountTypeChangeWorkflowService,
     IOptions<StripeBillingOptions> stripeOptions,
     ILogger<BillingApiController> logger) : ControllerBase
 {
@@ -403,9 +404,13 @@ public sealed class BillingApiController(
             return;
         }
 
-        await stripeSubscriptionSyncService.ApplyStripeSubscriptionAsync(
+        var synced = await stripeSubscriptionSyncService.ApplyStripeSubscriptionAsync(
             StripeSubscriptionSnapshotFactory.FromStripeSubscription(subscription),
             cancellationToken);
+        if (synced is not null)
+        {
+            await accountTypeChangeWorkflowService.ReconcilePendingChangesForUserAsync(synced.UserId, cancellationToken);
+        }
     }
 
     private async Task HandleSubscriptionEventAsync(
@@ -418,9 +423,13 @@ public sealed class BillingApiController(
             return;
         }
 
-        await stripeSubscriptionSyncService.ApplyStripeSubscriptionAsync(
+        var synced = await stripeSubscriptionSyncService.ApplyStripeSubscriptionAsync(
             StripeSubscriptionSnapshotFactory.FromStripeSubscription(subscription),
             cancellationToken);
+        if (synced is not null)
+        {
+            await accountTypeChangeWorkflowService.ReconcilePendingChangesForUserAsync(synced.UserId, cancellationToken);
+        }
     }
 
     private async Task<User?> GetCurrentUserWithSubscriptionsAsync(CancellationToken cancellationToken)

@@ -16,7 +16,7 @@ public sealed class AccountApiTests
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
         var client = factory.CreateClient();
-        var request = NewRegisterRequest("multi-role@example.com", ["Parent", "Coach"]);
+        var request = NewRegisterRequest("multi-role@example.com", ["Parent", "TeamRepresentative"]);
 
         var response = await client.PostAsJsonAsync("/api/account/register", request);
 
@@ -24,7 +24,7 @@ public sealed class AccountApiTests
         var account = await response.Content.ReadFromJsonAsync<UserAccountResponse>();
         Assert.NotNull(account);
         Assert.True(account.IsActive);
-        Assert.Equal(["Coach", "Parent"], account.AccountTypes.OrderBy(role => role));
+        Assert.Equal(["Parent", "TeamRepresentative"], account.AccountTypes.OrderBy(role => role));
 
         using var scope = factory.Services.CreateScope();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
@@ -33,7 +33,7 @@ public sealed class AccountApiTests
         Assert.NotNull(user);
         Assert.True(user.IsActive);
         Assert.True(await userManager.IsInRoleAsync(user, TryOutSpotRoles.Parent));
-        Assert.True(await userManager.IsInRoleAsync(user, TryOutSpotRoles.Coach));
+        Assert.True(await userManager.IsInRoleAsync(user, TryOutSpotRoles.TeamRepresentative));
     }
 
     [Theory]
@@ -263,3 +263,4 @@ public sealed class AccountApiTests
         response.EnsureSuccessStatusCode();
     }
 }
+

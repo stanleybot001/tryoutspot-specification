@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
+using TryOutSpot.Web.Identity;
 using TryOutSpot.Web.Listings;
 using TryOutSpot.Web.Models.Listings;
 using TryOutSpot.Web.Security;
@@ -22,10 +23,12 @@ namespace TryOutSpot.Web.Controllers;
 [Authorize(Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
 public sealed class PlayerListingsApiController(
     AppDbContext dbContext,
+    IEntitlementService entitlementService,
     IZipRadiusSearchService zipRadiusSearchService) : ControllerBase
 {
     private const string CreateListingsPolicy =
         TryOutSpotAuthorizationPolicies.FeaturePolicyPrefix + TryOutSpotFeatureCodes.CreatePlayerListings;
+    private const int FreeCoachMaxPlayerSearchRadiusMiles = 120;
 
     /// <summary>
     /// Searches published and searchable parent/player listings.
@@ -37,6 +40,9 @@ public sealed class PlayerListingsApiController(
     public async Task<ActionResult<PlayerListingListResponse>> Search(
         [FromQuery] string? listingType,
         [FromQuery] Guid? sportId,
+        [FromQuery] int? minAge,
+        [FromQuery] int? maxAge,
+        [FromQuery] string? skillLevel,
         [FromQuery] string? zipCode,
         [FromQuery] string? originZipCode,
         [FromQuery] int? radiusMiles,
@@ -64,9 +70,35 @@ public sealed class PlayerListingsApiController(
             ModelState.AddModelError(nameof(minPrice), "Minimum price cannot exceed maximum price.");
         }
 
+        if (minAge.HasValue && minAge.Value < 0)
+        {
+            ModelState.AddModelError(nameof(minAge), "Minimum age cannot be negative.");
+        }
+
+        if (maxAge.HasValue && maxAge.Value < 0)
+        {
+            ModelState.AddModelError(nameof(maxAge), "Maximum age cannot be negative.");
+        }
+
+        if (minAge.HasValue && maxAge.HasValue && minAge.Value > maxAge.Value)
+        {
+            ModelState.AddModelError(nameof(minAge), "Minimum age cannot exceed maximum age.");
+        }
+
         if (radiusMiles.HasValue && string.IsNullOrWhiteSpace(originZipCode))
         {
             ModelState.AddModelError(nameof(originZipCode), "Origin ZIP code is required when radius is provided.");
+        }
+
+        var hasAdvancedPlayerSearch = await HasAdvancedPlayerSearchAsync(cancellationToken);
+        var isConstrainedTeamSearch = IsSignedInTeamRepresentative() && !hasAdvancedPlayerSearch;
+
+        var normalizedSkillLevel = NormalizeOptional(skillLevel);
+        if (isConstrainedTeamSearch && !string.IsNullOrWhiteSpace(normalizedSkillLevel))
+        {
+            ModelState.AddModelError(
+                nameof(skillLevel),
+                "Skill-level filtering requires Team Basic, Team Professional, or Enterprise.");
         }
 
         string? normalizedListingType = null;
@@ -87,6 +119,11 @@ public sealed class PlayerListingsApiController(
             else
             {
                 var normalizedRadiusMiles = zipRadiusSearchService.ClampRadiusMiles(radiusMiles);
+                if (isConstrainedTeamSearch)
+                {
+                    normalizedRadiusMiles = Math.Min(normalizedRadiusMiles, FreeCoachMaxPlayerSearchRadiusMiles);
+                }
+
                 zipRadiusResult = await zipRadiusSearchService.ResolveZipCodesWithinRadiusAsync(
                     normalizedOriginZipCode,
                     normalizedRadiusMiles,
@@ -107,7 +144,8 @@ public sealed class PlayerListingsApiController(
                         TotalCount: 0,
                         TotalPages: 0,
                         SearchOriginZipCode: zipRadiusResult.OriginZipCode,
-                        SearchRadiusMiles: zipRadiusResult.RadiusMiles));
+                        SearchRadiusMiles: zipRadiusResult.RadiusMiles,
+                        AdvancedFiltersApplied: hasAdvancedPlayerSearch));
                 }
             }
         }
@@ -136,6 +174,37 @@ public sealed class PlayerListingsApiController(
         if (sportId.HasValue)
         {
             query = query.Where(listing => listing.SportId == sportId.Value);
+        }
+
+        if (minAge.HasValue || maxAge.HasValue)
+        {
+            var today = DateTime.UtcNow.Date;
+            if (minAge.HasValue)
+            {
+                var maxDobForMinAge = today.AddYears(-minAge.Value);
+                query = query.Where(listing =>
+                    listing.Player != null
+                    && listing.Player.DateOfBirth <= maxDobForMinAge);
+            }
+
+            if (maxAge.HasValue)
+            {
+                var minDobForMaxAge = today.AddYears(-(maxAge.Value + 1)).AddDays(1);
+                query = query.Where(listing =>
+                    listing.Player != null
+                    && listing.Player.DateOfBirth >= minDobForMaxAge);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedSkillLevel) && hasAdvancedPlayerSearch)
+        {
+            var skillLevelSearch = normalizedSkillLevel.ToLowerInvariant();
+            query = query.Where(listing =>
+                listing.Player != null
+                && listing.Player.PlayerSports.Any(playerSport =>
+                    playerSport.IsActive
+                    && playerSport.SkillLevel != null
+                    && playerSport.SkillLevel.ToLower().Contains(skillLevelSearch)));
         }
 
         var normalizedZipCode = zipRadiusSearchService.NormalizeZipCode(zipCode);
@@ -188,11 +257,41 @@ public sealed class PlayerListingsApiController(
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
-        var listingEntities = await query
+        var entitlingStatusActive = "active";
+        var entitlingStatusTrialing = "trialing";
+
+        IOrderedQueryable<PlayerListing> orderedQuery;
+        if (!string.IsNullOrWhiteSpace(normalizedSearch))
+        {
+            var search = normalizedSearch.ToLowerInvariant();
+            orderedQuery = query
+                .OrderByDescending(listing =>
+                    (listing.Title.ToLower().Contains(search) ? 5 : 0)
+                    + (listing.Description != null && listing.Description.ToLower().Contains(search) ? 3 : 0)
+                    + (listing.City != null && listing.City.ToLower().Contains(search) ? 2 : 0)
+                    + (listing.State != null && listing.State.ToLower().Contains(search) ? 1 : 0)
+                    + (listing.ZipCode != null && listing.ZipCode.Contains(search) ? 1 : 0))
+                .ThenByDescending(listing => dbContext.Subscriptions.Any(subscription =>
+                    subscription.UserId == listing.UserId
+                    && (subscription.Status == entitlingStatusActive || subscription.Status == entitlingStatusTrialing)
+                    && (subscription.PlanType == TryOutSpotPlanCodes.PremiumPlayer || subscription.IsElite)))
+                .ThenByDescending(listing => listing.PublishedAt)
+                .ThenByDescending(listing => listing.UpdatedAt);
+        }
+        else
+        {
+            orderedQuery = query
+                .OrderByDescending(listing => dbContext.Subscriptions.Any(subscription =>
+                    subscription.UserId == listing.UserId
+                    && (subscription.Status == entitlingStatusActive || subscription.Status == entitlingStatusTrialing)
+                    && (subscription.PlanType == TryOutSpotPlanCodes.PremiumPlayer || subscription.IsElite)))
+                .ThenByDescending(listing => listing.PublishedAt)
+                .ThenByDescending(listing => listing.UpdatedAt);
+        }
+
+        var listingEntities = await orderedQuery
             .Include(listing => listing.Player)
             .Include(listing => listing.Sport)
-            .OrderByDescending(listing => listing.PublishedAt)
-            .ThenByDescending(listing => listing.UpdatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToArrayAsync(cancellationToken);
@@ -216,7 +315,29 @@ public sealed class PlayerListingsApiController(
             totalCount,
             (int)Math.Ceiling(totalCount / (double)pageSize),
             zipRadiusResult?.OriginZipCode,
-            zipRadiusResult?.RadiusMiles));
+            zipRadiusResult?.RadiusMiles,
+            hasAdvancedPlayerSearch));
+    }
+
+    private async Task<bool> HasAdvancedPlayerSearchAsync(CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+        {
+            return false;
+        }
+
+        return await entitlementService.HasFeatureAsync(
+            userId,
+            TryOutSpotFeatureCodes.AdvancedPlayerSearch,
+            cancellationToken);
+    }
+
+    private bool IsSignedInTeamRepresentative()
+    {
+        return User.Claims
+            .Where(claim => claim.Type == ClaimTypes.Role)
+            .Select(claim => TryOutSpotRoles.NormalizePublicRegistrationRole(claim.Value))
+            .Any(normalizedRole => string.Equals(normalizedRole, TryOutSpotRoles.TeamRepresentative, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

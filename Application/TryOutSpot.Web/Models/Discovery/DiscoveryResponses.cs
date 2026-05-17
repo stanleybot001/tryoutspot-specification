@@ -77,7 +77,8 @@ public sealed record OpportunityDiscoveryListResponse(
     int TotalCount,
     int TotalPages,
     string? SearchOriginZipCode = null,
-    int? SearchRadiusMiles = null);
+    int? SearchRadiusMiles = null,
+    bool AdvancedFiltersApplied = false);
 
 /// <summary>
 /// Public opportunity listing summary.

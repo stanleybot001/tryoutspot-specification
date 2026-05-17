@@ -72,7 +72,7 @@ public sealed class RegisterUserRequest
     public string? State { get; set; }
 
     /// <summary>
-    /// One or more public account types, such as Parent, Player, Coach, TeamManager, AcademyDirector, or OrganizationAdmin.
+    /// One or more public account types, such as Parent, Player, or TeamRepresentative.
     /// </summary>
     public IReadOnlyCollection<string> AccountTypes { get; set; } = [];
 }

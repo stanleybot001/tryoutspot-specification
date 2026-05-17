@@ -5,6 +5,13 @@
     var submitPath = Model.IsEditMode && Model.OpportunityId.HasValue
         ? Url.Action("EditTeamOpportunity", "Account", new { teamId = Model.TeamId, opportunityId = Model.OpportunityId.Value })
         : Url.Action("CreateTeamOpportunity", "Account", new { teamId = Model.TeamId });
+    var statusMessage = TempData["StatusMessage"] as string ?? ViewData["StatusMessage"] as string;
+    var statusType = TempData["StatusMessageType"] as string ?? ViewData["StatusMessageType"] as string;
+    var statusCssClass = string.Equals(statusType, "error", StringComparison.OrdinalIgnoreCase)
+        ? "account-alert account-alert-error"
+        : "account-alert";
+    var isTryoutOpportunity = string.Equals(Model.Type?.Trim(), "tryout", StringComparison.OrdinalIgnoreCase);
+    var registrationSectionCssClass = isTryoutOpportunity ? "form-section" : "form-section d-none";
 }
 
 <section class="account-page compact">
@@ -22,21 +29,21 @@
         </p>
     </div>
 
-    @if (TempData["StatusMessage"] is string statusMessage)
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
     {
-        <div class="account-alert">@statusMessage</div>
+        <div class="@statusCssClass">@statusMessage</div>
     }
 
     @if (!Model.CanPostOpportunities)
     {
         <div class="account-alert">
-            Your current membership does not include opportunity posting. Upgrade to Basic Team or Professional Team to publish listings.
+            Your current membership does not include opportunity posting. Upgrade to Free Coach, Team Basic, or Team Professional to publish listings.
         </div>
     }
     else if (Model.HasLimitedPosting && !Model.HasUnlimitedPosting)
     {
         <div class="account-alert">
-            Basic Team usage this month: @Model.PublishedThisMonthCount/@Model.BasicMonthlyPublishingLimit published listings.
+            @Model.PublishingPlanLabel usage: @Model.PublishedInWindowCount/@Model.PublishingLimit published listings in @Model.PublishingWindowMonths months.
         </div>
     }
 
@@ -92,34 +99,35 @@
                     <span asp-validation-for="AgeGroup" class="text-danger"></span>
                 </div>
                 <div class="form-field">
-                    <label asp-for="RegistrationFee" class="form-label">Registration fee</label>
-                    <input asp-for="RegistrationFee" class="form-control" inputmode="decimal" />
-                    <span asp-validation-for="RegistrationFee" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="RegistrationDeadline" class="form-label">Registration deadline</label>
-                    <input asp-for="RegistrationDeadline" class="form-control" />
-                    <span asp-validation-for="RegistrationDeadline" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="EventDate" class="form-label">Event start date</label>
-                    <input asp-for="EventDate" class="form-control" />
-                    <span asp-validation-for="EventDate" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="EventEndDate" class="form-label">Event end date</label>
-                    <input asp-for="EventEndDate" class="form-control" />
-                    <span asp-validation-for="EventEndDate" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="ExpiresAt" class="form-label">Expires on</label>
-                    <input asp-for="ExpiresAt" class="form-control" />
-                    <span asp-validation-for="ExpiresAt" class="text-danger"></span>
-                </div>
-                <div class="form-field">
                     <label asp-for="Location" class="form-label">Location</label>
                     <input asp-for="Location" class="form-control" placeholder="Facility or field name" />
                     <span asp-validation-for="Location" class="text-danger"></span>
+                </div>
+
+                <div class="form-grid two-column form-field-full date-pair-grid">
+                    <div class="form-field">
+                        <label asp-for="EventDate" class="form-label">Event start date</label>
+                        <input asp-for="EventDate" class="form-control" />
+                        <span asp-validation-for="EventDate" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="EventEndDate" class="form-label">Event end date</label>
+                        <input asp-for="EventEndDate" class="form-control" />
+                        <span asp-validation-for="EventEndDate" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="form-grid two-column form-field-full date-pair-grid">
+                    <div class="form-field">
+                        <label asp-for="ListingStartDate" class="form-label">Listing start date</label>
+                        <input asp-for="ListingStartDate" class="form-control" />
+                        <span asp-validation-for="ListingStartDate" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="ListingEndDate" class="form-label">Listing end date</label>
+                        <input asp-for="ListingEndDate" class="form-control" />
+                        <span asp-validation-for="ListingEndDate" class="text-danger"></span>
+                    </div>
                 </div>
                 <div class="form-field">
                     <label asp-for="Address" class="form-label">Address</label>
@@ -210,10 +218,138 @@
                 </div>
             </div>
 
-            <label class="sms-consent-option" for="RegistrationRequired">
-                <input asp-for="RegistrationRequired" class="form-check-input" />
-                <span>Registration is required before attendance.</span>
-            </label>
+            <section id="tryoutRegistrationSettings" class="@registrationSectionCssClass">
+                <h2>Tryout registration settings</h2>
+                @if (!Model.CanConfigureTryoutRegistration)
+                {
+                    <p class="section-help">
+                        Tryout registration management is available on Team Basic and higher plans.
+                    </p>
+                }
+
+                <label class="sms-consent-option" for="RegistrationRequired">
+                    <input asp-for="RegistrationRequired" class="form-check-input" />
+                    <span>Enable tryout registration for this listing.</span>
+                </label>
+
+                <label class="sms-consent-option" for="LimitRegistrationCapacity">
+                    <input asp-for="LimitRegistrationCapacity" class="form-check-input" />
+                    <span>Limit registrations to a max player count and close automatically when full.</span>
+                </label>
+
+                <div class="form-grid two-column registration-settings-grid">
+                    <div class="form-field">
+                        <label asp-for="RegistrationFee" class="form-label">Registration cost (paid in person)</label>
+                        <input asp-for="RegistrationFee" class="form-control" inputmode="decimal" />
+                        <p class="section-help">This amount is informational only and is collected directly by the team.</p>
+                        <span asp-validation-for="RegistrationFee" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="RegistrationDeadline" class="form-label">Registration deadline</label>
+                        <input asp-for="RegistrationDeadline" class="form-control" />
+                        <span asp-validation-for="RegistrationDeadline" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="MaxParticipants" class="form-label">Max registrations</label>
+                        <input asp-for="MaxParticipants" class="form-control" inputmode="numeric" />
+                        <p class="section-help">Optional unless capacity limit is enabled.</p>
+                        <span asp-validation-for="MaxParticipants" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="form-field mt-3">
+                    <p class="form-label mb-2">Required registration fields</p>
+                    @if (Model.AvailableRegistrationFieldOptions.Count == 0)
+                    {
+                        <p class="section-help">No custom registration fields are configured.</p>
+                    }
+                    else
+                    {
+                        <div class="registration-required-field-grid">
+                            @foreach (var fieldOption in Model.AvailableRegistrationFieldOptions)
+                            {
+                                var checkboxId = $"RequiredRegistrationFieldCodes_{fieldOption.Code}";
+                                <label class="sms-consent-option registration-field-option" for="@checkboxId">
+                                    <input
+                                        type="checkbox"
+                                        class="form-check-input"
+                                        id="@checkboxId"
+                                        name="RequiredRegistrationFieldCodes"
+                                        value="@fieldOption.Code"
+                                        @(fieldOption.IsRequired ? "checked" : null) />
+                                    <span>
+                                        <strong>@fieldOption.Label</strong>
+                                        <span class="registration-field-description"> - @fieldOption.Description</span>
+                                    </span>
+                                </label>
+                            }
+                        </div>
+                    }
+                    <span asp-validation-for="RequiredRegistrationFieldCodes" class="text-danger"></span>
+                </div>
+
+                <div class="form-field mt-3">
+                    <p class="form-label mb-2">Waiver handling</p>
+                    <label class="sms-consent-option" for="WaiverRequired">
+                        <input asp-for="WaiverRequired" class="form-check-input" />
+                        <span>Require a signed waiver for this tryout.</span>
+                    </label>
+                    <span asp-validation-for="WaiverRequired" class="text-danger"></span>
+
+                    <div class="mt-2">
+                        <label class="sms-consent-option" for="WaiverMethodAtEvent">
+                            <input
+                                type="radio"
+                                class="form-check-input"
+                                id="WaiverMethodAtEvent"
+                                name="WaiverMethod"
+                                value="at_event"
+                                @(string.Equals(Model.WaiverMethod, "at_event", System.StringComparison.OrdinalIgnoreCase) ? "checked" : null) />
+                            <span>Waiver handled at event check-in.</span>
+                        </label>
+                        <label class="sms-consent-option" for="WaiverMethodDownloadable">
+                            <input
+                                type="radio"
+                                class="form-check-input"
+                                id="WaiverMethodDownloadable"
+                                name="WaiverMethod"
+                                value="downloadable"
+                                @(string.Equals(Model.WaiverMethod, "downloadable", System.StringComparison.OrdinalIgnoreCase) ? "checked" : null) />
+                            <span>Upload waiver PDF so parents/players can download it before the event.</span>
+                        </label>
+                        <span asp-validation-for="WaiverMethod" class="text-danger"></span>
+                    </div>
+
+                    @if (Model.HasUploadedWaiverPdf && !string.IsNullOrWhiteSpace(Model.UploadedWaiverPdfUrl))
+                    {
+                        <p class="section-help mt-2 mb-2">
+                            Current waiver file:
+                            <a href="@Model.UploadedWaiverPdfUrl" target="_blank" rel="noopener">
+                                @(string.IsNullOrWhiteSpace(Model.UploadedWaiverPdfFileName) ? "Open waiver PDF" : Model.UploadedWaiverPdfFileName)
+                            </a>
+                        </p>
+                        <label class="sms-consent-option" for="RemoveUploadedWaiverPdf">
+                            <input asp-for="RemoveUploadedWaiverPdf" class="form-check-input" />
+                            <span>Remove current uploaded waiver PDF.</span>
+                        </label>
+                    }
+
+                    <label asp-for="WaiverPdfUpload" class="form-label mt-2">Upload waiver PDF</label>
+                    <input asp-for="WaiverPdfUpload" type="file" accept=".pdf,application/pdf" class="form-control" id="WaiverPdfUploadInput" />
+                    <p class="section-help">Maximum file size: 10 MB. Upload a PDF only.</p>
+                    <span asp-validation-for="WaiverPdfUpload" class="text-danger"></span>
+
+                    <label class="sms-consent-option mt-2" for="WaiverReturnByEmail">
+                        <input asp-for="WaiverReturnByEmail" class="form-check-input" />
+                        <span>Allow waiver return by email to the listing contact email.</span>
+                    </label>
+                    <label class="sms-consent-option" for="WaiverReturnInPerson">
+                        <input asp-for="WaiverReturnInPerson" class="form-check-input" />
+                        <span>Allow waiver return in person at the event.</span>
+                    </label>
+                    <span asp-validation-for="WaiverReturnByEmail" class="text-danger"></span>
+                </div>
+            </section>
 
             <label class="sms-consent-option" for="IsPublished">
                 <input asp-for="IsPublished" class="form-check-input" />
@@ -258,8 +394,35 @@
     <partial name="_ValidationScriptsPartial" />
     <script>
         (function () {
-            const maxBytes = 10 * 1024 * 1024;
             const form = document.getElementById("teamOpportunityEditorForm");
+            const typeSelect = document.getElementById("Type");
+            const registrationSection = document.getElementById("tryoutRegistrationSettings");
+
+            const normalizeType = (value) => (value || "")
+                .toString()
+                .trim()
+                .toLowerCase()
+                .replace(/_/g, " ");
+
+            const syncTryoutRegistrationVisibility = () => {
+                if (!typeSelect || !registrationSection) {
+                    return;
+                }
+
+                const isTryout = normalizeType(typeSelect.value) === "tryout";
+                registrationSection.classList.toggle("d-none", !isTryout);
+                const registrationFields = registrationSection.querySelectorAll("input, select, textarea");
+                registrationFields.forEach((field) => {
+                    field.disabled = !isTryout;
+                });
+            };
+
+            if (typeSelect && registrationSection) {
+                syncTryoutRegistrationVisibility();
+                typeSelect.addEventListener("change", syncTryoutRegistrationVisibility);
+            }
+
+            const maxBytes = 10 * 1024 * 1024;
             const fileInput = document.getElementById("PdfUploadInput");
             const errorEl = document.getElementById("PdfUploadClientError");
             if (!form || !fileInput || !errorEl) {

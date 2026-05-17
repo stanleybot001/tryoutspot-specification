@@ -51,8 +51,8 @@ public sealed class UserManagementApiTests
                 Email = "managed-create@example.com",
                 Password = "Tryout2026",
                 FirstName = "Jordan",
-                LastName = "Coach",
-                AccountTypes = ["Parent", "Coach"],
+                LastName = "TeamRepresentative",
+                AccountTypes = ["Parent", "TeamRepresentative"],
                 EmailConfirmed = true
             });
 
@@ -62,7 +62,7 @@ public sealed class UserManagementApiTests
         Assert.NotNull(user);
         Assert.Equal("managed-create@example.com", user.Email);
         Assert.Contains(TryOutSpotRoles.Parent, user.AccountTypes);
-        Assert.Contains(TryOutSpotRoles.Coach, user.AccountTypes);
+        Assert.Contains(TryOutSpotRoles.TeamRepresentative, user.AccountTypes);
         Assert.True(user.IsActive);
         Assert.True(user.EmailConfirmed);
     }
@@ -72,11 +72,11 @@ public sealed class UserManagementApiTests
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
         var client = await CreateAdminClientAsync(factory);
-        await factory.CreateUserAsync("filter-coach@example.com", [TryOutSpotRoles.Coach]);
+        await factory.CreateUserAsync("filter-coach@example.com", [TryOutSpotRoles.TeamRepresentative]);
         await factory.CreateUserAsync("filter-parent@example.com", [TryOutSpotRoles.Parent]);
 
         var response = await client.GetAsync(
-            "/api/user-management/users?search=filter&accountType=Coach&page=1&pageSize=10");
+            "/api/user-management/users?search=filter&accountType=TeamRepresentative&page=1&pageSize=10");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var list = await response.Content.ReadFromJsonAsync<ManagedUserListResponse>();
@@ -85,7 +85,7 @@ public sealed class UserManagementApiTests
         Assert.Equal(1, list.TotalCount);
         var user = Assert.Single(list.Users);
         Assert.Equal("filter-coach@example.com", user.Email);
-        Assert.Contains(TryOutSpotRoles.Coach, user.AccountTypes);
+        Assert.Contains(TryOutSpotRoles.TeamRepresentative, user.AccountTypes);
     }
 
     [Fact]
@@ -99,7 +99,7 @@ public sealed class UserManagementApiTests
             $"/api/user-management/users/{user.Id}/account-types",
             new UpdateManagedUserAccountTypesRequest
             {
-                AccountTypes = ["Coach", "TeamManager"]
+                AccountTypes = ["TeamRepresentative", "TeamManager"]
             });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -107,8 +107,9 @@ public sealed class UserManagementApiTests
 
         Assert.NotNull(updated);
         Assert.DoesNotContain(TryOutSpotRoles.Parent, updated.AccountTypes);
-        Assert.Contains(TryOutSpotRoles.Coach, updated.AccountTypes);
-        Assert.Contains(TryOutSpotRoles.TeamManager, updated.AccountTypes);
+        Assert.Contains(TryOutSpotRoles.TeamRepresentative, updated.AccountTypes);
+        Assert.Equal(1, updated.AccountTypes.Count(role =>
+            string.Equals(role, TryOutSpotRoles.TeamRepresentative, StringComparison.OrdinalIgnoreCase)));
     }
 
     [Fact]
@@ -195,3 +196,4 @@ public sealed class UserManagementApiTests
             ?? throw new InvalidOperationException("Login did not return token response.");
     }
 }
+

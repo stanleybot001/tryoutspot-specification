@@ -15,8 +15,8 @@ public sealed record AccountTypePlanAccessRow(
     string AccountType,
     bool FreePlayerParent,
     bool PremiumPlayer,
+    bool FreeCoach,
     bool TeamBasic,
-    bool TeamOffseasonHold,
     bool TeamProfessional,
     bool EnterpriseOrganization);
 

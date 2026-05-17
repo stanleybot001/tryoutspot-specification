@@ -80,7 +80,7 @@ public sealed class BillingApiTests
 
     [Theory]
     [InlineData(TryOutSpotRoles.Parent, TryOutSpotPlanCodes.TeamBasic)]
-    [InlineData(TryOutSpotRoles.Coach, TryOutSpotPlanCodes.PremiumPlayer)]
+    [InlineData(TryOutSpotRoles.TeamRepresentative, TryOutSpotPlanCodes.PremiumPlayer)]
     public async Task CreateCheckoutSession_WithPlanOutsideAccountType_ReturnsBadRequest(
         string accountType,
         string planCode)
@@ -109,7 +109,7 @@ public sealed class BillingApiTests
         var normalizedRole = playerSideRole.ToLowerInvariant();
         var user = await factory.CreateUserAsync(
             $"checkout-mixed-{normalizedRole}-coach@example.com",
-            [playerSideRole, TryOutSpotRoles.Coach]);
+            [playerSideRole, TryOutSpotRoles.TeamRepresentative]);
         var client = await CreateAuthorizedClientAsync(factory, user.Email!);
 
         var premiumResponse = await client.PostAsJsonAsync(
@@ -213,12 +213,12 @@ public sealed class BillingApiTests
     }
 
     [Fact]
-    public async Task CreateCheckoutSession_WithAcademyDirector_AllowsTeamAndEnterprisePlans()
+    public async Task CreateCheckoutSession_WithTeamRepresentative_AllowsTeamAndEnterprisePlans()
     {
         await using var factory = CreateFactoryWithStripe();
         var user = await factory.CreateUserAsync(
             "checkout-academy-director@example.com",
-            [TryOutSpotRoles.AcademyDirector]);
+            [TryOutSpotRoles.TeamRepresentative]);
         var client = await CreateAuthorizedClientAsync(factory, user.Email!);
 
         var teamResponse = await client.PostAsJsonAsync(
@@ -235,12 +235,12 @@ public sealed class BillingApiTests
     }
 
     [Fact]
-    public async Task CreateCheckoutSession_WithOrganizationAdmin_AllowsTeamProfessionalAndEnterprisePlans()
+    public async Task CreateCheckoutSession_WithTeamRepresentative_AllowsTeamProfessionalAndEnterprisePlans()
     {
         await using var factory = CreateFactoryWithStripe();
         var user = await factory.CreateUserAsync(
             "checkout-organization-admin@example.com",
-            [TryOutSpotRoles.OrganizationAdmin]);
+            [TryOutSpotRoles.TeamRepresentative]);
         var client = await CreateAuthorizedClientAsync(factory, user.Email!);
 
         var teamProfessionalResponse = await client.PostAsJsonAsync(
@@ -260,7 +260,7 @@ public sealed class BillingApiTests
         await using var factory = CreateFactoryWithStripe();
         var user = await factory.CreateUserAsync(
             "checkout-team-pro-monthly-not-allowed@example.com",
-            [TryOutSpotRoles.Coach]);
+            [TryOutSpotRoles.TeamRepresentative]);
         var client = await CreateAuthorizedClientAsync(factory, user.Email!);
 
         var response = await client.PostAsJsonAsync(
@@ -274,7 +274,7 @@ public sealed class BillingApiTests
     public async Task StripeSubscriptionSync_ActiveThenCanceledSubscriptionUpdatesEntitlements()
     {
         await using var factory = CreateFactoryWithStripe();
-        var user = await factory.CreateUserAsync("team-sync@example.com", [TryOutSpotRoles.Coach]);
+        var user = await factory.CreateUserAsync("team-sync@example.com", [TryOutSpotRoles.TeamRepresentative]);
         var now = DateTime.UtcNow;
 
         using var scope = factory.Services.CreateScope();
@@ -332,99 +332,10 @@ public sealed class BillingApiTests
     }
 
     [Fact]
-    public async Task StripeSubscriptionSync_OffseasonHold_LeavesListingSearchableButHidesContact()
-    {
-        await using var factory = CreateFactoryWithStripe();
-        var user = await factory.CreateUserAsync("offseason-hold@example.com", [TryOutSpotRoles.Coach]);
-        var now = DateTime.UtcNow;
-        Guid teamId;
-
-        using (var setupScope = factory.Services.CreateScope())
-        {
-            var dbContext = setupScope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var organization = new Organization
-            {
-                Id = Guid.NewGuid(),
-                Name = "Midamserv Club",
-                Email = "club@example.com",
-                PhoneNumber = "620-555-1010",
-                SocialMediaLinks = "{\"facebook\":\"https://facebook.com/midamserv\"}",
-                IsSearchable = false,
-                IsContactInfoVisible = true,
-                IsActive = true,
-                CreatedAt = now,
-                UpdatedAt = now
-            };
-
-            teamId = Guid.NewGuid();
-            dbContext.Organizations.Add(organization);
-            dbContext.Teams.Add(new Team
-            {
-                Id = teamId,
-                OrganizationId = organization.Id,
-                Name = "Midamserv Thunder",
-                Email = "coach@example.com",
-                PhoneNumber = "620-555-2020",
-                SocialMediaLinks = "{\"instagram\":\"https://instagram.com/midamserv\"}",
-                IsSearchable = false,
-                IsContactInfoVisible = true,
-                IsActive = true,
-                CreatedAt = now,
-                UpdatedAt = now
-            });
-            dbContext.UserTeamRoles.Add(new UserTeamRole
-            {
-                Id = Guid.NewGuid(),
-                UserId = user.Id,
-                TeamId = teamId,
-                Role = TryOutSpotRoles.Coach,
-                StartDate = now,
-                IsActive = true,
-                CreatedAt = now
-            });
-
-            await dbContext.SaveChangesAsync();
-        }
-
-        using var scope = factory.Services.CreateScope();
-        var syncService = scope.ServiceProvider.GetRequiredService<IStripeSubscriptionSyncService>();
-        await syncService.ApplyStripeSubscriptionAsync(
-            new StripeSubscriptionSnapshot(
-                "sub_team_hold",
-                "cus_team_hold",
-                user.Id,
-                TryOutSpotPlanCodes.TeamOffseasonHold,
-                "price_team_offseason_hold_month",
-                "active",
-                now,
-                now.AddMonths(1),
-                null,
-                15.99m,
-                "usd",
-                BillingIntervalCodes.Month,
-                TryOutSpotSubscriptionScopeTypes.Account,
-                null,
-                false,
-                null),
-            CancellationToken.None);
-
-        var verifyDb = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var team = await verifyDb.Teams.SingleAsync(currentTeam => currentTeam.Id == teamId);
-        var organizationAfterHold = await verifyDb.Organizations.SingleAsync(currentOrganization => currentOrganization.Id == team.OrganizationId);
-
-        Assert.True(team.IsActive);
-        Assert.True(team.IsSearchable);
-        Assert.False(team.IsContactInfoVisible);
-        Assert.True(organizationAfterHold.IsActive);
-        Assert.True(organizationAfterHold.IsSearchable);
-        Assert.False(organizationAfterHold.IsContactInfoVisible);
-    }
-
-    [Fact]
     public async Task StripeSubscriptionSync_EnterpriseCancellation_SoftDeletesTeamAndOrganizationData()
     {
         await using var factory = CreateFactoryWithStripe();
-        var user = await factory.CreateUserAsync("enterprise-cancel@example.com", [TryOutSpotRoles.OrganizationAdmin]);
+        var user = await factory.CreateUserAsync("enterprise-cancel@example.com", [TryOutSpotRoles.TeamRepresentative]);
         var now = DateTime.UtcNow;
         Guid teamId;
         Guid organizationId;
@@ -476,7 +387,7 @@ public sealed class BillingApiTests
                 Id = Guid.NewGuid(),
                 UserId = user.Id,
                 TeamId = teamId,
-                Role = TryOutSpotRoles.OrganizationAdmin,
+                Role = TryOutSpotRoles.TeamRepresentative,
                 StartDate = now,
                 IsActive = true,
                 CreatedAt = now
@@ -589,10 +500,6 @@ public sealed class BillingApiTests
                     {
                         MonthlyPriceId = "price_team_basic_month"
                     },
-                    [TryOutSpotPlanCodes.TeamOffseasonHold] = new()
-                    {
-                        MonthlyPriceId = "price_team_offseason_hold_month"
-                    },
                     [TryOutSpotPlanCodes.TeamProfessional] = new()
                     {
                         MonthlyPriceId = string.Empty,
@@ -696,3 +603,4 @@ public sealed class BillingApiTests
         }
     }
 }
+

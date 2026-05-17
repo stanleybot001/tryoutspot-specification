@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
+using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
@@ -13,6 +14,34 @@ namespace TryOutSpot.Web.Tests;
 
 public sealed class PlayerListingsApiTests
 {
+    [Fact]
+    public async Task TeamBasicSearch_ReturnsAdvancedFiltersAppliedMetadata()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var teamUser = await factory.CreateUserAsync("listing-team-basic-meta@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        await AddSubscriptionAsync(factory, teamUser.Id, TryOutSpotPlanCodes.TeamBasic, "active");
+        var teamClient = await CreateAuthorizedClientAsync(factory, teamUser.Email!);
+
+        var response = await teamClient.GetAsync("/api/player-listings/search");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<PlayerListingListResponse>();
+        Assert.NotNull(payload);
+        Assert.True(payload.AdvancedFiltersApplied);
+    }
+
+    [Fact]
+    public async Task FreeCoachSearch_WithSkillLevelFilter_ReturnsBadRequest()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var coachUser = await factory.CreateUserAsync("listing-free-coach-skill@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var coachClient = await CreateAuthorizedClientAsync(factory, coachUser.Email!);
+
+        var response = await coachClient.GetAsync("/api/player-listings/search?skillLevel=advanced");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task ParentUser_CanCreateAndSearchListing()
     {
@@ -61,7 +90,7 @@ public sealed class PlayerListingsApiTests
     public async Task CoachWithoutPlayerRole_CannotCreatePlayerListing()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
-        var user = await factory.CreateUserAsync("listing-coach@example.com", [TryOutSpotRoles.Coach]);
+        var user = await factory.CreateUserAsync("listing-coach@example.com", [TryOutSpotRoles.TeamRepresentative]);
         var authorizedClient = await CreateAuthorizedClientAsync(factory, user.Email!);
 
         var response = await authorizedClient.PostAsJsonAsync(
@@ -243,4 +272,39 @@ public sealed class PlayerListingsApiTests
         dbContext.ZipCodeGeographies.AddRange(geographies);
         dbContext.SaveChanges();
     }
+
+    private static async Task AddSubscriptionAsync(
+        TryOutSpotWebApplicationFactory factory,
+        Guid userId,
+        string planCode,
+        string status,
+        string billingInterval = BillingIntervalCodes.Month)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+
+        dbContext.Subscriptions.Add(new Subscription
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            PlanType = planCode,
+            Status = status,
+            ScopeType = TryOutSpotSubscriptionScopeTypes.Account,
+            ScopeId = null,
+            StripeCustomerId = $"cus_{Guid.NewGuid():N}",
+            StripeSubscriptionId = $"sub_{Guid.NewGuid():N}",
+            CurrentPeriodStart = now,
+            CurrentPeriodEnd = billingInterval == BillingIntervalCodes.Year ? now.AddYears(1) : now.AddMonths(1),
+            Amount = 29m,
+            Currency = "USD",
+            BillingInterval = billingInterval,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
+    }
 }
+

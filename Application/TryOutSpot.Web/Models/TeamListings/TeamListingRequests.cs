@@ -32,11 +32,29 @@ public sealed class CreateTeamOpportunityRequest
 
     public bool RegistrationRequired { get; set; } = true;
 
+    [Range(1, 10000)]
+    public int? MaxParticipants { get; set; }
+
+    public IReadOnlyCollection<string> RequiredRegistrationFieldCodes { get; set; } = [];
+
+    public bool WaiverRequired { get; set; }
+
+    [MaxLength(40)]
+    public string? WaiverMethod { get; set; }
+
+    public bool WaiverReturnByEmail { get; set; }
+
+    public bool WaiverReturnInPerson { get; set; }
+
     public DateTime? RegistrationDeadline { get; set; }
 
     public DateTime? EventDate { get; set; }
 
     public DateTime? EventEndDate { get; set; }
+
+    public DateTime? ListingStartDate { get; set; }
+
+    public DateTime? ListingEndDate { get; set; }
 
     [MaxLength(500)]
     public string? Location { get; set; }
@@ -111,11 +129,29 @@ public sealed class UpdateTeamOpportunityRequest
 
     public bool RegistrationRequired { get; set; } = true;
 
+    [Range(1, 10000)]
+    public int? MaxParticipants { get; set; }
+
+    public IReadOnlyCollection<string> RequiredRegistrationFieldCodes { get; set; } = [];
+
+    public bool WaiverRequired { get; set; }
+
+    [MaxLength(40)]
+    public string? WaiverMethod { get; set; }
+
+    public bool WaiverReturnByEmail { get; set; }
+
+    public bool WaiverReturnInPerson { get; set; }
+
     public DateTime? RegistrationDeadline { get; set; }
 
     public DateTime? EventDate { get; set; }
 
     public DateTime? EventEndDate { get; set; }
+
+    public DateTime? ListingStartDate { get; set; }
+
+    public DateTime? ListingEndDate { get; set; }
 
     [MaxLength(500)]
     public string? Location { get; set; }

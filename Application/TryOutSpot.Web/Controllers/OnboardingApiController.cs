@@ -58,7 +58,13 @@ public sealed class OnboardingApiController(
             return Unauthorized();
         }
 
-        var roles = (await userManager.GetRolesAsync(user)).OrderBy(role => role).ToArray();
+        var roles = (await userManager.GetRolesAsync(user))
+            .Select(TryOutSpotRoles.NormalizePublicRegistrationRole)
+            .Where(role => role is not null)
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(role => role)
+            .ToArray();
         var entitlements = await entitlementService.GetEntitlementsAsync(user.Id, cancellationToken);
         var steps = await BuildStepsAsync(user, roles, cancellationToken);
         var requiredStepsComplete = steps.Where(step => step.IsRequired).All(step => step.IsComplete);
@@ -104,7 +110,7 @@ public sealed class OnboardingApiController(
 
         var currentRoles = await userManager.GetRolesAsync(user);
         var publicRolesToRemove = currentRoles
-            .Where(role => TryOutSpotRoles.PublicRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
+            .Where(role => TryOutSpotRoles.PublicOrLegacyRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
             .ToArray();
 
         if (publicRolesToRemove.Length > 0)
@@ -143,12 +149,7 @@ public sealed class OnboardingApiController(
         CancellationToken cancellationToken)
     {
         var hasPlayerOrParentRole = HasAnyRole(roles, TryOutSpotRoles.Parent, TryOutSpotRoles.Player);
-        var hasTeamOrOrganizationRole = HasAnyRole(
-            roles,
-            TryOutSpotRoles.Coach,
-            TryOutSpotRoles.TeamManager,
-            TryOutSpotRoles.AcademyDirector,
-            TryOutSpotRoles.OrganizationAdmin);
+        var hasTeamOrOrganizationRole = roles.Any(TryOutSpotRoles.IsTeamBundleRole);
 
         var hasLinkedPlayers = hasPlayerOrParentRole
             && await dbContext.UserPlayerRelationships
@@ -174,7 +175,7 @@ public sealed class OnboardingApiController(
                 StringComparer.Ordinal) == true;
 
         var hasPublicAccountType = roles.Any(role =>
-            TryOutSpotRoles.PublicRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase));
+            TryOutSpotRoles.PublicOrLegacyRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase));
 
         var steps = new List<OnboardingStepResponse>
         {
@@ -245,25 +246,10 @@ public sealed class OnboardingApiController(
                 "Build a profile and discover baseball or softball opportunities.",
                 true),
             new(
-                TryOutSpotRoles.Coach,
-                "Coach",
-                "Find players, manage tryouts, and communicate with families.",
+                TryOutSpotRoles.TeamRepresentative,
+                "Team representative",
+                "Manage team or organization operations. Subscription level controls unlocked tools.",
                 true),
-            new(
-                TryOutSpotRoles.TeamManager,
-                "Team manager",
-                "Help operate a team, registrations, and opportunity listings.",
-                false),
-            new(
-                TryOutSpotRoles.AcademyDirector,
-                "Academy director",
-                "Manage academy-level teams, listings, and player development programs.",
-                false),
-            new(
-                TryOutSpotRoles.OrganizationAdmin,
-                "Organization admin",
-                "Manage multi-team organizations, staff, and platform workflows.",
-                false)
         ];
     }
 
@@ -306,6 +292,12 @@ public sealed class OnboardingApiController(
             {
                 accountTypes.Add(accountType);
             }
+        }
+
+        if (accountTypes.Count > 0
+            && !TryOutSpotRoles.TryValidateSingleRolePerBundle(accountTypes, out var validationError))
+        {
+            ModelState.AddModelError(modelStateKey, validationError ?? "Invalid role selection.");
         }
 
         return accountTypes;

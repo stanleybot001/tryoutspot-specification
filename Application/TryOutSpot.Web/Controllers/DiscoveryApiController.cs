@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Models.Discovery;
 using TryOutSpot.Web.Services;
@@ -15,8 +17,11 @@ namespace TryOutSpot.Web.Controllers;
 [Route("api/discovery")]
 public sealed class DiscoveryApiController(
     AppDbContext dbContext,
+    IEntitlementService entitlementService,
     IZipRadiusSearchService zipRadiusSearchService) : ControllerBase
 {
+    private const int FreeOpportunitySearchMaxRadiusMiles = 120;
+
     /// <summary>
     /// Searches public team listings.
     /// </summary>
@@ -38,7 +43,7 @@ public sealed class DiscoveryApiController(
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
-        var zipRadius = await ResolveZipRadiusAsync(originZipCode, radiusMiles, cancellationToken);
+        var zipRadius = await ResolveZipRadiusAsync(originZipCode, radiusMiles, hasAdvancedOpportunitySearch: true, cancellationToken);
         if (!ModelState.IsValid)
         {
             return ValidationProblem(ModelState);
@@ -164,7 +169,7 @@ public sealed class DiscoveryApiController(
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
-        var zipRadius = await ResolveZipRadiusAsync(originZipCode, radiusMiles, cancellationToken);
+        var zipRadius = await ResolveZipRadiusAsync(originZipCode, radiusMiles, hasAdvancedOpportunitySearch: true, cancellationToken);
         if (!ModelState.IsValid)
         {
             return ValidationProblem(ModelState);
@@ -288,7 +293,12 @@ public sealed class DiscoveryApiController(
 
         var normalizedEventDateFrom = NormalizeUtc(eventDateFrom);
         var normalizedEventDateTo = NormalizeUtc(eventDateTo);
-        var zipRadius = await ResolveZipRadiusAsync(originZipCode, radiusMiles, cancellationToken);
+        var hasAdvancedOpportunitySearch = await HasAdvancedOpportunitySearchAsync(cancellationToken);
+        var zipRadius = await ResolveZipRadiusAsync(
+            originZipCode,
+            radiusMiles,
+            hasAdvancedOpportunitySearch,
+            cancellationToken);
         if (!ModelState.IsValid)
         {
             return ValidationProblem(ModelState);
@@ -302,9 +312,16 @@ public sealed class DiscoveryApiController(
             .AsNoTracking()
             .Where(opportunity => opportunity.IsActive)
             .Where(opportunity => opportunity.IsPublished)
-            .Where(opportunity => opportunity.ExpiresAt == null || opportunity.ExpiresAt > now)
+            .Where(opportunity =>
+                (opportunity.ListingEndDate ?? opportunity.ExpiresAt) == null
+                || (opportunity.ListingEndDate ?? opportunity.ExpiresAt) > now)
             .Where(opportunity => opportunity.Team.IsActive)
             .Where(opportunity => opportunity.Team.IsSearchable);
+
+        if (!hasAdvancedOpportunitySearch)
+        {
+            query = query.Where(opportunity => opportunity.ListingStartDate == null || opportunity.ListingStartDate <= now);
+        }
 
         if (sportId.HasValue)
         {
@@ -316,13 +333,23 @@ public sealed class DiscoveryApiController(
             query = query.Where(opportunity => opportunity.TeamId == teamId.Value);
         }
 
-        var normalizedType = NormalizeOptional(type);
-        if (!string.IsNullOrWhiteSpace(normalizedType))
+        if (hasAdvancedOpportunitySearch)
         {
-            var typeSearch = normalizedType.ToLowerInvariant();
+            var normalizedType = NormalizeOptional(type);
+            if (!string.IsNullOrWhiteSpace(normalizedType))
+            {
+                var typeSearch = normalizedType.ToLowerInvariant();
+                query = query.Where(opportunity =>
+                    opportunity.Type != null
+                    && opportunity.Type.ToLower().Contains(typeSearch));
+            }
+        }
+        else
+        {
+            // Free discovery is constrained to tryout opportunities.
             query = query.Where(opportunity =>
                 opportunity.Type != null
-                && opportunity.Type.ToLower().Contains(typeSearch));
+                && opportunity.Type.ToLower().Contains("tryout"));
         }
 
         var normalizedAgeGroup = NormalizeOptional(ageGroup);
@@ -420,12 +447,14 @@ public sealed class DiscoveryApiController(
             totalCount,
             (int)Math.Ceiling(totalCount / (double)pageSize),
             zipRadius?.OriginZipCode,
-            zipRadius?.RadiusMiles));
+            zipRadius?.RadiusMiles,
+            hasAdvancedOpportunitySearch));
     }
 
     private async Task<ZipRadiusSearchResult?> ResolveZipRadiusAsync(
         string? originZipCode,
         int? radiusMiles,
+        bool hasAdvancedOpportunitySearch,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(originZipCode))
@@ -448,6 +477,11 @@ public sealed class DiscoveryApiController(
         }
 
         var normalizedRadiusMiles = zipRadiusSearchService.ClampRadiusMiles(radiusMiles);
+        if (!hasAdvancedOpportunitySearch)
+        {
+            normalizedRadiusMiles = Math.Min(normalizedRadiusMiles, FreeOpportunitySearchMaxRadiusMiles);
+        }
+
         var zipRadiusResult = await zipRadiusSearchService.ResolveZipCodesWithinRadiusAsync(
             normalizedOriginZipCode,
             normalizedRadiusMiles,
@@ -460,6 +494,20 @@ public sealed class DiscoveryApiController(
         }
 
         return zipRadiusResult;
+    }
+
+    private async Task<bool> HasAdvancedOpportunitySearchAsync(CancellationToken cancellationToken)
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(userIdClaim, out var userId))
+        {
+            return false;
+        }
+
+        return await entitlementService.HasFeatureAsync(
+            userId,
+            TryOutSpotFeatureCodes.AdvancedOpportunitySearch,
+            cancellationToken);
     }
 
     private static TeamDiscoverySummaryResponse ToTeamResponse(

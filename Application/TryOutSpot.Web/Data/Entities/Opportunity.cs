@@ -31,6 +31,16 @@ public partial class Opportunity
 
     public decimal RegistrationFee { get; set; }
 
+    public string? RegistrationRequiredFieldCodes { get; set; }
+
+    public bool WaiverRequired { get; set; }
+
+    public string? WaiverMethod { get; set; }
+
+    public bool WaiverReturnByEmail { get; set; }
+
+    public bool WaiverReturnInPerson { get; set; }
+
     public DateTime? EventDate { get; set; }
 
     public DateTime? EventEndDate { get; set; }
@@ -57,6 +67,10 @@ public partial class Opportunity
 
     public string? UploadedPdfFileName { get; set; }
 
+    public string? WaiverUploadedPdfObjectKey { get; set; }
+
+    public string? WaiverUploadedPdfFileName { get; set; }
+
     public string? RequiredEquipment { get; set; }
 
     public string? WhatToBring { get; set; }
@@ -66,6 +80,10 @@ public partial class Opportunity
     public bool IsPublished { get; set; }
 
     public DateTime? PublishedAt { get; set; }
+
+    public DateTime? ListingStartDate { get; set; }
+
+    public DateTime? ListingEndDate { get; set; }
 
     public DateTime? ExpiresAt { get; set; }
 

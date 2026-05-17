@@ -72,11 +72,18 @@ public sealed class UserManagementApiController(
                 return ValidationProblem(ModelState);
             }
 
-            var role = await dbContext.Roles
-                .AsNoTracking()
-                .SingleOrDefaultAsync(currentRole => currentRole.Name == normalizedRole, cancellationToken);
+            string[] roleNamesToMatch = string.Equals(normalizedRole, TryOutSpotRoles.TeamRepresentative, StringComparison.OrdinalIgnoreCase)
+                ? [TryOutSpotRoles.TeamRepresentative, .. TryOutSpotRoles.LegacyTeamBundleRoles]
+                : [normalizedRole];
 
-            if (role is null)
+            var roleIds = await dbContext.Roles
+                .AsNoTracking()
+                .Where(currentRole => currentRole.Name != null
+                    && roleNamesToMatch.Contains(currentRole.Name, StringComparer.OrdinalIgnoreCase))
+                .Select(currentRole => currentRole.Id)
+                .ToArrayAsync(cancellationToken);
+
+            if (roleIds.Length == 0)
             {
                 ModelState.AddModelError(nameof(accountType), $"'{accountType}' is not configured in the role store.");
                 return ValidationProblem(ModelState);
@@ -84,7 +91,7 @@ public sealed class UserManagementApiController(
 
             var userIdsForRole = dbContext.UserRoles
                 .AsNoTracking()
-                .Where(userRole => userRole.RoleId == role.Id)
+                .Where(userRole => roleIds.Contains(userRole.RoleId))
                 .Select(userRole => userRole.UserId);
 
             query = query.Where(user => userIdsForRole.Contains(user.Id));
@@ -152,7 +159,9 @@ public sealed class UserManagementApiController(
             return NotFound();
         }
 
-        var roles = await userManager.GetRolesAsync(user);
+        var roles = TryOutSpotRoles.CanonicalizeRoleSet(
+            await userManager.GetRolesAsync(user),
+            includePlatformAdmin: true);
         return Ok(ToDetailResponse(user, roles));
     }
 
@@ -220,7 +229,9 @@ public sealed class UserManagementApiController(
             await accountEmailSender.SendEmailConfirmationTokenAsync(user, confirmationToken, cancellationToken);
         }
 
-        var roles = await userManager.GetRolesAsync(user);
+        var roles = TryOutSpotRoles.CanonicalizeRoleSet(
+            await userManager.GetRolesAsync(user),
+            includePlatformAdmin: true);
         return StatusCode(StatusCodes.Status201Created, ToDetailResponse(user, roles));
     }
 
@@ -259,7 +270,9 @@ public sealed class UserManagementApiController(
             return ValidationProblem(ModelState);
         }
 
-        var roles = await userManager.GetRolesAsync(user);
+        var roles = TryOutSpotRoles.CanonicalizeRoleSet(
+            await userManager.GetRolesAsync(user),
+            includePlatformAdmin: true);
         return Ok(ToDetailResponse(user, roles));
     }
 
@@ -323,7 +336,9 @@ public sealed class UserManagementApiController(
 
         await transaction.CommitAsync();
 
-        var roles = await userManager.GetRolesAsync(user);
+        var roles = TryOutSpotRoles.CanonicalizeRoleSet(
+            await userManager.GetRolesAsync(user),
+            includePlatformAdmin: true);
         return Ok(ToDetailResponse(user, roles));
     }
 
@@ -548,11 +563,9 @@ public sealed class UserManagementApiController(
             .GroupBy(role => role.UserId)
             .ToDictionary(
                 group => group.Key,
-                group => group
-                    .Select(role => role.Name ?? string.Empty)
-                    .Where(role => !string.IsNullOrWhiteSpace(role))
-                    .OrderBy(role => role)
-                    .ToArray());
+                group => TryOutSpotRoles.CanonicalizeRoleSet(
+                    group.Select(role => role.Name ?? string.Empty),
+                    includePlatformAdmin: true));
     }
 
     private static string[] GetRolesForUser(IReadOnlyDictionary<Guid, string[]> roleLookup, Guid userId)
@@ -589,6 +602,15 @@ public sealed class UserManagementApiController(
             }
         }
 
+        var publicRoles = accountTypes
+            .Where(role => TryOutSpotRoles.PublicRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+        if (publicRoles.Length > 0
+            && !TryOutSpotRoles.TryValidateSingleRolePerBundle(publicRoles, out var validationError))
+        {
+            ModelState.AddModelError(modelStateKey, validationError ?? "Invalid account type selection.");
+        }
+
         return accountTypes;
     }
 
@@ -618,6 +640,7 @@ public sealed class UserManagementApiController(
 
     private static ManagedUserDetailResponse ToDetailResponse(User user, IEnumerable<string> roles)
     {
+        var normalizedRoles = TryOutSpotRoles.CanonicalizeRoleSet(roles, includePlatformAdmin: true);
         return new ManagedUserDetailResponse(
             user.Id,
             user.Email ?? string.Empty,
@@ -628,7 +651,7 @@ public sealed class UserManagementApiController(
             user.ZipCode,
             user.City,
             user.State,
-            roles.OrderBy(role => role).ToArray(),
+            normalizedRoles,
             user.IsActive,
             user.EmailConfirmed,
             user.PhoneNumberConfirmed,

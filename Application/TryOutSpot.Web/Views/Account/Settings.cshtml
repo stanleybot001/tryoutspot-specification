@@ -1,5 +1,7 @@
 @model AccountSettingsPageModel
 @using TryOutSpot.Web.Billing
+@using TryOutSpot.Web.Identity
+@using TryOutSpot.Web.Models.Billing
 
 @{
     ViewData["Title"] = "Account Settings";
@@ -184,13 +186,35 @@
 
         <section class="form-section settings-wide">
             <h2>Account types <span class="required-marker">*</span></h2>
-            <p class="section-help">Select every role that fits. Paid features will build on these roles and your membership tier.</p>
+            <p class="section-help">Choose one role per bundle. Roles control plan eligibility. Active subscription controls unlocked features.</p>
             <form asp-action="UpdateAccountTypes" asp-controller="Account" method="post" class="stacked-form">
+                @{
+                    var selectedPlayerParentRole = Model.AccountTypes.AccountTypes
+                        .FirstOrDefault(role => string.Equals(role, "Parent", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(role, "Player", StringComparison.OrdinalIgnoreCase));
+                    var selectedTeamRole = Model.AccountTypes.AccountTypes
+                        .FirstOrDefault(TryOutSpotRoles.IsTeamBundleRole);
+                }
+                <h3 class="form-label">Parent/Player bundle</h3>
                 <div class="account-type-grid">
-                    @foreach (var accountType in Model.AccountTypes.AvailableAccountTypes)
+                    <label class="account-type-option" for="settings-player-parent-none">
+                        <input class="form-check-input" id="settings-player-parent-none" name="playerParentRole" type="radio" value="" @(string.IsNullOrWhiteSpace(selectedPlayerParentRole) ? "checked" : null) />
+                        <span>
+                            <strong>None</strong>
+                            <small>No parent/player role selected.</small>
+                        </span>
+                    </label>
+                    @foreach (var accountType in Model.AccountTypes.AvailableAccountTypes.Where(option =>
+                        string.Equals(option.Name, "Parent", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(option.Name, "Player", StringComparison.OrdinalIgnoreCase)))
                     {
                         <label class="account-type-option" for="settings-account-type-@accountType.Name">
-                            <input class="form-check-input" id="settings-account-type-@accountType.Name" name="accountTypes" type="checkbox" value="@accountType.Name" checked="@accountType.IsSelected" />
+                            <input class="form-check-input"
+                                   id="settings-account-type-@accountType.Name"
+                                   name="playerParentRole"
+                                   type="radio"
+                                   value="@accountType.Name"
+                                   @(string.Equals(selectedPlayerParentRole, accountType.Name, StringComparison.OrdinalIgnoreCase) ? "checked" : null) />
                             <span>
                                 <strong>@accountType.Label</strong>
                                 <small>@accountType.Description</small>
@@ -198,6 +222,62 @@
                         </label>
                     }
                 </div>
+                @if (!string.IsNullOrWhiteSpace(selectedPlayerParentRole))
+                {
+                    var primaryMembership = Model.MembershipSummaries.FirstOrDefault();
+                    var playerParentPlanName = primaryMembership?.PlanName ?? Model.CurrentPlanName ?? "No plan selected";
+                    var playerParentPlanStatus = primaryMembership?.Status ?? Model.CurrentPlanStatus;
+                    <div class="team-access-snapshot">
+                        <p class="team-access-title">Parent/Player access snapshot</p>
+                        <p class="team-access-line"><strong>Role:</strong> @selectedPlayerParentRole</p>
+                        <p class="team-access-line"><strong>Current plan:</strong> @playerParentPlanName</p>
+                        @if (!string.IsNullOrWhiteSpace(playerParentPlanStatus))
+                        {
+                            <p class="team-access-line"><strong>Status:</strong> @playerParentPlanStatus</p>
+                        }
+                    </div>
+                }
+                <h3 class="form-label mt-3">Team bundle</h3>
+                <div class="account-type-grid">
+                    <label class="account-type-option" for="settings-team-role-none">
+                        <input class="form-check-input" id="settings-team-role-none" name="teamRole" type="radio" value="" @(string.IsNullOrWhiteSpace(selectedTeamRole) ? "checked" : null) />
+                        <span>
+                            <strong>None</strong>
+                            <small>No team role selected.</small>
+                        </span>
+                    </label>
+                    @foreach (var accountType in Model.AccountTypes.AvailableAccountTypes.Where(option =>
+                        TryOutSpotRoles.IsTeamBundleRole(option.Name)))
+                    {
+                        <label class="account-type-option" for="settings-account-type-@accountType.Name">
+                            <input class="form-check-input"
+                                   id="settings-account-type-@accountType.Name"
+                                   name="teamRole"
+                                   type="radio"
+                                   value="@accountType.Name"
+                                   @(string.Equals(selectedTeamRole, accountType.Name, StringComparison.OrdinalIgnoreCase) ? "checked" : null) />
+                            <span>
+                                <strong>@accountType.Label</strong>
+                                <small>@accountType.Description</small>
+                            </span>
+                        </label>
+                    }
+                </div>
+                @if (TryOutSpotRoles.IsTeamBundleRole(selectedTeamRole))
+                {
+                    var primaryMembership = Model.MembershipSummaries.FirstOrDefault();
+                    var teamPlanName = primaryMembership?.PlanName ?? Model.CurrentPlanName ?? "No team plan selected";
+                    var teamPlanStatus = primaryMembership?.Status ?? Model.CurrentPlanStatus;
+                    <div class="team-access-snapshot">
+                        <p class="team-access-title">Team access snapshot</p>
+                        <p class="team-access-line"><strong>Role:</strong> @selectedTeamRole</p>
+                        <p class="team-access-line"><strong>Current plan:</strong> @teamPlanName</p>
+                        @if (!string.IsNullOrWhiteSpace(teamPlanStatus))
+                        {
+                            <p class="team-access-line"><strong>Status:</strong> @teamPlanStatus</p>
+                        }
+                    </div>
+                }
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">Save account types</button>
                 </div>
@@ -311,11 +391,16 @@
             <div class="plan-list">
                 @foreach (var plan in Model.RecommendedPlans)
                 {
-                    <div class="plan-row">
+                    var isCurrentPlan = IsCurrentRecommendedPlan(plan, Model);
+                    <div class="plan-row @(isCurrentPlan ? "plan-row-active" : null)">
                         <div>
                             <strong>@plan.Name</strong>
                             <span>@plan.Audience</span>
                             <p>@plan.Description</p>
+                            @if (isCurrentPlan)
+                            {
+                                <span class="active-plan-badge">Active plan</span>
+                            }
                         </div>
                         <div class="plan-price">
                             @if (TryOutSpotBillingCatalog.RequiresAnnualCommitment(plan.Code) && plan.AnnualAmount is not null)
@@ -365,6 +450,26 @@
     private static string FormatLocalDate(DateTime value)
     {
         return value.ToLocalTime().ToString("MMM d, yyyy h:mm tt");
+    }
+
+    private static bool IsCurrentRecommendedPlan(BillingPlanResponse plan, AccountSettingsPageModel model)
+    {
+        var activePlanName = model.MembershipSummaries.FirstOrDefault()?.PlanName ?? model.CurrentPlanName;
+        if (string.IsNullOrWhiteSpace(activePlanName))
+        {
+            return false;
+        }
+
+        return string.Equals(
+            NormalizeForPlanComparison(activePlanName),
+            NormalizeForPlanComparison(plan.Name),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeForPlanComparison(string planName)
+    {
+        var normalized = planName.Replace("Account scope", string.Empty, StringComparison.OrdinalIgnoreCase);
+        return normalized.Trim();
     }
 }
 

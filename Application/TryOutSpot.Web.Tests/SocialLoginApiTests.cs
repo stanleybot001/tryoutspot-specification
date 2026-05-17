@@ -90,7 +90,7 @@ public sealed class SocialLoginApiTests
             new SocialLoginRegisterRequest
             {
                 ExternalLoginToken = externalToken,
-                AccountTypes = ["Parent", "Coach"]
+                AccountTypes = ["Parent", "TeamRepresentative"]
             });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -99,7 +99,7 @@ public sealed class SocialLoginApiTests
         Assert.NotNull(tokens);
         Assert.Equal("social-register@example.com", tokens.User.Email);
         Assert.Contains(TryOutSpotRoles.Parent, tokens.User.AccountTypes);
-        Assert.Contains(TryOutSpotRoles.Coach, tokens.User.AccountTypes);
+        Assert.Contains(TryOutSpotRoles.TeamRepresentative, tokens.User.AccountTypes);
 
         using var scope = factory.Services.CreateScope();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
@@ -266,3 +266,4 @@ public sealed class SocialLoginApiTests
             tokenResponse.AccessToken);
     }
 }
+

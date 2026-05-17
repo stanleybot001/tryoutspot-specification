@@ -173,16 +173,6 @@ public sealed class StripeSubscriptionSyncService(
             return;
         }
 
-        if (normalizedPlanCode is TryOutSpotPlanCodes.TeamOffseasonHold)
-        {
-            if (hasEntitlement)
-            {
-                await ApplyTeamDirectoryHoldAsync(userId, now, cancellationToken);
-            }
-
-            return;
-        }
-
         if (normalizedPlanCode is TryOutSpotPlanCodes.TeamBasic && hasEntitlement)
         {
             await RestoreTeamDirectoryVisibilityAsync(userId, now, cancellationToken);
@@ -198,44 +188,6 @@ public sealed class StripeSubscriptionSyncService(
             }
 
             await RestoreTeamDirectoryVisibilityAsync(userId, now, cancellationToken);
-        }
-    }
-
-    private async Task ApplyTeamDirectoryHoldAsync(
-        Guid userId,
-        DateTime now,
-        CancellationToken cancellationToken)
-    {
-        var teams = await dbContext.Teams
-            .Where(team => team.IsActive
-                && team.UserTeamRoles.Any(role => role.UserId == userId))
-            .ToArrayAsync(cancellationToken);
-
-        foreach (var team in teams)
-        {
-            team.IsSearchable = true;
-            team.IsContactInfoVisible = false;
-            team.UpdatedAt = now;
-        }
-
-        var organizationIds = teams
-            .Where(team => team.OrganizationId is not null)
-            .Select(team => team.OrganizationId!.Value)
-            .Distinct()
-            .ToArray();
-        if (organizationIds.Length == 0)
-        {
-            return;
-        }
-
-        var organizations = await dbContext.Organizations
-            .Where(organization => organization.IsActive && organizationIds.Contains(organization.Id))
-            .ToArrayAsync(cancellationToken);
-        foreach (var organization in organizations)
-        {
-            organization.IsSearchable = true;
-            organization.IsContactInfoVisible = false;
-            organization.UpdatedAt = now;
         }
     }
 

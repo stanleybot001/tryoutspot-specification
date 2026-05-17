@@ -209,6 +209,10 @@ public sealed class OnboardingPageModel
     public IReadOnlyCollection<OnboardingStepPageItem> Steps { get; set; } = [];
 
     public IReadOnlyCollection<string> FeatureCodes { get; set; } = [];
+
+    public bool ShowTryoutRegistrationList { get; set; }
+
+    public IReadOnlyCollection<OnboardingTryoutRegistrationPageItem> UpcomingTryoutRegistrations { get; set; } = [];
 }
 
 public sealed class AddPlayerProfilePageModel
@@ -271,6 +275,8 @@ public sealed class AddPlayerProfilePageModel
     public bool RemoveProfileImage { get; set; }
 
     public string? CurrentProfileImageUrl { get; set; }
+
+    public bool EnhancedProfileVisibleToTeams { get; set; }
 
     [MaxLength(500)]
     [Display(Name = "Highlight video link 1")]
@@ -443,12 +449,16 @@ public sealed class AddTeamOrOrganizationPageModel
     public string? OrganizationName { get; set; }
 
     [MaxLength(50)]
-    [Display(Name = "Your team role")]
+    [Display(Name = "Account type")]
     public string TeamRole { get; set; } = string.Empty;
 
     [MaxLength(50)]
     [Display(Name = "Team level")]
     public string? TeamLevel { get; set; }
+
+    [MaxLength(4000)]
+    [Display(Name = "Team description")]
+    public string? TeamDescription { get; set; }
 
     [Required]
     [MaxLength(20)]
@@ -549,7 +559,11 @@ public sealed class TeamOpportunityDashboardPageModel
 
     public bool HasUnlimitedPosting { get; set; }
 
-    public int BasicMonthlyPublishingLimit { get; set; }
+    public int PublishingLimit { get; set; }
+
+    public int PublishingWindowMonths { get; set; }
+
+    public string PublishingPlanLabel { get; set; } = string.Empty;
 
     public IReadOnlyCollection<ManagedTeamOpportunitySummaryPageModel> Teams { get; set; } = [];
 }
@@ -568,6 +582,8 @@ public sealed class ManagedTeamOpportunitySummaryPageModel
 
     public string? TeamLevel { get; set; }
 
+    public string? TeamDescription { get; set; }
+
     public string GeographicScope { get; set; } = string.Empty;
 
     public string? City { get; set; }
@@ -584,7 +600,7 @@ public sealed class ManagedTeamOpportunitySummaryPageModel
 
     public int PublishedOpportunityCount { get; set; }
 
-    public int PublishedThisMonthCount { get; set; }
+    public int PublishedInWindowCount { get; set; }
 
     public IReadOnlyCollection<string> Sports { get; set; } = [];
 }
@@ -599,7 +615,11 @@ public sealed class TeamOpportunityListPageModel
 
     public bool HasUnlimitedPosting { get; set; }
 
-    public int BasicMonthlyPublishingLimit { get; set; }
+    public int PublishingLimit { get; set; }
+
+    public int PublishingWindowMonths { get; set; }
+
+    public string PublishingPlanLabel { get; set; } = string.Empty;
 
     public int Page { get; set; }
 
@@ -608,6 +628,16 @@ public sealed class TeamOpportunityListPageModel
     public int TotalCount { get; set; }
 
     public int TotalPages { get; set; }
+
+    public bool ShowBasicAnalytics { get; set; }
+
+    public bool ShowDetailedAnalytics { get; set; }
+
+    public int PageViewCountTotal { get; set; }
+
+    public int PageRegistrationCountTotal { get; set; }
+
+    public decimal? PageViewToRegistrationConversionRate { get; set; }
 
     public IReadOnlyCollection<TeamOpportunitySummaryPageModel> Opportunities { get; set; } = [];
 }
@@ -660,8 +690,37 @@ public sealed class TeamOpportunitySummaryPageModel
 
     public DateTime? ExpiresAt { get; set; }
 
+    public int ViewCount { get; set; }
+
+    public int RegistrationCount { get; set; }
+
+    public int UniqueApplicantCount { get; set; }
+
+    public int PendingRegistrationCount { get; set; }
+
+    public int ApprovedRegistrationCount { get; set; }
+
+    public int DeclinedRegistrationCount { get; set; }
+
+    public decimal? ViewToRegistrationConversionRate { get; set; }
+
+    public IReadOnlyCollection<TeamOpportunityRegistrantPageItem> Registrants { get; set; } = [];
+
     public DateTime UpdatedAt { get; set; }
 }
+
+public sealed record TeamOpportunityRegistrantPageItem(
+    Guid RegistrationId,
+    Guid PlayerId,
+    string PlayerName,
+    string? SchoolName,
+    string StatusCode,
+    string StatusLabel,
+    bool IsPresent,
+    DateTime? CheckedInAt,
+    bool IsWaiverReceived,
+    DateTime? WaiverReceivedAt,
+    DateTime RegisteredAt);
 
 public sealed class TeamOpportunityEditorPageModel
 {
@@ -675,15 +734,23 @@ public sealed class TeamOpportunityEditorPageModel
 
     public string? OrganizationName { get; set; }
 
+    public string? TeamDescription { get; set; }
+
     public bool CanPostOpportunities { get; set; }
+
+    public bool CanConfigureTryoutRegistration { get; set; }
 
     public bool HasLimitedPosting { get; set; }
 
     public bool HasUnlimitedPosting { get; set; }
 
-    public int BasicMonthlyPublishingLimit { get; set; }
+    public int PublishingLimit { get; set; }
 
-    public int PublishedThisMonthCount { get; set; }
+    public int PublishingWindowMonths { get; set; }
+
+    public string PublishingPlanLabel { get; set; } = string.Empty;
+
+    public int PublishedInWindowCount { get; set; }
 
     [Required]
     [MaxLength(50)]
@@ -718,6 +785,43 @@ public sealed class TeamOpportunityEditorPageModel
     [Display(Name = "Registration required")]
     public bool RegistrationRequired { get; set; } = true;
 
+    [Display(Name = "Limit registrations to max player count")]
+    public bool LimitRegistrationCapacity { get; set; }
+
+    [Range(1, 10000)]
+    [Display(Name = "Max registrations")]
+    public int? MaxParticipants { get; set; }
+
+    [Display(Name = "Required registration fields")]
+    public List<string> RequiredRegistrationFieldCodes { get; set; } = [];
+
+    public IReadOnlyCollection<OpportunityRegistrationFieldOptionPageItem> AvailableRegistrationFieldOptions { get; set; } = [];
+
+    [Display(Name = "Waiver required")]
+    public bool WaiverRequired { get; set; }
+
+    [MaxLength(40)]
+    [Display(Name = "Waiver method")]
+    public string? WaiverMethod { get; set; }
+
+    [Display(Name = "Allow waiver return by email")]
+    public bool WaiverReturnByEmail { get; set; }
+
+    [Display(Name = "Allow waiver return at event")]
+    public bool WaiverReturnInPerson { get; set; }
+
+    [Display(Name = "Upload waiver PDF")]
+    public IFormFile? WaiverPdfUpload { get; set; }
+
+    [Display(Name = "Remove uploaded waiver PDF")]
+    public bool RemoveUploadedWaiverPdf { get; set; }
+
+    public bool HasUploadedWaiverPdf { get; set; }
+
+    public string? UploadedWaiverPdfFileName { get; set; }
+
+    public string? UploadedWaiverPdfUrl { get; set; }
+
     [DataType(DataType.Date)]
     [Display(Name = "Registration deadline")]
     public DateTime? RegistrationDeadline { get; set; }
@@ -729,6 +833,14 @@ public sealed class TeamOpportunityEditorPageModel
     [DataType(DataType.Date)]
     [Display(Name = "Event end date")]
     public DateTime? EventEndDate { get; set; }
+
+    [DataType(DataType.Date)]
+    [Display(Name = "Listing start date")]
+    public DateTime? ListingStartDate { get; set; }
+
+    [DataType(DataType.Date)]
+    [Display(Name = "Listing end date")]
+    public DateTime? ListingEndDate { get; set; }
 
     [MaxLength(500)]
     [Display(Name = "Location")]
@@ -1027,6 +1139,8 @@ public sealed class TeamOpportunityDetailPageModel
 
     public string? OrganizationName { get; set; }
 
+    public string? TeamDescription { get; set; }
+
     public string SportName { get; set; } = string.Empty;
 
     public string Type { get; set; } = string.Empty;
@@ -1042,6 +1156,12 @@ public sealed class TeamOpportunityDetailPageModel
     public bool RegistrationRequired { get; set; } = true;
 
     public decimal RegistrationFee { get; set; }
+
+    public int? MaxParticipants { get; set; }
+
+    public int ActiveRegistrationCount { get; set; }
+
+    public int? RemainingRegistrationSpots { get; set; }
 
     public DateTime? RegistrationDeadline { get; set; }
 
@@ -1078,7 +1198,115 @@ public sealed class TeamOpportunityDetailPageModel
     public string? WhatToBring { get; set; }
 
     public string? SpecialInstructions { get; set; }
+
+    public bool ViewerIsAuthenticated { get; set; }
+
+    public bool ViewerCanSubmitRegistration { get; set; }
+
+    public bool IsRegistrationOpen { get; set; }
+
+    public string? RegistrationClosedReason { get; set; }
+
+    public bool WaiverRequired { get; set; }
+
+    public string? WaiverMethod { get; set; }
+
+    public bool WaiverReturnByEmail { get; set; }
+
+    public bool WaiverReturnInPerson { get; set; }
+
+    public string? WaiverPdfUrl { get; set; }
+
+    public string? WaiverReturnEmail { get; set; }
+
+    public IReadOnlyCollection<OpportunityRegistrationFieldOptionPageItem> RequiredRegistrationFields { get; set; } = [];
+
+    public IReadOnlyCollection<OpportunityRegistrationPlayerOptionPageItem> RegistrationPlayers { get; set; } = [];
+
+    public TeamOpportunityRegistrationInputPageModel RegistrationForm { get; set; } = new();
 }
+
+public sealed class TeamOpportunityRegistrationInputPageModel
+{
+    [Display(Name = "Player profile")]
+    public Guid PlayerId { get; set; }
+
+    [MaxLength(200)]
+    [Display(Name = "Player name")]
+    public string? PlayerName { get; set; }
+
+    [DataType(DataType.Date)]
+    [Display(Name = "Player birthdate")]
+    public DateTime? PlayerBirthDate { get; set; }
+
+    [MaxLength(200)]
+    [Display(Name = "Player school")]
+    public string? PlayerSchool { get; set; }
+
+    [Phone]
+    [MaxLength(20)]
+    [Display(Name = "Player cell phone")]
+    public string? PlayerPhone { get; set; }
+
+    [EmailAddress]
+    [MaxLength(255)]
+    [Display(Name = "Player email address")]
+    public string? PlayerEmail { get; set; }
+
+    [MaxLength(200)]
+    [Display(Name = "Guardian name")]
+    public string? GuardianName { get; set; }
+
+    [EmailAddress]
+    [MaxLength(255)]
+    [Display(Name = "Guardian email")]
+    public string? GuardianEmail { get; set; }
+
+    [Phone]
+    [MaxLength(20)]
+    [Display(Name = "Guardian phone")]
+    public string? GuardianPhone { get; set; }
+
+    [MaxLength(200)]
+    [Display(Name = "Emergency contact name")]
+    public string? EmergencyContactName { get; set; }
+
+    [Phone]
+    [MaxLength(20)]
+    [Display(Name = "Emergency contact phone")]
+    public string? EmergencyContactPhone { get; set; }
+
+    [MaxLength(4000)]
+    [Display(Name = "Medical notes")]
+    public string? MedicalInfo { get; set; }
+
+    [Display(Name = "Waiver acknowledgment")]
+    public bool WaiverAcknowledged { get; set; }
+
+    [MaxLength(200)]
+    [Display(Name = "Waiver signer name")]
+    public string? WaiverSignerName { get; set; }
+
+    [MaxLength(2000)]
+    [Display(Name = "Additional notes")]
+    public string? AdditionalNotes { get; set; }
+}
+
+public sealed record OpportunityRegistrationFieldOptionPageItem(
+    string Code,
+    string Label,
+    string Description,
+    bool IsRequired);
+
+public sealed record OpportunityRegistrationPlayerOptionPageItem(
+    Guid PlayerId,
+    string DisplayName,
+    bool AlreadyRegistered,
+    string? ProfileName,
+    DateTime? ProfileBirthDate,
+    string? ProfileSchool,
+    string? ProfilePhone,
+    string? ProfileEmail);
 
 public sealed class AccountSettingsPageModel
 {
@@ -1244,6 +1472,22 @@ public sealed record OnboardingStepPageItem(
     string Description,
     bool IsRequired,
     bool IsComplete);
+
+public sealed record OnboardingTryoutRegistrationPageItem(
+    Guid RegistrationId,
+    Guid OpportunityId,
+    Guid PlayerId,
+    string PlayerName,
+    string OpportunityTitle,
+    string TeamName,
+    string SportName,
+    string StatusLabel,
+    DateTime? EventDate,
+    DateTime? EventEndDate,
+    DateTime? RegistrationDeadline,
+    DateTime RegisteredAt,
+    string? City,
+    string? State);
 
 public sealed record SportSelectionPageItem(
     Guid Id,

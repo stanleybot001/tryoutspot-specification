@@ -31,6 +31,8 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
 
     public virtual DbSet<PlayerSport> PlayerSports { get; set; }
 
+    public virtual DbSet<PendingAccountTypeChange> PendingAccountTypeChanges { get; set; }
+
     public virtual DbSet<Post> Posts { get; set; }
 
     public virtual DbSet<Registration> Registrations { get; set; }
@@ -125,6 +127,7 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.GenderRequirement).HasMaxLength(20);
             entity.Property(e => e.Location).HasMaxLength(500);
+            entity.Property(e => e.RegistrationRequiredFieldCodes).HasMaxLength(2000);
             entity.Property(e => e.State).HasMaxLength(2);
             entity.Property(e => e.Title).HasMaxLength(300);
             entity.Property(e => e.Type).HasMaxLength(50);
@@ -132,6 +135,9 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.PdfUrl).HasMaxLength(500);
             entity.Property(e => e.UploadedPdfObjectKey).HasMaxLength(500);
             entity.Property(e => e.UploadedPdfFileName).HasMaxLength(260);
+            entity.Property(e => e.WaiverMethod).HasMaxLength(40);
+            entity.Property(e => e.WaiverUploadedPdfObjectKey).HasMaxLength(500);
+            entity.Property(e => e.WaiverUploadedPdfFileName).HasMaxLength(260);
             entity.Property(e => e.WebsiteUrl).HasMaxLength(500);
             entity.Property(e => e.ZipCode).HasMaxLength(10);
 
@@ -315,6 +321,19 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.Category).HasMaxLength(50);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.Name).HasMaxLength(100);
+        });
+
+        modelBuilder.Entity<PendingAccountTypeChange>(entity =>
+        {
+            entity.HasIndex(e => e.UserId, "IX_PendingAccountTypeChanges_UserId");
+            entity.HasIndex(e => new { e.UserId, e.Status }, "IX_PendingAccountTypeChanges_UserId_Status");
+
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.TargetRolesJson).HasMaxLength(4000);
+            entity.Property(e => e.Status).HasMaxLength(30);
+            entity.Property(e => e.Notes).HasMaxLength(2000);
+            entity.Property(e => e.RequestedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
         });
         modelBuilder.Entity<Sport>().HasData(TryOutSpotSportsCatalog.SeedSports);
 

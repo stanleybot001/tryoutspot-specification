@@ -21,8 +21,8 @@
                         <th scope="col">Account type</th>
                         <th scope="col">Free Player/Parent</th>
                         <th scope="col">Premium Player</th>
+                        <th scope="col">Free Coach</th>
                         <th scope="col">Team Basic</th>
-                        <th scope="col">Team Offseason Hold</th>
                         <th scope="col">Team Professional</th>
                         <th scope="col">Enterprise Organization</th>
                     </tr>
@@ -34,8 +34,8 @@
                             <th scope="row">@row.AccountType</th>
                             <td>@(row.FreePlayerParent ? "Yes" : "No")</td>
                             <td>@(row.PremiumPlayer ? "Yes" : "No")</td>
+                            <td>@(row.FreeCoach ? "Yes" : "No")</td>
                             <td>@(row.TeamBasic ? "Yes" : "No")</td>
-                            <td>@(row.TeamOffseasonHold ? "Yes" : "No")</td>
                             <td>@(row.TeamProfessional ? "Yes" : "No")</td>
                             <td>@(row.EnterpriseOrganization ? "Yes" : "No")</td>
                         </tr>

@@ -14,7 +14,7 @@
             <div class="listing-identity-row section-help">
                 @if (!string.IsNullOrWhiteSpace(Model.ProfileImageUrl))
                 {
-                    <img class="listing-hero-avatar" src="@Model.ProfileImageUrl" alt="@Model.PlayerName profile photo" loading="lazy" />
+                    <img class="listing-hero-avatar" src="@Model.ProfileImageUrl" alt="@Model.PlayerName profile photo" loading="lazy" onerror="this.style.display='none'" />
                 }
                 @if (!string.IsNullOrWhiteSpace(Model.PlayerName))
                 {
@@ -25,19 +25,39 @@
     </div>
 
     <section class="form-section">
-        <div class="team-summary-grid opportunity-summary-grid">
-            <div><span>Sport</span><strong>@(string.IsNullOrWhiteSpace(Model.SportName) ? "Not set" : Model.SportName)</strong></div>
-            <div><span>Price</span><strong>@FormatPrice(Model.AskingPrice, Model.Currency)</strong></div>
-            <div><span>Condition</span><strong>@(string.IsNullOrWhiteSpace(Model.Condition) ? "Not set" : Model.Condition)</strong></div>
-            <div><span>Location</span><strong>@FormatLocation(Model.City, Model.State, Model.ZipCode)</strong></div>
-            <div><span>Published</span><strong>@FormatDate(Model.PublishedAt)</strong></div>
-            <div><span>Expires</span><strong>@FormatDate(Model.ExpiresAt)</strong></div>
-        </div>
-
         @if (!string.IsNullOrWhiteSpace(Model.Description))
         {
-            <p class="section-help mt-3">@Model.Description</p>
+            <div class="readonly-field mb-3">
+                @Model.Description
+            </div>
         }
+
+        <div class="team-summary-grid opportunity-summary-grid">
+            @if (!string.IsNullOrWhiteSpace(Model.SportName))
+            {
+                <div><span>Sport</span><strong>@Model.SportName</strong></div>
+            }
+            @if (Model.AskingPrice.HasValue)
+            {
+                <div><span>Price</span><strong>@FormatPrice(Model.AskingPrice, Model.Currency)</strong></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.Condition))
+            {
+                <div><span>Condition</span><strong>@Model.Condition</strong></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.City) || !string.IsNullOrWhiteSpace(Model.State) || !string.IsNullOrWhiteSpace(Model.ZipCode))
+            {
+                <div><span>Location</span><strong>@FormatLocation(Model.City, Model.State, Model.ZipCode)</strong></div>
+            }
+            @if (Model.PublishedAt.HasValue)
+            {
+                <div><span>Published</span><strong>@FormatDate(Model.PublishedAt)</strong></div>
+            }
+            @if (Model.ExpiresAt.HasValue)
+            {
+                <div><span>Expires</span><strong>@FormatDate(Model.ExpiresAt)</strong></div>
+            }
+        </div>
 
         @if (!string.IsNullOrWhiteSpace(Model.PdfUrl))
         {
@@ -66,7 +86,7 @@
 
             @if (!string.IsNullOrWhiteSpace(Model.ProfileImageUrl))
             {
-                <img class="listing-profile-image" src="@Model.ProfileImageUrl" alt="@Model.PlayerName profile photo" />
+                <img class="listing-profile-image" src="@Model.ProfileImageUrl" alt="@Model.PlayerName profile photo" onerror="this.style.display='none'" />
             }
 
             <div class="team-summary-grid opportunity-summary-grid mt-2">
@@ -78,18 +98,30 @@
                 <div><span>Bats</span><strong>@(string.IsNullOrWhiteSpace(Model.BatsHand) ? "Not set" : Model.BatsHand)</strong></div>
             </div>
 
-            @if (Model.Sports.Count > 0)
+            @if (Model.SocialLinks.Count > 0)
             {
-                <h3 class="mt-3">Sports and positions</h3>
-                <div class="plan-list">
-                    @foreach (var sport in Model.Sports)
+                <h3 class="mt-3">Social pages</h3>
+                <div class="profile-link-grid">
+                    @foreach (var link in Model.SocialLinks)
                     {
-                        <div class="plan-row plan-row-stack">
-                            <strong>@sport.SportName</strong>
-                            <span>Level: @(string.IsNullOrWhiteSpace(sport.SkillLevel) ? "Not set" : sport.SkillLevel)</span>
-                            <span>Primary position: @(string.IsNullOrWhiteSpace(sport.PrimaryPosition) ? "Not set" : sport.PrimaryPosition)</span>
-                            <span>Secondary positions: @(string.IsNullOrWhiteSpace(sport.SecondaryPositions) ? "Not set" : sport.SecondaryPositions)</span>
-                        </div>
+                        <a class="profile-link-card" href="@link.Url" target="_blank" rel="noopener">
+                            <span class="profile-link-icon">@GetLinkIcon(link.Label)</span>
+                            <span class="profile-link-text">@GetLinkDisplayText(link)</span>
+                        </a>
+                    }
+                </div>
+            }
+
+            @if (Model.ProfileVideoLinks.Count > 0)
+            {
+                <h3 class="mt-3">Profile videos</h3>
+                <div class="profile-link-grid">
+                    @foreach (var link in Model.ProfileVideoLinks)
+                    {
+                        <a class="profile-link-card" href="@link.Url" target="_blank" rel="noopener">
+                            <span class="profile-link-icon">@GetLinkIcon(link.Label)</span>
+                            <span class="profile-link-text">@GetLinkDisplayText(link)</span>
+                        </a>
                     }
                 </div>
             }
@@ -107,26 +139,20 @@
                 <p class="section-help">Contact details are limited to approved coach access for this player profile.</p>
             }
 
-            @if (Model.SocialLinks.Count > 0)
+            @if (Model.Sports.Count > 0)
             {
-                <h3 class="mt-3">Social pages</h3>
-                <ul class="listing-link-list">
-                    @foreach (var link in Model.SocialLinks)
+                <h3 class="mt-3">Sports and positions</h3>
+                <div class="plan-list">
+                    @foreach (var sport in Model.Sports)
                     {
-                        <li><a href="@link.Url" target="_blank" rel="noopener">@link.Label</a></li>
+                        <div class="plan-row plan-row-stack">
+                            <strong>@sport.SportName</strong>
+                            <span>Level: @(string.IsNullOrWhiteSpace(sport.SkillLevel) ? "Not set" : sport.SkillLevel)</span>
+                            <span>Primary position: @(string.IsNullOrWhiteSpace(sport.PrimaryPosition) ? "Not set" : sport.PrimaryPosition)</span>
+                            <span>Secondary positions: @(string.IsNullOrWhiteSpace(sport.SecondaryPositions) ? "Not set" : sport.SecondaryPositions)</span>
+                        </div>
                     }
-                </ul>
-            }
-
-            @if (Model.ProfileVideoLinks.Count > 0)
-            {
-                <h3 class="mt-3">Profile videos</h3>
-                <ul class="listing-link-list">
-                    @foreach (var link in Model.ProfileVideoLinks)
-                    {
-                        <li><a href="@link.Url" target="_blank" rel="noopener">@link.Label</a></li>
-                    }
-                </ul>
+                </div>
             }
 
             @if (Model.RecruitingLinks.Count > 0)
@@ -148,7 +174,7 @@
     {
         if (!value.HasValue)
         {
-            return "Not listed";
+            return string.Empty;
         }
 
         var normalizedCurrency = string.IsNullOrWhiteSpace(currency)
@@ -159,7 +185,7 @@
 
     private static string FormatDate(DateTime? value)
     {
-        return value?.ToLocalTime().ToString("MMM d, yyyy") ?? "Not set";
+        return value?.ToLocalTime().ToString("MMM d, yyyy") ?? string.Empty;
     }
 
     private static string FormatLocation(string? city, string? state, string? zipCode)
@@ -201,5 +227,38 @@
         }
 
         return $"{height.Trim()} / {weight.Trim()}";
+    }
+
+    private static string GetLinkIcon(string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            return "L";
+        }
+
+        return label.Trim().ToLowerInvariant() switch
+        {
+            "facebook" => "f",
+            "x" => "x",
+            "instagram" => "ig",
+            "youtube" => "yt",
+            "tiktok" => "tt",
+            _ when label.Contains("video", StringComparison.OrdinalIgnoreCase) => "vd",
+            _ => "ln"
+        };
+    }
+
+    private static string GetLinkDisplayText(ExternalProfileLinkPageItem link)
+    {
+        if (Uri.TryCreate(link.Url, UriKind.Absolute, out var uri))
+        {
+            var segment = uri.Segments.LastOrDefault()?.Trim('/');
+            if (!string.IsNullOrWhiteSpace(segment))
+            {
+                return $"@{segment}";
+            }
+        }
+
+        return link.Label;
     }
 }

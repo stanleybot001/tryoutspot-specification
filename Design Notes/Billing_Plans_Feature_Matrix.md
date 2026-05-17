@@ -1,20 +1,16 @@
 # TryOutSpot Billing Plans and Feature Matrix
 
-Updated: May 14, 2026
+Updated: May 17, 2026
 
 ## 1) Account Type -> Eligible Plans
 
-| Account type | Free Player/Parent | Premium Player | Team Basic | Team Offseason Hold | Team Professional | Enterprise Organization |
+| Account type | Free Player/Parent | Premium Player | Free Coach | Team Basic | Team Professional | Enterprise Organization |
 |---|---:|---:|---:|---:|---:|---:|
 | Parent | Yes | Yes | No | No | No | No |
 | Player | Yes | Yes | No | No | No | No |
-| Coach | No | No | Yes | Yes | Yes | No |
-| TeamManager | No | No | Yes | Yes | Yes | No |
-| AcademyDirector | No | No | Yes | Yes | Yes | Yes |
-| OrganizationAdmin | No | No | No | No | Yes | Yes |
+| Team representative (coach, manager) | No | No | Yes | Yes | Yes | Yes |
 
-Note: OrganizationAdmin can now subscribe to **Team Professional** as well as Enterprise.
-Note: **Team Offseason Hold** is only available to Team Basic-eligible roles (Coach, TeamManager, AcademyDirector).
+Note: Team representative eligibility covers coach/manager team account flows.
 
 ## 2) Feature Bundles (By Upgrade Layer)
 
@@ -22,6 +18,7 @@ Note: **Team Offseason Hold** is only available to Team Basic-eligible roles (Co
 Compared to: Base package
 
 - `opportunities.browse`: Search and view public tryouts, tournaments, camps, and roster openings.
+- `opportunities.browse.free_rules`: Free discovery supports age filtering, tryout-only opportunity type, and geography radius up to 120 miles.
 - `players.profiles.basic`: Create core player profiles for linked athletes.
 - `opportunities.apply`: Register or apply for available opportunities.
 - `communication.team.basic`: Receive and send basic opportunity-related communication.
@@ -31,32 +28,32 @@ Compared to: Base package
 Compared to: Free Player/Parent
 
 - `registrations.priority_review`: Flag applications for higher visibility to teams.
-- `opportunities.search.advanced`: Enhanced filters for geography, level, age, and opportunity type.
+- `opportunities.search.advanced`: Unlock enhanced geography radius beyond free limits, full opportunity-type filtering (not tryout-only), and advanced level-based discovery filters.
 - `players.profiles.enhanced`: Richer profiles with more detail, media, and highlight content.
-- `communication.team.direct`: Direct player-to-team messaging where allowed.
-- `registrations.analytics.player`: Player-side application insights and tracking.
+- `communication.team.direct`: Coming soon - direct player-to-team messaging where allowed.
+- `registrations.analytics.player`: Coming soon - player-side application insights and tracking.
 - `opportunities.early_access`: Eligible opportunities earlier than standard release.
 
-## Team Basic starter bundle
+## Free Coach starter bundle
 Compared to: No team plan
 
-- `opportunities.post.limited`: Post up to 5 opportunities per month.
-- `players.search.basic`: Basic player search and discovery.
+- `opportunities.post.limited`: Publish up to 1 tryout listing every 6 months.
+- `players.search.basic`: Limited player search (radius capped at 120 miles; age filters available; skill-level filters not included).
+
+## Team Basic add-ons
+Compared to: Free Coach
+
+- `opportunities.post.limited`: Publish up to 9 tryout listings every 12 months.
+- `players.search.advanced`: Full player discovery filters (age, level, radius, and related advanced search tools).
 - `registrations.manage.standard`: Standard registration/applicant management.
 - `analytics.team.basic`: Basic team activity reporting.
 - `support.email`: Standard email support.
 
-## Team Offseason Hold
-Compared to: Team Basic (retention option)
-
-- `directory.team.searchable`: Keep team/organization directory listing active in search.
-- `directory.team.contact.hidden`: Hide public contact details and social links while listed.
-
 ## Team Professional add-ons
 Compared to: Team Basic
 
-- `opportunities.post.unlimited`: Unlimited opportunity posting.
-- `players.search.advanced`: Advanced player discovery filters.
+- `opportunities.post.limited`: Publish up to 24 tryout listings every 12 months.
+- `players.search.advanced`: Full player discovery filters (age, level, radius, and related advanced search tools).
 - `registrations.manage.premium`: Enhanced applicant review and registration tooling.
 - `analytics.team.detailed`: Deeper team analytics and conversion visibility.
 - `support.priority`: Priority support queue.
@@ -66,6 +63,7 @@ Compared to: Team Basic
 ## Enterprise Organization add-ons
 Compared to: Team Professional
 
+- `opportunities.post.limited`: Publish up to 50 tryout listings every 12 months.
 - `teams.manage.multiple`: Multi-team organization management.
 - `api.access`: API-based integration access.
 - `workflows.custom`: Organization-specific custom workflows.
@@ -80,24 +78,27 @@ Compared to: Team Professional
 - Audience: Player/Parent
 - Price: Free
 - Includes: Free Player/Parent baseline bundle
+- Discovery rules: Age filtering enabled; opportunity type restricted to tryouts; geography radius capped at 120 miles; level is view-only (no level filter/sort).
 
 ## Premium Player
 
 - Audience: Player/Parent
 - Price: $9.99/month or $99/year
 - Adds over Free Player/Parent: Premium player add-ons
+- Discovery upgrades over Free: Full opportunity-type filters, advanced level-based discovery filters, and expanded geography filtering beyond the free 120-mile radius cap.
+
+## Free Coach
+
+- Audience: Team/Academy (starter)
+- Price: Free
+- Includes: 1 listing every 6 months
+- Stripe required: No (internal plan)
 
 ## Team Basic
 
 - Audience: Team/Academy
 - Price: $29/month
-- Includes: Team Basic starter bundle
-
-## Team Offseason Hold
-
-- Audience: Team/Academy
-- Price: $15.99/month
-- Includes: Searchable listing only while contact/social details stay hidden
+- Includes: Team Basic add-ons
 
 ## Team Professional
 
@@ -113,15 +114,11 @@ Compared to: Team Professional
 
 ## 4) Stripe and Enforcement Notes
 
-As of May 14, 2026:
+As of May 16, 2026:
 
-- Stripe checkout is active for paid plan selection where Stripe keys and price IDs are configured.
-- Webhook processing now records processed Stripe event IDs to prevent duplicate handling.
-- Checkout requests now use idempotency keys to reduce duplicate Stripe checkout session creation.
+- `free_coach` is internal and does not create a Stripe checkout session.
+- Stripe checkout is used for paid plan selection where Stripe keys and price IDs are configured.
+- Webhook processing records processed Stripe event IDs to prevent duplicate handling.
+- Checkout requests use idempotency keys to reduce duplicate Stripe checkout session creation.
 - Team Professional and Enterprise Organization enforce annual billing at checkout.
-- If Team Professional or Enterprise Organization is canceled (including cancel-at-period-end intent), team and organization records are soft-deactivated and cannot be reactivated for a later season.
-- Deactivated Team Professional/Enterprise records must be recreated as new records for a future season.
-- Team Offseason Hold keeps directory visibility but applies contact-hidden behavior to team and organization public presence.
-- Entitlement-based authorization now gates:
-  - Player profile onboarding via `players.profiles.basic`
-  - Team/organization onboarding via team posting entitlements (`opportunities.post.limited` or `opportunities.post.unlimited`)
+- Entitlement-based authorization gates features by active/trialing subscription state and role-based free defaults.

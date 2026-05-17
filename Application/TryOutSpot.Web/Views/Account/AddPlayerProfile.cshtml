@@ -37,6 +37,14 @@
             <input asp-for="IsEditMode" type="hidden" />
             <input asp-for="ReturnUrl" type="hidden" />
             <input asp-for="ProfileImageUrl" type="hidden" />
+            <input asp-for="EnhancedProfileVisibleToTeams" type="hidden" />
+
+            @if (!Model.EnhancedProfileVisibleToTeams)
+            {
+                <div class="section-help mb-3">
+                    Enhanced profile fields can still be saved on Free Player/Parent accounts, but teams will not see those enhanced details, media, or highlights until Premium Player is active.
+                </div>
+            }
 
             <div class="form-grid two-column">
                 <div class="form-field">
@@ -81,7 +89,7 @@
                     @if (!string.IsNullOrWhiteSpace(Model.CurrentProfileImageUrl))
                     {
                         <div class="mt-2">
-                            <img class="listing-profile-image" src="@Model.CurrentProfileImageUrl" alt="Current profile picture" loading="lazy" />
+                            <img class="listing-profile-image" src="@Model.CurrentProfileImageUrl" alt="Current profile picture" loading="lazy" onerror="this.style.display='none'" />
                         </div>
                         <label class="account-check mt-2">
                             <input asp-for="RemoveProfileImage" class="form-check-input" />

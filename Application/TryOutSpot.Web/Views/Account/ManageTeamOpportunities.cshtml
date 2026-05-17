@@ -19,7 +19,7 @@
     @if (!Model.CanPostOpportunities)
     {
         <div class="account-alert">
-            Your current membership does not include opportunity posting. Upgrade to Basic Team or Professional Team to create and publish listings.
+            Your current membership does not include opportunity posting. Upgrade to Free Coach, Team Basic, or Team Professional to create and publish listings.
         </div>
     }
 
@@ -32,7 +32,7 @@
             }
             else if (Model.HasLimitedPosting)
             {
-                @:Basic Team supports up to @Model.BasicMonthlyPublishingLimit published opportunities per team per month.
+                @:@Model.PublishingPlanLabel supports up to @Model.PublishingLimit published opportunities every @Model.PublishingWindowMonths months.
             }
             else
             {
@@ -45,7 +45,7 @@
             <p class="section-help">No managed teams were found yet. Start by adding a team or organization from onboarding.</p>
             <div class="form-actions">
                 <a class="btn btn-primary" href="/account/onboarding/add-team-or-organization">Add team or organization</a>
-                <a class="btn btn-outline-secondary" href="/account/onboarding">Back to onboarding</a>
+                <a class="btn btn-outline-secondary" href="/account/onboarding">Back to dashboard</a>
             </div>
         }
         else
@@ -67,7 +67,7 @@
                                 <span>@team.PublishedOpportunityCount published</span>
                                 @if (Model.HasLimitedPosting && !Model.HasUnlimitedPosting)
                                 {
-                                    <span>@team.PublishedThisMonthCount/@Model.BasicMonthlyPublishingLimit this month</span>
+                                    <span>@team.PublishedInWindowCount/@Model.PublishingLimit in @Model.PublishingWindowMonths months</span>
                                 }
                             </div>
                         </div>
@@ -80,6 +80,10 @@
                             <div><span>Searchable</span><strong>@(team.IsSearchable ? "Yes" : "No")</strong></div>
                             <div><span>Public contact</span><strong>@(team.IsContactInfoVisible ? "Visible" : "Hidden")</strong></div>
                         </div>
+                        @if (!string.IsNullOrWhiteSpace(team.TeamDescription))
+                        {
+                            <p class="section-help">@team.TeamDescription</p>
+                        }
 
                         @if (team.Sports.Count > 0)
                         {
@@ -104,7 +108,7 @@
             </div>
 
             <div class="form-actions mt-3">
-                <a class="btn btn-outline-secondary" href="/account/onboarding">Back to onboarding</a>
+                <a class="btn btn-outline-secondary" href="/account/onboarding">Back to dashboard</a>
             </div>
         }
     </section>

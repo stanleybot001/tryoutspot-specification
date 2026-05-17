@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using TryOutSpot.Web.Billing;
-using TryOutSpot.Web.Identity;
 using TryOutSpot.Web.Models;
 using TryOutSpot.Web.Models.Billing;
 
@@ -48,140 +47,17 @@ public class HomeController : Controller
     [HttpGet("/plans-and-features")]
     public IActionResult PlansAndFeatures()
     {
-        var featuresByCode = TryOutSpotBillingCatalog.Features
-            .ToDictionary(feature => feature.Code, feature => new FeatureDetailPageItem(
-                feature.Code,
-                feature.Name,
-                feature.Description),
-                StringComparer.Ordinal);
-
-        var freePlan = RequirePlan(TryOutSpotPlanCodes.FreePlayerParent);
-        var premiumPlayerPlan = RequirePlan(TryOutSpotPlanCodes.PremiumPlayer);
-        var teamBasicPlan = RequirePlan(TryOutSpotPlanCodes.TeamBasic);
-        var teamOffseasonHoldPlan = RequirePlan(TryOutSpotPlanCodes.TeamOffseasonHold);
-        var teamProfessionalPlan = RequirePlan(TryOutSpotPlanCodes.TeamProfessional);
-        var enterprisePlan = RequirePlan(TryOutSpotPlanCodes.EnterpriseOrganization);
-
         var model = new PlansFeatureMatrixPageModel
         {
             AccountTypePlanAccess = BuildAccountTypePlanAccess(),
-            FeatureBundles =
-            [
-                BuildBundle(
-                    "Free Player/Parent baseline",
-                    "Player/Parent",
-                    "Base package",
-                    [
-                        TryOutSpotFeatureCodes.BrowseOpportunities,
-                        TryOutSpotFeatureCodes.CreateBasicPlayerProfiles,
-                        TryOutSpotFeatureCodes.ApplyToOpportunities,
-                        TryOutSpotFeatureCodes.BasicTeamCommunication,
-                        TryOutSpotFeatureCodes.ViewApplicationStatus,
-                        TryOutSpotFeatureCodes.CreatePlayerListings
-                    ],
-                    featuresByCode),
-                BuildBundle(
-                    "Premium player add-ons",
-                    "Player/Parent",
-                    "Compared to Free Player/Parent",
-                    [
-                        TryOutSpotFeatureCodes.PriorityApplicationReview,
-                        TryOutSpotFeatureCodes.AdvancedOpportunitySearch,
-                        TryOutSpotFeatureCodes.EnhancedPlayerProfile,
-                        TryOutSpotFeatureCodes.DirectTeamMessaging,
-                        TryOutSpotFeatureCodes.PlayerApplicationAnalytics,
-                        TryOutSpotFeatureCodes.EarlyOpportunityAccess
-                    ],
-                    featuresByCode),
-                BuildBundle(
-                    "Team basic starter bundle",
-                    "Team/Academy",
-                    "Entry paid team plan",
-                    [
-                        TryOutSpotFeatureCodes.PostLimitedOpportunities,
-                        TryOutSpotFeatureCodes.BasicPlayerSearch,
-                        TryOutSpotFeatureCodes.StandardRegistrationManagement,
-                        TryOutSpotFeatureCodes.BasicTeamAnalytics,
-                        TryOutSpotFeatureCodes.EmailSupport
-                    ],
-                    featuresByCode),
-                BuildBundle(
-                    "Team offseason hold",
-                    "Team/Academy",
-                    "Compared to Team Basic (retention option)",
-                    [
-                        TryOutSpotFeatureCodes.TeamDirectorySearchable,
-                        TryOutSpotFeatureCodes.TeamContactHidden
-                    ],
-                    featuresByCode),
-                BuildBundle(
-                    "Team professional add-ons",
-                    "Team/Academy",
-                    "Compared to Team Basic",
-                    [
-                        TryOutSpotFeatureCodes.UnlimitedOpportunityPostings,
-                        TryOutSpotFeatureCodes.AdvancedPlayerSearch,
-                        TryOutSpotFeatureCodes.PremiumRegistrationManagement,
-                        TryOutSpotFeatureCodes.DetailedTeamAnalytics,
-                        TryOutSpotFeatureCodes.PrioritySupport,
-                        TryOutSpotFeatureCodes.CustomBranding,
-                        TryOutSpotFeatureCodes.BulkCommunication
-                    ],
-                    featuresByCode),
-                BuildBundle(
-                    "Enterprise organization add-ons",
-                    "Organization",
-                    "Compared to Team Professional",
-                    [
-                        TryOutSpotFeatureCodes.MultiTeamManagement,
-                        TryOutSpotFeatureCodes.ApiAccess,
-                        TryOutSpotFeatureCodes.CustomWorkflows,
-                        TryOutSpotFeatureCodes.DedicatedAccountManager,
-                        TryOutSpotFeatureCodes.WhiteLabel,
-                        TryOutSpotFeatureCodes.AdvancedSecurity
-                    ],
-                    featuresByCode)
-            ],
-            PlanTracks =
-            [
-                new PlanTrackPageItem(
-                    "Player/Parent track",
-                    [
-                        BuildPlanDetail(
-                            freePlan,
-                            previousPlan: null,
-                            featuresByCode),
-                        BuildPlanDetail(
-                            premiumPlayerPlan,
-                            previousPlan: freePlan,
-                            featuresByCode)
-                    ]),
-                new PlanTrackPageItem(
-                    "Team/Organization track",
-                    [
-                        BuildPlanDetail(
-                            teamBasicPlan,
-                            previousPlan: null,
-                            featuresByCode),
-                        BuildPlanDetail(
-                            teamOffseasonHoldPlan,
-                            previousPlan: teamBasicPlan,
-                            featuresByCode),
-                        BuildPlanDetail(
-                            teamProfessionalPlan,
-                            previousPlan: teamOffseasonHoldPlan,
-                            featuresByCode),
-                        BuildPlanDetail(
-                            enterprisePlan,
-                            previousPlan: teamProfessionalPlan,
-                            featuresByCode)
-                    ])
-            ],
+            FeatureBundles = BuildFeatureBundlesFromMatrix(),
+            PlanTracks = BuildPlanTracksFromMatrix(),
             CriticalPolicyNotes =
             [
-                "Team Offseason Hold is only for Team Basic-eligible roles and keeps listings searchable while contact details stay hidden.",
+                "Free Coach is an internal non-Stripe tier and allows one listing every six months.",
+                "Paid plan checkout uses Stripe when keys and plan price IDs are configured.",
                 "Team Professional and Enterprise Organization are annual-commitment plans.",
-                "If Team Professional or Enterprise Organization is canceled, team and organization records are soft-deactivated and cannot be reactivated for a later season. A new setup is required."
+                "Paid plans canceled at period end keep features through the current billing term."
             ]
         };
 
@@ -194,97 +70,217 @@ public class HomeController : Controller
         return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
     }
 
-    private static BillingPlanDefinition RequirePlan(string planCode)
-    {
-        return TryOutSpotBillingCatalog.GetPlan(planCode)
-            ?? throw new InvalidOperationException($"Plan '{planCode}' is not configured in billing catalog.");
-    }
-
-    private static FeatureBundlePageItem BuildBundle(
-        string name,
-        string scope,
-        string comparedTo,
-        IEnumerable<string> featureCodes,
-        IReadOnlyDictionary<string, FeatureDetailPageItem> featuresByCode)
-    {
-        return new FeatureBundlePageItem(
-            name,
-            scope,
-            comparedTo,
-            featureCodes
-                .Select(featureCode => featuresByCode[featureCode])
-                .ToArray());
-    }
-
     private static IReadOnlyCollection<AccountTypePlanAccessRow> BuildAccountTypePlanAccess()
     {
-        var roles = new[]
+        return
+        [
+            new("Parent", true, true, false, false, false, false),
+            new("Player", true, true, false, false, false, false),
+            new("Team representative (coach, manager)", false, false, true, true, true, true)
+        ];
+    }
+
+    private static IReadOnlyCollection<FeatureBundlePageItem> BuildFeatureBundlesFromMatrix()
+    {
+        return
+        [
+            new FeatureBundlePageItem(
+                "Free Player/Parent baseline",
+                "Player/Parent",
+                "Base package",
+                [
+                    F("opportunities.browse", "Browse opportunities", "Search and view public tryouts, tournaments, camps, and roster openings."),
+                    F("opportunities.browse.free_rules", "Free discovery rules", "Age filtering is available, opportunity type is restricted to tryouts, geography radius is capped at 120 miles, and level is view-only (no level filter/sort)."),
+                    F("players.profiles.basic", "Basic player profiles", "Create core player profiles for linked athletes."),
+                    F("opportunities.apply", "Apply to opportunities", "Register or apply for available opportunities."),
+                    F("communication.team.basic", "Basic team communication", "Receive and send basic opportunity-related communication."),
+                    F("registrations.status.view", "Application status", "View registration and application status.")
+                ]),
+            new FeatureBundlePageItem(
+                "Premium player add-ons",
+                "Player/Parent",
+                "Compared to Free Player/Parent",
+                [
+                    F("registrations.priority_review", "Priority application review", "Flag applications for higher visibility to teams."),
+                    F("opportunities.search.advanced", "Advanced opportunity search", "Unlock enhanced geography radius beyond free limits, full opportunity-type filtering (not tryout-only), and advanced level-based discovery filters."),
+                    F("players.profiles.enhanced", "Enhanced player profile", "Richer profiles with more detail, media, and highlight content."),
+                    F("communication.team.direct", "Direct team messaging", "Coming soon - direct player-to-team messaging where allowed."),
+                    F("registrations.analytics.player", "Player application analytics", "Coming soon - player-side application insights and tracking."),
+                    F("opportunities.early_access", "Early opportunity access", "Eligible opportunities earlier than standard release.")
+                ]),
+            new FeatureBundlePageItem(
+                "Free coach starter bundle",
+                "Team/Academy",
+                "No team plan",
+                [
+                    F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 1 tryout listing every 6 months.")
+                ]),
+            new FeatureBundlePageItem(
+                "Team basic add-ons",
+                "Team/Academy",
+                "Compared to Free Coach",
+                [
+                    F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 9 tryout listings every 12 months."),
+                    F("players.search.advanced", "Advanced player search", "Full player discovery filters including age, level, and radius."),
+                    F("registrations.manage.standard", "Standard registration management", "Standard registration/applicant management."),
+                    F("analytics.team.basic", "Basic team analytics", "Basic team activity reporting."),
+                    F("support.email", "Email support", "Standard email support.")
+                ]),
+            new FeatureBundlePageItem(
+                "Team professional add-ons",
+                "Team/Academy",
+                "Compared to Team Basic",
+                [
+                    F("opportunities.post.unlimited", "Professional opportunity posting cap", "Publish up to 24 tryout listings every 12 months."),
+                    F("players.search.advanced", "Advanced player search", "Full player discovery filters including age, level, and radius."),
+                    F("registrations.manage.premium", "Premium registration management", "Enhanced applicant review and registration tooling."),
+                    F("analytics.team.detailed", "Detailed team analytics", "Deeper team analytics and conversion visibility."),
+                    F("support.priority", "Priority support", "Priority support queue."),
+                    F("branding.custom", "Custom branding", "Team branding customization."),
+                    F("communication.bulk", "Bulk communication", "Bulk communication workflows.")
+                ]),
+            new FeatureBundlePageItem(
+                "Enterprise organization add-ons",
+                "Organization",
+                "Compared to Team Professional",
+                [
+                    F("teams.manage.multiple", "Multi-team management", "Multi-team organization management."),
+                    F("api.access", "API access", "API-based integration access."),
+                    F("workflows.custom", "Custom workflows", "Organization-specific custom workflows."),
+                    F("support.account_manager", "Dedicated account manager", "Dedicated account manager support."),
+                    F("branding.white_label", "White-label options", "White-label options."),
+                    F("security.advanced", "Advanced security", "Advanced security controls.")
+                ])
+        ];
+    }
+
+    private static IReadOnlyCollection<PlanTrackPageItem> BuildPlanTracksFromMatrix()
+    {
+        var freePlayerParent = new[]
         {
-            TryOutSpotRoles.Parent,
-            TryOutSpotRoles.Player,
-            TryOutSpotRoles.Coach,
-            TryOutSpotRoles.TeamManager,
-            TryOutSpotRoles.AcademyDirector,
-            TryOutSpotRoles.OrganizationAdmin
+            F("opportunities.browse", "Browse opportunities", "Search and view public tryouts, tournaments, camps, and roster openings."),
+            F("opportunities.browse.free_rules", "Free discovery rules", "Age filtering is available, opportunity type is restricted to tryouts, geography radius is capped at 120 miles, and level is view-only (no level filter/sort)."),
+            F("players.profiles.basic", "Basic player profiles", "Create core player profiles for linked athletes."),
+            F("opportunities.apply", "Apply to opportunities", "Register or apply for available opportunities."),
+            F("communication.team.basic", "Basic team communication", "Receive and send basic opportunity-related communication."),
+            F("registrations.status.view", "Application status", "View registration and application status.")
         };
 
-        return roles
-            .Select(role =>
-            {
-                var eligiblePlans = TryOutSpotBillingCatalog.GetEligiblePlanCodesForAccountTypes([role]);
-                return new AccountTypePlanAccessRow(
-                    role,
-                    eligiblePlans.Contains(TryOutSpotPlanCodes.FreePlayerParent, StringComparer.Ordinal),
-                    eligiblePlans.Contains(TryOutSpotPlanCodes.PremiumPlayer, StringComparer.Ordinal),
-                    eligiblePlans.Contains(TryOutSpotPlanCodes.TeamBasic, StringComparer.Ordinal),
-                    eligiblePlans.Contains(TryOutSpotPlanCodes.TeamOffseasonHold, StringComparer.Ordinal),
-                    eligiblePlans.Contains(TryOutSpotPlanCodes.TeamProfessional, StringComparer.Ordinal),
-                    eligiblePlans.Contains(TryOutSpotPlanCodes.EnterpriseOrganization, StringComparer.Ordinal));
-            })
-            .ToArray();
+        var premiumAdds = new[]
+        {
+            F("registrations.priority_review", "Priority application review", "Flag applications for higher visibility to teams."),
+            F("opportunities.search.advanced", "Advanced opportunity search", "Unlock enhanced geography radius beyond free limits, full opportunity-type filtering (not tryout-only), and advanced level-based discovery filters."),
+            F("players.profiles.enhanced", "Enhanced player profile", "Richer profiles with more detail, media, and highlight content."),
+            F("communication.team.direct", "Direct team messaging", "Coming soon - direct player-to-team messaging where allowed."),
+            F("registrations.analytics.player", "Player application analytics", "Coming soon - player-side application insights and tracking."),
+            F("opportunities.early_access", "Early opportunity access", "Eligible opportunities earlier than standard release.")
+        };
+
+        var freeCoach = new[]
+        {
+            F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 1 tryout listing every 6 months.")
+        };
+
+        var teamBasic = new[]
+        {
+            F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 9 tryout listings every 12 months."),
+            F("players.search.advanced", "Advanced player search", "Full player discovery filters including age, level, and radius."),
+            F("registrations.manage.standard", "Standard registration management", "Standard registration/applicant management."),
+            F("analytics.team.basic", "Basic team analytics", "Basic team activity reporting."),
+            F("support.email", "Email support", "Standard email support.")
+        };
+
+        var pro = new[]
+        {
+            F("opportunities.post.unlimited", "Professional opportunity posting cap", "Publish up to 24 tryout listings every 12 months."),
+            F("players.search.advanced", "Advanced player search", "Full player discovery filters including age, level, and radius."),
+            F("registrations.manage.premium", "Premium registration management", "Enhanced applicant review and registration tooling."),
+            F("analytics.team.detailed", "Detailed team analytics", "Deeper team analytics and conversion visibility."),
+            F("support.priority", "Priority support", "Priority support queue."),
+            F("branding.custom", "Custom branding", "Team branding customization."),
+            F("communication.bulk", "Bulk communication", "Bulk communication workflows.")
+        };
+
+        var enterpriseAdds = new[]
+        {
+            F("teams.manage.multiple", "Multi-team management", "Multi-team organization management."),
+            F("opportunities.post.enterprise", "Enterprise opportunity posting cap", "Publish up to 50 tryout listings every 12 months."),
+            F("api.access", "API access", "API-based integration access."),
+            F("workflows.custom", "Custom workflows", "Organization-specific custom workflows."),
+            F("support.account_manager", "Dedicated account manager", "Dedicated account manager support."),
+            F("branding.white_label", "White-label options", "White-label options."),
+            F("security.advanced", "Advanced security", "Advanced security controls.")
+        };
+
+        return
+        [
+            new PlanTrackPageItem(
+                "Player/Parent track",
+                [
+                    new PlanDetailPageItem(
+                        TryOutSpotPlanCodes.FreePlayerParent,
+                        "Free Player/Parent",
+                        "Player/Parent",
+                        "Always-free access for players, parents, and guardians.",
+                        "Free",
+                        null,
+                        freePlayerParent,
+                        freePlayerParent),
+                    new PlanDetailPageItem(
+                        TryOutSpotPlanCodes.PremiumPlayer,
+                        "Premium Player",
+                        "Player/Parent",
+                        "Paid player profile, discovery, messaging, and analytics features.",
+                        "$9.99/month or $99.00/year",
+                        null,
+                        freePlayerParent.Concat(premiumAdds).ToArray(),
+                        premiumAdds)
+                ]),
+            new PlanTrackPageItem(
+                "Team/Organization track",
+                [
+                    new PlanDetailPageItem(
+                        TryOutSpotPlanCodes.FreeCoach,
+                        "Free Coach",
+                        "Team/Academy",
+                        "Starter coach access with one tryout listing every six months.",
+                        "Free",
+                        null,
+                        freeCoach,
+                        freeCoach),
+                    new PlanDetailPageItem(
+                        TryOutSpotPlanCodes.TeamBasic,
+                        "Basic Team",
+                        "Team/Academy",
+                        "Entry team subscription with limited annual tryout posting capacity.",
+                        "$29.00/month",
+                        null,
+                        teamBasic,
+                        teamBasic),
+                    new PlanDetailPageItem(
+                        TryOutSpotPlanCodes.TeamProfessional,
+                        "Professional Team",
+                        "Team/Academy",
+                        "Professional team annual subscription for unlimited postings and advanced tools.",
+                        "$799.00/year (annual commitment)",
+                        null,
+                        pro,
+                        pro),
+                    new PlanDetailPageItem(
+                        TryOutSpotPlanCodes.EnterpriseOrganization,
+                        "Enterprise Organization",
+                        "Organization",
+                        "Enterprise annual subscription for multi-team organizations and custom workflows.",
+                        "$1,999.00/year (annual commitment)",
+                        null,
+                        pro.Concat(enterpriseAdds).ToArray(),
+                        enterpriseAdds)
+                ])
+        ];
     }
 
-    private static PlanDetailPageItem BuildPlanDetail(
-        BillingPlanDefinition currentPlan,
-        BillingPlanDefinition? previousPlan,
-        IReadOnlyDictionary<string, FeatureDetailPageItem> featuresByCode)
+    private static FeatureDetailPageItem F(string code, string name, string description)
     {
-        var includedFeatures = currentPlan.IncludedFeatureCodes
-            .Select(featureCode => featuresByCode[featureCode])
-            .ToArray();
-
-        var addedFeatureCodes = previousPlan is null
-            ? currentPlan.IncludedFeatureCodes
-            : currentPlan.IncludedFeatureCodes.Except(previousPlan.IncludedFeatureCodes, StringComparer.Ordinal);
-        var addedFeatures = addedFeatureCodes
-            .Select(featureCode => featuresByCode[featureCode])
-            .ToArray();
-
-        return new PlanDetailPageItem(
-            currentPlan.Code,
-            currentPlan.Name,
-            currentPlan.Audience,
-            currentPlan.Description,
-            BuildPriceLabel(currentPlan),
-            currentPlan.TrialDays,
-            includedFeatures,
-            addedFeatures);
-    }
-
-    private static string BuildPriceLabel(BillingPlanDefinition plan)
-    {
-        if (!plan.RequiresStripeSubscription || plan.MonthlyAmount <= 0m)
-        {
-            return "Free";
-        }
-
-        if (TryOutSpotBillingCatalog.RequiresAnnualCommitment(plan.Code) && plan.AnnualAmount is not null)
-        {
-            return $"{plan.AnnualAmount.Value:C2}/year (annual commitment)";
-        }
-
-        return plan.AnnualAmount is null
-            ? $"{plan.MonthlyAmount:C2}/month"
-            : $"{plan.MonthlyAmount:C2}/month or {plan.AnnualAmount.Value:C2}/year";
+        return new FeatureDetailPageItem(code, name, description);
     }
 }

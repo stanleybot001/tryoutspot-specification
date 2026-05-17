@@ -24,7 +24,18 @@
         </div>
     </div>
 
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
     <section class="form-section">
+        @if (!string.IsNullOrWhiteSpace(Model.Description))
+        {
+            <div class="readonly-field mb-3">
+                @Model.Description
+            </div>
+        }
         <div class="team-summary-grid opportunity-summary-grid">
             @if (!string.IsNullOrWhiteSpace(Model.CompetitionLevel))
             {
@@ -41,6 +52,22 @@
             @if (!Model.RegistrationRequired)
             {
                 <div><span>Registration required</span><strong>No</strong></div>
+            }
+            else
+            {
+                <div><span>Registration required</span><strong>Yes</strong></div>
+            }
+            @if (Model.MaxParticipants.HasValue)
+            {
+                <div><span>Max registrations</span><strong>@Model.MaxParticipants.Value</strong></div>
+            }
+            @if (Model.RegistrationRequired)
+            {
+                <div><span>Current registrations</span><strong>@Model.ActiveRegistrationCount</strong></div>
+            }
+            @if (Model.RemainingRegistrationSpots.HasValue)
+            {
+                <div><span>Remaining spots</span><strong>@Model.RemainingRegistrationSpots.Value</strong></div>
             }
             @if (Model.RegistrationDeadline.HasValue)
             {
@@ -75,10 +102,245 @@
                 <div><span>Expires</span><strong>@FormatDate(Model.ExpiresAt)</strong></div>
             }
         </div>
+    </section>
 
-        @if (!string.IsNullOrWhiteSpace(Model.Description))
+    <section class="form-section">
+        <h2>Tryout registration</h2>
+        @if (!Model.RegistrationRequired)
         {
-            <p class="section-help mt-3">@Model.Description</p>
+            <p class="section-help">This listing does not require registration.</p>
+        }
+        else
+        {
+            @if (Model.RegistrationFee > 0)
+            {
+                <p class="section-help">
+                    Registration cost: <strong>@FormatFee(Model.RegistrationFee)</strong>. Payment is collected in person by the team.
+                </p>
+            }
+            else
+            {
+                <p class="section-help">No registration cost is listed.</p>
+            }
+
+            @if (Model.RequiredRegistrationFields.Count > 0)
+            {
+                <p class="section-help">Required registration fields set by the team:</p>
+                <ul>
+                    @foreach (var requiredField in Model.RequiredRegistrationFields)
+                    {
+                        <li><strong>@requiredField.Label</strong>: @requiredField.Description</li>
+                    }
+                </ul>
+            }
+
+            @if (Model.WaiverRequired)
+            {
+                <p class="section-help"><strong>Waiver required:</strong> A signed waiver is required for this tryout.</p>
+                @if (string.Equals(Model.WaiverMethod, "downloadable", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.IsNullOrWhiteSpace(Model.WaiverPdfUrl))
+                    {
+                        <p class="section-help">
+                            <a href="@Model.WaiverPdfUrl" target="_blank" rel="noopener">Download waiver PDF</a>
+                        </p>
+                    }
+                    else
+                    {
+                        <p class="section-help">Waiver PDF will be provided by the team.</p>
+                    }
+                }
+                else
+                {
+                    <p class="section-help">Waiver will be handled at event check-in.</p>
+                }
+
+                @if (Model.WaiverReturnByEmail || Model.WaiverReturnInPerson)
+                {
+                    <p class="section-help mb-1">Accepted return options:</p>
+                    <ul>
+                        @if (Model.WaiverReturnByEmail)
+                        {
+                            <li>
+                                Email signed waiver
+                                @if (!string.IsNullOrWhiteSpace(Model.WaiverReturnEmail))
+                                {
+                                    <text>to <strong>@Model.WaiverReturnEmail</strong>.</text>
+                                }
+                                else
+                                {
+                                    <text>to the team contact email.</text>
+                                }
+                            </li>
+                        }
+                        @if (Model.WaiverReturnInPerson)
+                        {
+                            <li>Bring signed waiver to the event.</li>
+                        }
+                    </ul>
+                }
+            }
+
+            @if (!Model.IsRegistrationOpen)
+            {
+                <p class="section-help">@Model.RegistrationClosedReason</p>
+            }
+            else if (!Model.ViewerIsAuthenticated)
+            {
+                <p class="section-help">
+                    <a href="/account/login?returnUrl=@Uri.EscapeDataString($"/opportunities/{Model.OpportunityId}")">Sign in</a>
+                    as a player or parent account to register.
+                </p>
+            }
+            else if (!Model.ViewerCanSubmitRegistration)
+            {
+                <p class="section-help">@Model.RegistrationClosedReason</p>
+            }
+            else
+            {
+                <form asp-action="RegisterForTeamOpportunity" asp-controller="Account" asp-route-opportunityId="@Model.OpportunityId" method="post" asp-antiforgery="true" class="stacked-form">
+                    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+                    <div class="form-field">
+                        <label asp-for="RegistrationForm.PlayerId" class="form-label">Player profile <span class="required-marker">*</span></label>
+                        <select asp-for="RegistrationForm.PlayerId" class="form-select">
+                            <option value="">Select player</option>
+                            @foreach (var player in Model.RegistrationPlayers.Where(player => !player.AlreadyRegistered))
+                            {
+                                <option value="@player.PlayerId">@player.DisplayName</option>
+                            }
+                        </select>
+                        <span asp-validation-for="RegistrationForm.PlayerId" class="text-danger"></span>
+                    </div>
+
+                    @if (RequiresField(Model, "player_name"))
+                    {
+                        <div class="form-field">
+                            <label asp-for="RegistrationForm.PlayerName" class="form-label">Player name <span class="required-marker">*</span></label>
+                            <input asp-for="RegistrationForm.PlayerName" class="form-control" />
+                            <span asp-validation-for="RegistrationForm.PlayerName" class="text-danger"></span>
+                        </div>
+                    }
+
+                    @if (RequiresField(Model, "player_birthdate"))
+                    {
+                        <div class="form-field">
+                            <label asp-for="RegistrationForm.PlayerBirthDate" class="form-label">Player birthdate <span class="required-marker">*</span></label>
+                            <input asp-for="RegistrationForm.PlayerBirthDate" class="form-control" />
+                            <span asp-validation-for="RegistrationForm.PlayerBirthDate" class="text-danger"></span>
+                        </div>
+                    }
+
+                    @if (RequiresField(Model, "player_school"))
+                    {
+                        <div class="form-field">
+                            <label asp-for="RegistrationForm.PlayerSchool" class="form-label">Player school <span class="required-marker">*</span></label>
+                            <input asp-for="RegistrationForm.PlayerSchool" class="form-control" />
+                            <span asp-validation-for="RegistrationForm.PlayerSchool" class="text-danger"></span>
+                        </div>
+                    }
+
+                    @if (RequiresField(Model, "player_phone"))
+                    {
+                        <div class="form-field">
+                            <label asp-for="RegistrationForm.PlayerPhone" class="form-label">Player cell phone <span class="required-marker">*</span></label>
+                            <input asp-for="RegistrationForm.PlayerPhone" class="form-control" autocomplete="tel" />
+                            <span asp-validation-for="RegistrationForm.PlayerPhone" class="text-danger"></span>
+                        </div>
+                    }
+
+                    @if (RequiresField(Model, "player_email"))
+                    {
+                        <div class="form-field">
+                            <label asp-for="RegistrationForm.PlayerEmail" class="form-label">Player email address <span class="required-marker">*</span></label>
+                            <input asp-for="RegistrationForm.PlayerEmail" class="form-control" autocomplete="email" />
+                            <span asp-validation-for="RegistrationForm.PlayerEmail" class="text-danger"></span>
+                        </div>
+                    }
+
+                    @if (RequiresField(Model, "guardian_name"))
+                    {
+                        <div class="form-field">
+                            <label asp-for="RegistrationForm.GuardianName" class="form-label">Guardian name <span class="required-marker">*</span></label>
+                            <input asp-for="RegistrationForm.GuardianName" class="form-control" />
+                            <span asp-validation-for="RegistrationForm.GuardianName" class="text-danger"></span>
+                        </div>
+                    }
+
+                    @if (RequiresField(Model, "guardian_email"))
+                    {
+                        <div class="form-field">
+                            <label asp-for="RegistrationForm.GuardianEmail" class="form-label">Guardian email <span class="required-marker">*</span></label>
+                            <input asp-for="RegistrationForm.GuardianEmail" class="form-control" autocomplete="email" />
+                            <span asp-validation-for="RegistrationForm.GuardianEmail" class="text-danger"></span>
+                        </div>
+                    }
+
+                    @if (RequiresField(Model, "guardian_phone"))
+                    {
+                        <div class="form-field">
+                            <label asp-for="RegistrationForm.GuardianPhone" class="form-label">Guardian phone <span class="required-marker">*</span></label>
+                            <input asp-for="RegistrationForm.GuardianPhone" class="form-control" autocomplete="tel" />
+                            <span asp-validation-for="RegistrationForm.GuardianPhone" class="text-danger"></span>
+                        </div>
+                    }
+
+                    @if (RequiresField(Model, "emergency_contact_name"))
+                    {
+                        <div class="form-field">
+                            <label asp-for="RegistrationForm.EmergencyContactName" class="form-label">Emergency contact name <span class="required-marker">*</span></label>
+                            <input asp-for="RegistrationForm.EmergencyContactName" class="form-control" />
+                            <span asp-validation-for="RegistrationForm.EmergencyContactName" class="text-danger"></span>
+                        </div>
+                    }
+
+                    @if (RequiresField(Model, "emergency_contact_phone"))
+                    {
+                        <div class="form-field">
+                            <label asp-for="RegistrationForm.EmergencyContactPhone" class="form-label">Emergency contact phone <span class="required-marker">*</span></label>
+                            <input asp-for="RegistrationForm.EmergencyContactPhone" class="form-control" autocomplete="tel" />
+                            <span asp-validation-for="RegistrationForm.EmergencyContactPhone" class="text-danger"></span>
+                        </div>
+                    }
+
+                    @if (RequiresField(Model, "medical_info"))
+                    {
+                        <div class="form-field">
+                            <label asp-for="RegistrationForm.MedicalInfo" class="form-label">Medical notes <span class="required-marker">*</span></label>
+                            <textarea asp-for="RegistrationForm.MedicalInfo" class="form-control" rows="3"></textarea>
+                            <span asp-validation-for="RegistrationForm.MedicalInfo" class="text-danger"></span>
+                        </div>
+                    }
+
+                    @if (RequiresField(Model, "additional_notes"))
+                    {
+                        <div class="form-field">
+                            <label asp-for="RegistrationForm.AdditionalNotes" class="form-label">Additional notes <span class="required-marker">*</span></label>
+                            <textarea asp-for="RegistrationForm.AdditionalNotes" class="form-control" rows="3"></textarea>
+                            <span asp-validation-for="RegistrationForm.AdditionalNotes" class="text-danger"></span>
+                        </div>
+                    }
+
+                    @if (RequiresField(Model, "waiver_signature"))
+                    {
+                        <label class="sms-consent-option" for="RegistrationForm_WaiverAcknowledged">
+                            <input asp-for="RegistrationForm.WaiverAcknowledged" class="form-check-input" />
+                            <span>I acknowledge the waiver requirement for this tryout. <span class="required-marker">*</span></span>
+                        </label>
+                        <span asp-validation-for="RegistrationForm.WaiverAcknowledged" class="text-danger"></span>
+
+                        <div class="form-field">
+                            <label asp-for="RegistrationForm.WaiverSignerName" class="form-label">Waiver signer name <span class="required-marker">*</span></label>
+                            <input asp-for="RegistrationForm.WaiverSignerName" class="form-control" />
+                            <span asp-validation-for="RegistrationForm.WaiverSignerName" class="text-danger"></span>
+                        </div>
+                    }
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Submit registration</button>
+                    </div>
+                </form>
+            }
         }
     </section>
 
@@ -113,6 +375,12 @@
     {
         <section class="form-section">
             <h2>Contact and links</h2>
+            @if (!string.IsNullOrWhiteSpace(Model.TeamDescription))
+            {
+                <div class="readonly-field mb-3">
+                    @Model.TeamDescription
+                </div>
+            }
             <div class="team-summary-grid">
                 @if (!string.IsNullOrWhiteSpace(Model.ContactEmail))
                 {
@@ -137,6 +405,12 @@
     {
         <section class="form-section">
             <h2>Contact and links</h2>
+            @if (!string.IsNullOrWhiteSpace(Model.TeamDescription))
+            {
+                <div class="readonly-field mb-3">
+                    @Model.TeamDescription
+                </div>
+            }
             <p class="section-help">This team has chosen to keep contact details and external links private.</p>
         </section>
     }
@@ -213,4 +487,14 @@
     {
         return amount <= 0 ? "Free" : amount.ToString("C");
     }
+
+    private static bool RequiresField(TeamOpportunityDetailPageModel model, string code)
+    {
+        return model.RequiredRegistrationFields.Any(
+            field => string.Equals(field.Code, code, StringComparison.OrdinalIgnoreCase));
+    }
+}
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
 }

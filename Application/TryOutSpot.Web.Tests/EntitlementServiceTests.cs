@@ -59,7 +59,7 @@ public sealed class EntitlementServiceTests
     public async Task ActivePremiumSubscription_AddsPaidPlayerFeaturesToRoleFeatures()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
-        var userId = await factory.RegisterUserAsync("premium-parent-coach@example.com", ["Parent", "Coach"]);
+        var userId = await factory.RegisterUserAsync("premium-parent-coach@example.com", ["Parent", "TeamRepresentative"]);
         await AddSubscriptionAsync(factory, userId, TryOutSpotPlanCodes.PremiumPlayer, "active");
 
         using var scope = factory.Services.CreateScope();
@@ -69,7 +69,7 @@ public sealed class EntitlementServiceTests
 
         Assert.NotNull(entitlements);
         Assert.Contains("Parent", entitlements.AccountTypes);
-        Assert.Contains("Coach", entitlements.AccountTypes);
+        Assert.Contains("TeamRepresentative", entitlements.AccountTypes);
         Assert.Contains(TryOutSpotFeatureCodes.BrowseOpportunities, entitlements.FeatureCodes);
         Assert.Contains(TryOutSpotFeatureCodes.PriorityApplicationReview, entitlements.FeatureCodes);
         Assert.Contains(TryOutSpotFeatureCodes.AdvancedOpportunitySearch, entitlements.FeatureCodes);
@@ -96,7 +96,7 @@ public sealed class EntitlementServiceTests
     public async Task ActiveTeamProfessionalSubscription_GrantsTeamFeatures()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
-        var userId = await factory.RegisterUserAsync("team-pro@example.com", ["Coach"]);
+        var userId = await factory.RegisterUserAsync("team-pro@example.com", ["TeamRepresentative"]);
         await AddSubscriptionAsync(factory, userId, TryOutSpotPlanCodes.TeamProfessional, "active");
 
         using var scope = factory.Services.CreateScope();
@@ -114,7 +114,7 @@ public sealed class EntitlementServiceTests
     public async Task ActiveMultipleSubscriptions_CombinePlayerAndTeamFeatures()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
-        var userId = await factory.RegisterUserAsync("multi-sub-parent-coach@example.com", ["Parent", "Coach"]);
+        var userId = await factory.RegisterUserAsync("multi-sub-parent-coach@example.com", ["Parent", "TeamRepresentative"]);
         await AddSubscriptionAsync(
             factory,
             userId,
@@ -215,3 +215,4 @@ public sealed class EntitlementServiceTests
         Assert.True(await dbContext.Subscriptions.AnyAsync(subscription => subscription.UserId == userId));
     }
 }
+

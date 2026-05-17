@@ -14,6 +14,11 @@ public static class TryOutSpotBillingCatalog
         TryOutSpotFeatureCodes.CreatePlayerListings
     ];
 
+    private static readonly string[] FreeCoachFeatures =
+    [
+        TryOutSpotFeatureCodes.PostLimitedOpportunities
+    ];
+
     private static readonly BillingFeatureDefinition[] FeatureDefinitions =
     [
         new(
@@ -119,7 +124,7 @@ public static class TryOutSpotBillingCatalog
         new(
             TryOutSpotFeatureCodes.AdvancedPlayerSearch,
             "Advanced player search",
-            "Use advanced player filters and discovery tools.",
+            "Use full player discovery filters including age, level, and radius.",
             true),
         new(
             TryOutSpotFeatureCodes.PremiumRegistrationManagement,
@@ -209,6 +214,17 @@ public static class TryOutSpotBillingCatalog
                 TryOutSpotFeatureCodes.PlayerApplicationAnalytics,
                 TryOutSpotFeatureCodes.EarlyOpportunityAccess)),
         new(
+            TryOutSpotPlanCodes.FreeCoach,
+            "Free Coach",
+            "Team/Academy",
+            "Starter coach access with one tryout listing every six months.",
+            0m,
+            null,
+            "USD",
+            null,
+            false,
+            FreeCoachFeatures),
+        new(
             TryOutSpotPlanCodes.TeamBasic,
             "Basic Team",
             "Team/Academy",
@@ -221,23 +237,10 @@ public static class TryOutSpotBillingCatalog
             [
                 TryOutSpotFeatureCodes.PostLimitedOpportunities,
                 TryOutSpotFeatureCodes.BasicPlayerSearch,
+                TryOutSpotFeatureCodes.AdvancedPlayerSearch,
                 TryOutSpotFeatureCodes.StandardRegistrationManagement,
                 TryOutSpotFeatureCodes.BasicTeamAnalytics,
                 TryOutSpotFeatureCodes.EmailSupport
-            ]),
-        new(
-            TryOutSpotPlanCodes.TeamOffseasonHold,
-            "Team Offseason Hold",
-            "Team/Academy",
-            "Keep team listings active and searchable between seasons while public contact details stay hidden.",
-            15.99m,
-            null,
-            "USD",
-            null,
-            true,
-            [
-                TryOutSpotFeatureCodes.TeamDirectorySearchable,
-                TryOutSpotFeatureCodes.TeamContactHidden
             ]),
         new(
             TryOutSpotPlanCodes.TeamProfessional,
@@ -311,10 +314,10 @@ public static class TryOutSpotBillingCatalog
                 TryOutSpotPlanCodes.FreePlayerParent,
             TryOutSpotPlanCodes.PremiumPlayer or "premium" or "player_premium" or "elite" =>
                 TryOutSpotPlanCodes.PremiumPlayer,
+            TryOutSpotPlanCodes.FreeCoach or "coach_free" =>
+                TryOutSpotPlanCodes.FreeCoach,
             TryOutSpotPlanCodes.TeamBasic or "basic_team" or "team_trial" or "basic" =>
                 TryOutSpotPlanCodes.TeamBasic,
-            TryOutSpotPlanCodes.TeamOffseasonHold or "offseason" or "offseason_hold" or "hold" =>
-                TryOutSpotPlanCodes.TeamOffseasonHold,
             TryOutSpotPlanCodes.TeamProfessional or "professional_team" or "professional" or "pro" =>
                 TryOutSpotPlanCodes.TeamProfessional,
             TryOutSpotPlanCodes.EnterpriseOrganization or "organization_enterprise" or "enterprise" =>
@@ -331,6 +334,11 @@ public static class TryOutSpotBillingCatalog
             if (IsPlayerParentRole(accountType))
             {
                 features.UnionWith(PlayerParentFreeFeatures);
+            }
+
+            if (IsTeamStarterRole(accountType))
+            {
+                features.UnionWith(FreeCoachFeatures);
             }
         }
 
@@ -360,23 +368,11 @@ public static class TryOutSpotBillingCatalog
             planCodes.Add(TryOutSpotPlanCodes.PremiumPlayer);
         }
 
-        if (roles.Contains(TryOutSpotRoles.Coach)
-            || roles.Contains(TryOutSpotRoles.TeamManager)
-            || roles.Contains(TryOutSpotRoles.AcademyDirector))
+        if (roles.Contains(TryOutSpotRoles.TeamRepresentative))
         {
+            planCodes.Add(TryOutSpotPlanCodes.FreeCoach);
             planCodes.Add(TryOutSpotPlanCodes.TeamBasic);
-            planCodes.Add(TryOutSpotPlanCodes.TeamOffseasonHold);
             planCodes.Add(TryOutSpotPlanCodes.TeamProfessional);
-        }
-
-        if (roles.Contains(TryOutSpotRoles.OrganizationAdmin))
-        {
-            planCodes.Add(TryOutSpotPlanCodes.TeamProfessional);
-        }
-
-        if (roles.Contains(TryOutSpotRoles.OrganizationAdmin)
-            || roles.Contains(TryOutSpotRoles.AcademyDirector))
-        {
             planCodes.Add(TryOutSpotPlanCodes.EnterpriseOrganization);
         }
 
@@ -401,7 +397,7 @@ public static class TryOutSpotBillingCatalog
         {
             TryOutSpotPlanCodes.PremiumPlayer =>
                 normalizedScopeType is TryOutSpotSubscriptionScopeTypes.Account or TryOutSpotSubscriptionScopeTypes.Player,
-            TryOutSpotPlanCodes.TeamBasic or TryOutSpotPlanCodes.TeamOffseasonHold or TryOutSpotPlanCodes.TeamProfessional =>
+            TryOutSpotPlanCodes.FreeCoach or TryOutSpotPlanCodes.TeamBasic or TryOutSpotPlanCodes.TeamProfessional =>
                 normalizedScopeType is TryOutSpotSubscriptionScopeTypes.Account or TryOutSpotSubscriptionScopeTypes.Team,
             TryOutSpotPlanCodes.EnterpriseOrganization =>
                 normalizedScopeType is TryOutSpotSubscriptionScopeTypes.Account or TryOutSpotSubscriptionScopeTypes.Organization,
@@ -415,8 +411,9 @@ public static class TryOutSpotBillingCatalog
         return normalizedPlanCode switch
         {
             TryOutSpotPlanCodes.FreePlayerParent => [BillingIntervalCodes.Month],
+            TryOutSpotPlanCodes.FreeCoach => [BillingIntervalCodes.Month],
             TryOutSpotPlanCodes.PremiumPlayer => [BillingIntervalCodes.Month, BillingIntervalCodes.Year],
-            TryOutSpotPlanCodes.TeamBasic or TryOutSpotPlanCodes.TeamOffseasonHold => [BillingIntervalCodes.Month],
+            TryOutSpotPlanCodes.TeamBasic => [BillingIntervalCodes.Month],
             TryOutSpotPlanCodes.TeamProfessional or TryOutSpotPlanCodes.EnterpriseOrganization => [BillingIntervalCodes.Year],
             _ => []
         };
@@ -450,6 +447,11 @@ public static class TryOutSpotBillingCatalog
     {
         return string.Equals(accountType, TryOutSpotRoles.Parent, StringComparison.OrdinalIgnoreCase)
             || string.Equals(accountType, TryOutSpotRoles.Player, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTeamStarterRole(string accountType)
+    {
+        return string.Equals(accountType, TryOutSpotRoles.TeamRepresentative, StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyCollection<string> Add(IReadOnlyCollection<string> existing, params string[] additional)

@@ -88,7 +88,7 @@ public sealed class AccountAuthenticationTests
         await using var factory = new TryOutSpotWebApplicationFactory();
         var client = factory.CreateClient();
         var email = "me@example.com";
-        await factory.RegisterUserAsync(email, ["Parent", "Coach"]);
+        await factory.RegisterUserAsync(email, ["Parent", "TeamRepresentative"]);
         await factory.ConfirmEmailAsync(email);
 
         var tokenResponse = await LoginAsync(client, email);
@@ -104,7 +104,7 @@ public sealed class AccountAuthenticationTests
         Assert.Equal(email, currentUser.Email);
         Assert.True(currentUser.EmailConfirmed);
         Assert.Contains("Parent", currentUser.AccountTypes);
-        Assert.Contains("Coach", currentUser.AccountTypes);
+        Assert.Contains("TeamRepresentative", currentUser.AccountTypes);
     }
 
     [Fact]
@@ -313,3 +313,4 @@ public sealed class AccountAuthenticationTests
             ?? throw new InvalidOperationException("Login did not return a token response.");
     }
 }
+

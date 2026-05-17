@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
+using TryOutSpot.Web.Identity;
 
 namespace TryOutSpot.Web.Services;
 
@@ -21,7 +22,7 @@ public sealed class EntitlementService(
             return null;
         }
 
-        var accountTypes = await userManager.GetRolesAsync(user);
+        var accountTypes = TryOutSpotRoles.CanonicalizeRoleSet(await userManager.GetRolesAsync(user));
         var features = new SortedSet<string>(
             TryOutSpotBillingCatalog.GetFreeFeatureCodesForRoles(accountTypes),
             StringComparer.Ordinal);
@@ -43,6 +44,18 @@ public sealed class EntitlementService(
             activePlanCodes.Add(planCode);
             primaryPlanCode ??= planCode;
             primarySubscriptionStatus ??= subscription.Status;
+        }
+
+        var hasPaidTeamPlan = activePlanCodes.Contains(TryOutSpotPlanCodes.TeamBasic)
+            || activePlanCodes.Contains(TryOutSpotPlanCodes.TeamProfessional)
+            || activePlanCodes.Contains(TryOutSpotPlanCodes.EnterpriseOrganization);
+        var qualifiesForFreeCoach = accountTypes.Any(TryOutSpotRoles.IsTeamBundleRole);
+
+        if (qualifiesForFreeCoach && !hasPaidTeamPlan)
+        {
+            activePlanCodes.Add(TryOutSpotPlanCodes.FreeCoach);
+            primaryPlanCode ??= TryOutSpotPlanCodes.FreeCoach;
+            primarySubscriptionStatus ??= "active";
         }
 
         return new UserEntitlementSet(

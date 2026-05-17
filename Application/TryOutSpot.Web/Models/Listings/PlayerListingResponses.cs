@@ -10,7 +10,8 @@ public sealed record PlayerListingListResponse(
     int TotalCount,
     int TotalPages,
     string? SearchOriginZipCode = null,
-    int? SearchRadiusMiles = null);
+    int? SearchRadiusMiles = null,
+    bool AdvancedFiltersApplied = false);
 
 /// <summary>
 /// Listing summary used by search and owner listing views.

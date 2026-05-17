@@ -65,6 +65,13 @@ namespace TryOutSpot.Web.Data.Migrations
                         },
                         new
                         {
+                            Id = new Guid("88888888-8888-8888-8888-888888888888"),
+                            ConcurrencyStamp = "88888888-8888-8888-8888-888888888888",
+                            Name = "TeamRepresentative",
+                            NormalizedName = "TEAMREPRESENTATIVE"
+                        },
+                        new
+                        {
                             Id = new Guid("33333333-3333-3333-3333-333333333333"),
                             ConcurrencyStamp = "33333333-3333-3333-3333-333333333333",
                             Name = "Coach",
@@ -384,6 +391,12 @@ namespace TryOutSpot.Web.Data.Migrations
                     b.Property<bool>("IsPublished")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTime?>("ListingEndDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ListingStartDate")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Location")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -406,6 +419,10 @@ namespace TryOutSpot.Web.Data.Migrations
 
                     b.Property<bool>("RegistrationRequired")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("RegistrationRequiredFieldCodes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<string>("RequiredEquipment")
                         .HasColumnType("text");
@@ -448,6 +465,27 @@ namespace TryOutSpot.Web.Data.Migrations
 
                     b.Property<int>("ViewCount")
                         .HasColumnType("integer");
+
+                    b.Property<string>("WaiverMethod")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<bool>("WaiverRequired")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("WaiverReturnByEmail")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("WaiverReturnInPerson")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("WaiverUploadedPdfFileName")
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)");
+
+                    b.Property<string>("WaiverUploadedPdfObjectKey")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("WebsiteUrl")
                         .HasMaxLength(500)
@@ -597,6 +635,53 @@ namespace TryOutSpot.Web.Data.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Organizations");
+                });
+
+            modelBuilder.Entity("TryOutSpot.Web.Data.Entities.PendingAccountTypeChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ApplyAfterUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("TargetRolesJson")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex(new[] { "UserId" }, "IX_PendingAccountTypeChanges_UserId");
+
+                    b.HasIndex(new[] { "UserId", "Status" }, "IX_PendingAccountTypeChanges_UserId_Status");
+
+                    b.ToTable("PendingAccountTypeChanges");
                 });
 
             modelBuilder.Entity("TryOutSpot.Web.Data.Entities.Player", b =>

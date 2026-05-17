@@ -41,6 +41,7 @@ public sealed class DiscoveryApiTests
         Assert.Single(opportunities.Opportunities);
         Assert.Equal("14U Open Tryout", opportunities.Opportunities.Single().Title);
         Assert.NotNull(opportunities.Opportunities.Single().DistanceMiles);
+        Assert.False(opportunities.AdvancedFiltersApplied);
     }
 
     [Fact]

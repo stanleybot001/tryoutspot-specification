@@ -64,7 +64,7 @@
                     </div>
                 }
                 <div class="form-field">
-                    <label asp-for="TeamRole" class="form-label">Your team role <span class="required-marker">*</span></label>
+                    <label asp-for="TeamRole" class="form-label">Account type <span class="required-marker">*</span></label>
                     @if (Model.AvailableTeamRoleOptions.Count == 0)
                     {
                         <select asp-for="TeamRole" class="form-select" disabled>
@@ -82,7 +82,7 @@
                     }
                     @if (Model.AvailableTeamRoleOptions.Count == 0)
                     {
-                        <p class="section-help">Add a coach, team manager, academy director, or organization admin account type first.</p>
+                        <p class="section-help">Add the Team representative account type first.</p>
                     }
                     <span asp-validation-for="TeamRole" class="text-danger"></span>
                 </div>
@@ -90,6 +90,14 @@
                     <label asp-for="TeamLevel" class="form-label">Team level</label>
                     <input asp-for="TeamLevel" class="form-control" placeholder="Example: 14U, Varsity, Showcase" />
                     <span asp-validation-for="TeamLevel" class="text-danger"></span>
+                </div>
+                <div class="form-field form-field-full">
+                    <label asp-for="TeamDescription" class="form-label">Team description</label>
+                    <textarea asp-for="TeamDescription"
+                              class="form-control"
+                              rows="8"
+                              placeholder="Share your team story, coaching philosophy, practice location, and what families can expect."></textarea>
+                    <span asp-validation-for="TeamDescription" class="text-danger"></span>
                 </div>
                 <div class="form-field">
                     <label asp-for="GeographicScope" class="form-label">Coverage <span class="required-marker">*</span></label>
@@ -254,9 +262,7 @@
     {
         return teamRole switch
         {
-            TryOutSpotRoles.TeamManager => "Team manager",
-            TryOutSpotRoles.AcademyDirector => "Academy director",
-            TryOutSpotRoles.OrganizationAdmin => "Organization admin",
+            TryOutSpotRoles.TeamRepresentative => "Team representative",
             _ => teamRole
         };
     }

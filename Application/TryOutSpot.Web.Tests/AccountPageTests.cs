@@ -124,7 +124,7 @@ public sealed class AccountPageTests
                 new("FirstName", "Morgan"),
                 new("LastName", "Taylor"),
                 new("AccountTypes", TryOutSpotRoles.Parent),
-                new("AccountTypes", TryOutSpotRoles.Coach),
+                new("AccountTypes", TryOutSpotRoles.TeamRepresentative),
                 new("PhoneNumber", "555-555-9191"),
                 new("SmsConsentAccepted", "true"),
                 new("DateOfBirth", "2010-05-01"),
@@ -152,7 +152,7 @@ public sealed class AccountPageTests
 
         var roles = await userManager.GetRolesAsync(user);
         Assert.Contains(TryOutSpotRoles.Parent, roles);
-        Assert.Contains(TryOutSpotRoles.Coach, roles);
+        Assert.Contains(TryOutSpotRoles.TeamRepresentative, roles);
     }
 
     [Fact]
@@ -278,17 +278,19 @@ public sealed class AccountPageTests
 
         var html = await onboardingResponse.Content.ReadAsStringAsync();
         Assert.Contains("Setup checklist", html);
-        Assert.Contains("name=\"accountTypes\"", html);
+        Assert.DoesNotContain("name=\"playerParentRole\"", html);
+        Assert.DoesNotContain("name=\"teamRole\"", html);
+        Assert.Contains("Completed setup", html);
         Assert.Contains("Recommended plan options", html);
         Assert.Contains("href=\"/account/onboarding/add-player-profile\"", html);
         Assert.Contains("href=\"/account/onboarding/choose-plan\"", html);
     }
 
     [Fact]
-    public async Task Onboarding_WithCoachRole_RequiresPlanBeforeTeamSetup()
+    public async Task Onboarding_WithTeamRepresentativeRole_ShowsTeamSetupAndPlanSteps()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
-        await factory.CreateUserAsync("web-onboarding-coach@example.com", [TryOutSpotRoles.Coach]);
+        await factory.CreateUserAsync("web-onboarding-coach@example.com", [TryOutSpotRoles.TeamRepresentative]);
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false
@@ -299,15 +301,129 @@ public sealed class AccountPageTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
-        Assert.DoesNotContain("href=\"/account/onboarding/add-team-or-organization\"", html);
+        Assert.Contains("href=\"/account/onboarding/add-team-or-organization\"", html);
         Assert.Contains("href=\"/account/onboarding/choose-plan\"", html);
+    }
+
+    [Fact]
+    public async Task Onboarding_WithManagedPlayerTryoutRegistration_ShowsUpcomingRegistrationList()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("onboarding-registrations@example.com", [TryOutSpotRoles.Parent]);
+
+        Guid opportunityId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var now = DateTime.UtcNow;
+            var sportId = await dbContext.Sports
+                .Where(sport => sport.IsActive && sport.Name == "Softball")
+                .Select(sport => sport.Id)
+                .SingleAsync();
+
+            var teamId = Guid.NewGuid();
+            dbContext.Teams.Add(new Team
+            {
+                Id = teamId,
+                Name = "Dashboard Team",
+                TeamLevel = "12U",
+                GeographicScope = "Regional",
+                City = "McPherson",
+                State = "KS",
+                ZipCode = "67460",
+                IsSearchable = true,
+                IsContactInfoVisible = true,
+                IsElite = false,
+                IsVerified = false,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+
+            var playerId = Guid.NewGuid();
+            dbContext.Players.Add(new Player
+            {
+                Id = playerId,
+                FirstName = "Mia",
+                LastName = "Jordan",
+                DateOfBirth = new DateTime(2012, 6, 12, 0, 0, 0, DateTimeKind.Utc),
+                ContactVisibility = "VerifiedCoachesOnly",
+                IsSearchable = true,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+            dbContext.UserPlayerRelationships.Add(new UserPlayerRelationship
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                PlayerId = playerId,
+                Relationship = "Parent",
+                CanManage = true,
+                CreatedAt = now
+            });
+
+            opportunityId = Guid.NewGuid();
+            dbContext.Opportunities.Add(new Opportunity
+            {
+                Id = opportunityId,
+                TeamId = teamId,
+                SportId = sportId,
+                Type = "tryout",
+                Title = "June Exposure Tryout",
+                RegistrationRequired = true,
+                RegistrationFee = 25m,
+                EventDate = now.AddDays(10),
+                EventEndDate = now.AddDays(11),
+                City = "McPherson",
+                State = "KS",
+                IsPublished = true,
+                PublishedAt = now,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+
+            dbContext.Registrations.Add(new Registration
+            {
+                Id = Guid.NewGuid(),
+                OpportunityId = opportunityId,
+                PlayerId = playerId,
+                RegisteredByUserId = user.Id,
+                Status = "pending",
+                RegistrationData = "{}",
+                PaymentStatus = "in_person",
+                Amount = 25m,
+                WaiverSigned = false,
+                AttendanceStatus = "pending",
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+        var response = await client.GetAsync("/account/onboarding");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Upcoming tryout registrations", html);
+        Assert.Contains("June Exposure Tryout", html);
+        Assert.Contains("Mia Jordan", html);
+        Assert.Contains("Pending review", html);
+        Assert.Contains($"/opportunities/{opportunityId}", html);
     }
 
     [Fact]
     public async Task Settings_RequiresWebCookieAndRendersAccountManagementForms()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
-        await factory.CreateUserAsync("settings-page@example.com", [TryOutSpotRoles.Parent, TryOutSpotRoles.Coach]);
+        await factory.CreateUserAsync("settings-page@example.com", [TryOutSpotRoles.Parent, TryOutSpotRoles.TeamRepresentative]);
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false
@@ -328,7 +444,8 @@ public sealed class AccountPageTests
         Assert.Contains("name=\"Email.NewEmail\"", html);
         Assert.Contains("name=\"Phone.PhoneNumber\"", html);
         Assert.Contains("name=\"Password.NewPassword\"", html);
-        Assert.Contains("name=\"accountTypes\"", html);
+        Assert.Contains("name=\"playerParentRole\"", html);
+        Assert.Contains("name=\"teamRole\"", html);
         Assert.Contains("name=\"SmsConsent.SmsConsentAccepted\"", html);
         Assert.Contains("Membership access", html);
         Assert.Contains("Choose or change plan", html);
@@ -388,7 +505,7 @@ public sealed class AccountPageTests
             [
                 new("__RequestVerificationToken", accountTypesToken),
                 new("accountTypes", TryOutSpotRoles.Player),
-                new("accountTypes", TryOutSpotRoles.Coach)
+                new("accountTypes", TryOutSpotRoles.TeamRepresentative)
             ]));
         Assert.Equal(HttpStatusCode.Redirect, accountTypesResponse.StatusCode);
 
@@ -418,7 +535,7 @@ public sealed class AccountPageTests
         var roles = await userManager.GetRolesAsync(updatedUser);
         Assert.DoesNotContain(TryOutSpotRoles.Parent, roles);
         Assert.Contains(TryOutSpotRoles.Player, roles);
-        Assert.Contains(TryOutSpotRoles.Coach, roles);
+        Assert.Contains(TryOutSpotRoles.TeamRepresentative, roles);
     }
 
     [Fact]
@@ -567,7 +684,7 @@ public sealed class AccountPageTests
             ]));
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/account/onboarding", response.Headers.Location?.ToString());
+        Assert.Equal("/account/onboarding/player-profiles", response.Headers.Location?.ToString());
 
         using var verifyScope = factory.Services.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -619,7 +736,7 @@ public sealed class AccountPageTests
     public async Task AddTeamOrOrganizationPage_AndPost_CreateLinkedTeamAndOrganizationRecords()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
-        var user = await factory.CreateUserAsync("onboarding-team-setup@example.com", [TryOutSpotRoles.Coach]);
+        var user = await factory.CreateUserAsync("onboarding-team-setup@example.com", [TryOutSpotRoles.TeamRepresentative]);
         await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.TeamBasic, "trialing");
 
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -648,7 +765,7 @@ public sealed class AccountPageTests
                 new("CreateType", "organization"),
                 new("TeamName", "Midamserv Thunder 14U"),
                 new("OrganizationName", "Midamserv Baseball Club"),
-                new("TeamRole", TryOutSpotRoles.Coach),
+                new("TeamRole", TryOutSpotRoles.TeamRepresentative),
                 new("TeamLevel", "14U"),
                 new("GeographicScope", "Regional"),
                 new("IsSearchable", "false"),
@@ -696,7 +813,7 @@ public sealed class AccountPageTests
         Assert.False(team.IsSearchable);
         Assert.Equal(user.Id, userTeamRole.UserId);
         Assert.Equal(team.Id, userTeamRole.TeamId);
-        Assert.Equal(TryOutSpotRoles.Coach, userTeamRole.Role);
+        Assert.Equal(TryOutSpotRoles.TeamRepresentative, userTeamRole.Role);
         Assert.Equal(team.Id, teamSport.TeamId);
         Assert.Equal(sportId, teamSport.SportId);
 
@@ -908,7 +1025,7 @@ public sealed class AccountPageTests
     public async Task ChoosePlanPost_WithAnnualOnlyPlanAndMonthlyInterval_ShowsValidationError()
     {
         await using var factory = CreateFactoryWithStripe();
-        var user = await factory.CreateUserAsync("onboarding-plan-annual-only@example.com", [TryOutSpotRoles.Coach]);
+        var user = await factory.CreateUserAsync("onboarding-plan-annual-only@example.com", [TryOutSpotRoles.TeamRepresentative]);
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false
@@ -1124,3 +1241,4 @@ public sealed class AccountPageTests
         }
     }
 }
+

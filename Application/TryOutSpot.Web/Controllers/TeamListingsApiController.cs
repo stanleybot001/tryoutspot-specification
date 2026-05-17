@@ -1,10 +1,12 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
+using TryOutSpot.Web.Listings;
 using TryOutSpot.Web.Models.TeamListings;
 using TryOutSpot.Web.Security;
 using TryOutSpot.Web.Services;
@@ -24,7 +26,15 @@ public sealed class TeamListingsApiController(
     IEntitlementService entitlementService,
     IZipRadiusSearchService zipRadiusSearchService) : ControllerBase
 {
-    private const int BasicTeamMonthlyPublishingLimit = 5;
+    private const int FreeCoachPublishingLimit = 1;
+    private const int FreeCoachPublishingWindowMonths = 6;
+    private const int BasicTeamPublishingLimit = 9;
+    private const int BasicTeamPublishingWindowMonths = 12;
+    private const int ProfessionalTeamPublishingLimit = 24;
+    private const int ProfessionalTeamPublishingWindowMonths = 12;
+    private const int EnterpriseTeamPublishingLimit = 50;
+    private const int EnterpriseTeamPublishingWindowMonths = 12;
+    private const string OpportunityWaiverDocumentType = "opportunity-waivers";
 
     /// <summary>
     /// Lists all active teams the signed-in account can manage.
@@ -175,12 +185,53 @@ public sealed class TeamListingsApiController(
             return Forbid();
         }
 
+        var canConfigureRegistration = await CanConfigureTryoutRegistrationAsync(userId, cancellationToken);
+        var normalizedType = NormalizeOptional(request.Type);
+        var isTryoutType = string.Equals(normalizedType, "tryout", StringComparison.OrdinalIgnoreCase);
+        var normalizedRequestRegistrationRequired = canConfigureRegistration
+            && isTryoutType
+            && request.RegistrationRequired;
+        var normalizedRequestRequiredFieldCodes = normalizedRequestRegistrationRequired
+            ? NormalizeRegistrationFieldCodes(request.RequiredRegistrationFieldCodes)
+            : [];
+        var normalizedRequestWaiverRequired = normalizedRequestRegistrationRequired
+            && (request.WaiverRequired
+                || normalizedRequestRequiredFieldCodes.Contains(TryOutSpotOpportunityRegistrationFields.WaiverSignature, StringComparer.OrdinalIgnoreCase));
+        var normalizedRequestWaiverMethod = normalizedRequestWaiverRequired
+            ? TryOutSpotOpportunityWaiverMethods.Normalize(request.WaiverMethod) ?? TryOutSpotOpportunityWaiverMethods.AtEvent
+            : null;
+        var isDownloadableRequestWaiverMethod = normalizedRequestWaiverRequired
+            && string.Equals(
+                normalizedRequestWaiverMethod,
+                TryOutSpotOpportunityWaiverMethods.Downloadable,
+                StringComparison.Ordinal);
+        var normalizedRequestWaiverReturnByEmail = isDownloadableRequestWaiverMethod && request.WaiverReturnByEmail;
+        var normalizedRequestWaiverReturnInPerson = isDownloadableRequestWaiverMethod && request.WaiverReturnInPerson;
+        var normalizedRequestMaxParticipants = normalizedRequestRegistrationRequired && request.MaxParticipants is > 0
+            ? request.MaxParticipants
+            : null;
+        var normalizedContactEmail = NormalizeOptional(request.ContactEmail) ?? managedTeam.Team.Email;
+        var normalizedRequiredRegistrationFieldCodes = NormalizeRequiredRegistrationFieldCodesForWaiver(
+            normalizedRequestRequiredFieldCodes,
+            normalizedRequestWaiverRequired);
+
         await ValidateOpportunityWriteRequestAsync(
             request.Type,
             request.SportId,
+            canConfigureRegistration,
+            normalizedRequestRegistrationRequired,
+            normalizedRequiredRegistrationFieldCodes,
+            normalizedRequestWaiverRequired,
+            normalizedRequestWaiverMethod,
+            normalizedRequestWaiverReturnByEmail,
+            normalizedRequestWaiverReturnInPerson,
+            normalizedContactEmail,
+            normalizedRequestMaxParticipants,
             request.RegistrationDeadline,
             request.EventDate,
             request.EventEndDate,
+            request.ListingStartDate,
+            request.ListingEndDate,
             request.ExpiresAt,
             cancellationToken);
 
@@ -196,6 +247,7 @@ public sealed class TeamListingsApiController(
         }
 
         var now = DateTime.UtcNow;
+        var normalizedMaxParticipants = normalizedRequestMaxParticipants;
         var opportunity = new Opportunity
         {
             Id = Guid.NewGuid(),
@@ -206,17 +258,25 @@ public sealed class TeamListingsApiController(
             Description = NormalizeOptional(request.Description),
             CompetitionLevel = NormalizeOptional(request.CompetitionLevel),
             AgeGroup = NormalizeOptional(request.AgeGroup),
-            RegistrationRequired = request.RegistrationRequired,
+            RegistrationRequired = normalizedRequestRegistrationRequired,
+            MaxParticipants = normalizedMaxParticipants,
+            RegistrationRequiredFieldCodes = SerializeRegistrationFieldCodes(normalizedRequiredRegistrationFieldCodes),
+            WaiverRequired = normalizedRequestWaiverRequired,
+            WaiverMethod = normalizedRequestWaiverMethod,
+            WaiverReturnByEmail = normalizedRequestWaiverReturnByEmail,
+            WaiverReturnInPerson = normalizedRequestWaiverReturnInPerson,
             RegistrationDeadline = NormalizeUtc(request.RegistrationDeadline),
             RegistrationFee = request.RegistrationFee,
             EventDate = NormalizeUtc(request.EventDate),
             EventEndDate = NormalizeUtc(request.EventEndDate),
+            ListingStartDate = NormalizeUtc(request.ListingStartDate),
+            ListingEndDate = NormalizeUtc(request.ListingEndDate),
             Location = NormalizeOptional(request.Location),
             Address = NormalizeOptional(request.Address),
             City = NormalizeOptional(request.City) ?? managedTeam.Team.City,
             State = NormalizeState(request.State) ?? managedTeam.Team.State,
             ZipCode = normalizedZipCode,
-            ContactEmail = NormalizeOptional(request.ContactEmail) ?? managedTeam.Team.Email,
+            ContactEmail = normalizedContactEmail,
             ContactPhone = NormalizeOptional(request.ContactPhone) ?? managedTeam.Team.PhoneNumber,
             WebsiteUrl = NormalizeOptional(request.WebsiteUrl) ?? managedTeam.Team.WebsiteUrl,
             PdfUrl = NormalizeOptional(request.PdfUrl),
@@ -225,7 +285,7 @@ public sealed class TeamListingsApiController(
             SpecialInstructions = NormalizeOptional(request.SpecialInstructions),
             IsPublished = request.IsPublished,
             PublishedAt = request.IsPublished ? now : null,
-            ExpiresAt = NormalizeUtc(request.ExpiresAt),
+            ExpiresAt = NormalizeUtc(request.ListingEndDate) ?? NormalizeUtc(request.ExpiresAt),
             ViewCount = 0,
             CreatedAt = now,
             UpdatedAt = now,
@@ -278,6 +338,36 @@ public sealed class TeamListingsApiController(
             return Forbid();
         }
 
+        var canConfigureRegistration = await CanConfigureTryoutRegistrationAsync(userId, cancellationToken);
+        var normalizedType = NormalizeOptional(request.Type);
+        var isTryoutType = string.Equals(normalizedType, "tryout", StringComparison.OrdinalIgnoreCase);
+        var normalizedRequestRegistrationRequired = canConfigureRegistration
+            && isTryoutType
+            && request.RegistrationRequired;
+        var normalizedRequestRequiredFieldCodes = normalizedRequestRegistrationRequired
+            ? NormalizeRegistrationFieldCodes(request.RequiredRegistrationFieldCodes)
+            : [];
+        var normalizedRequestWaiverRequired = normalizedRequestRegistrationRequired
+            && (request.WaiverRequired
+                || normalizedRequestRequiredFieldCodes.Contains(TryOutSpotOpportunityRegistrationFields.WaiverSignature, StringComparer.OrdinalIgnoreCase));
+        var normalizedRequestWaiverMethod = normalizedRequestWaiverRequired
+            ? TryOutSpotOpportunityWaiverMethods.Normalize(request.WaiverMethod) ?? TryOutSpotOpportunityWaiverMethods.AtEvent
+            : null;
+        var isDownloadableRequestWaiverMethod = normalizedRequestWaiverRequired
+            && string.Equals(
+                normalizedRequestWaiverMethod,
+                TryOutSpotOpportunityWaiverMethods.Downloadable,
+                StringComparison.Ordinal);
+        var normalizedRequestWaiverReturnByEmail = isDownloadableRequestWaiverMethod && request.WaiverReturnByEmail;
+        var normalizedRequestWaiverReturnInPerson = isDownloadableRequestWaiverMethod && request.WaiverReturnInPerson;
+        var normalizedRequestMaxParticipants = normalizedRequestRegistrationRequired && request.MaxParticipants is > 0
+            ? request.MaxParticipants
+            : null;
+        var normalizedContactEmail = NormalizeOptional(request.ContactEmail) ?? managedTeam.Team.Email;
+        var normalizedRequiredRegistrationFieldCodes = NormalizeRequiredRegistrationFieldCodesForWaiver(
+            normalizedRequestRequiredFieldCodes,
+            normalizedRequestWaiverRequired);
+
         var opportunity = await dbContext.Opportunities
             .SingleOrDefaultAsync(currentOpportunity =>
                 currentOpportunity.Id == opportunityId
@@ -292,9 +382,20 @@ public sealed class TeamListingsApiController(
         await ValidateOpportunityWriteRequestAsync(
             request.Type,
             request.SportId,
+            canConfigureRegistration,
+            normalizedRequestRegistrationRequired,
+            normalizedRequiredRegistrationFieldCodes,
+            normalizedRequestWaiverRequired,
+            normalizedRequestWaiverMethod,
+            normalizedRequestWaiverReturnByEmail,
+            normalizedRequestWaiverReturnInPerson,
+            normalizedContactEmail,
+            normalizedRequestMaxParticipants,
             request.RegistrationDeadline,
             request.EventDate,
             request.EventEndDate,
+            request.ListingStartDate,
+            request.ListingEndDate,
             request.ExpiresAt,
             cancellationToken);
 
@@ -304,30 +405,40 @@ public sealed class TeamListingsApiController(
             return ValidationProblem(ModelState);
         }
 
+        var normalizedMaxParticipants = normalizedRequestMaxParticipants;
+
         opportunity.SportId = request.SportId;
         opportunity.Type = request.Type.Trim();
         opportunity.Title = request.Title.Trim();
         opportunity.Description = NormalizeOptional(request.Description);
         opportunity.CompetitionLevel = NormalizeOptional(request.CompetitionLevel);
         opportunity.AgeGroup = NormalizeOptional(request.AgeGroup);
-        opportunity.RegistrationRequired = request.RegistrationRequired;
+        opportunity.RegistrationRequired = normalizedRequestRegistrationRequired;
+        opportunity.MaxParticipants = normalizedMaxParticipants;
+        opportunity.RegistrationRequiredFieldCodes = SerializeRegistrationFieldCodes(normalizedRequiredRegistrationFieldCodes);
+        opportunity.WaiverRequired = normalizedRequestWaiverRequired;
+        opportunity.WaiverMethod = normalizedRequestWaiverMethod;
+        opportunity.WaiverReturnByEmail = normalizedRequestWaiverReturnByEmail;
+        opportunity.WaiverReturnInPerson = normalizedRequestWaiverReturnInPerson;
         opportunity.RegistrationDeadline = NormalizeUtc(request.RegistrationDeadline);
         opportunity.RegistrationFee = request.RegistrationFee;
         opportunity.EventDate = NormalizeUtc(request.EventDate);
         opportunity.EventEndDate = NormalizeUtc(request.EventEndDate);
+        opportunity.ListingStartDate = NormalizeUtc(request.ListingStartDate);
+        opportunity.ListingEndDate = NormalizeUtc(request.ListingEndDate);
         opportunity.Location = NormalizeOptional(request.Location);
         opportunity.Address = NormalizeOptional(request.Address);
         opportunity.City = NormalizeOptional(request.City) ?? managedTeam.Team.City;
         opportunity.State = NormalizeState(request.State) ?? managedTeam.Team.State;
         opportunity.ZipCode = normalizedZipCode;
-        opportunity.ContactEmail = NormalizeOptional(request.ContactEmail) ?? managedTeam.Team.Email;
+        opportunity.ContactEmail = normalizedContactEmail;
         opportunity.ContactPhone = NormalizeOptional(request.ContactPhone) ?? managedTeam.Team.PhoneNumber;
         opportunity.WebsiteUrl = NormalizeOptional(request.WebsiteUrl) ?? managedTeam.Team.WebsiteUrl;
         opportunity.PdfUrl = NormalizeOptional(request.PdfUrl);
         opportunity.RequiredEquipment = NormalizeOptional(request.RequiredEquipment);
         opportunity.WhatToBring = NormalizeOptional(request.WhatToBring);
         opportunity.SpecialInstructions = NormalizeOptional(request.SpecialInstructions);
-        opportunity.ExpiresAt = NormalizeUtc(request.ExpiresAt);
+        opportunity.ExpiresAt = NormalizeUtc(request.ListingEndDate) ?? NormalizeUtc(request.ExpiresAt);
         opportunity.UpdatedAt = DateTime.UtcNow;
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -397,7 +508,7 @@ public sealed class TeamListingsApiController(
         opportunity.IsPublished = request.IsPublished;
         opportunity.PublishedAt = request.IsPublished
             ? opportunity.PublishedAt ?? now
-            : null;
+            : opportunity.PublishedAt;
         opportunity.UpdatedAt = now;
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -449,7 +560,6 @@ public sealed class TeamListingsApiController(
 
         opportunity.IsActive = false;
         opportunity.IsPublished = false;
-        opportunity.PublishedAt = null;
         opportunity.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -465,15 +575,101 @@ public sealed class TeamListingsApiController(
     private async Task ValidateOpportunityWriteRequestAsync(
         string? type,
         Guid sportId,
+        bool canConfigureRegistration,
+        bool registrationRequired,
+        IReadOnlyCollection<string>? requiredRegistrationFieldCodes,
+        bool waiverRequired,
+        string? waiverMethod,
+        bool waiverReturnByEmail,
+        bool waiverReturnInPerson,
+        string? contactEmail,
+        int? maxParticipants,
         DateTime? registrationDeadline,
         DateTime? eventDate,
         DateTime? eventEndDate,
+        DateTime? listingStartDate,
+        DateTime? listingEndDate,
         DateTime? expiresAt,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(type))
         {
             ModelState.AddModelError(nameof(CreateTeamOpportunityRequest.Type), "Opportunity type is required.");
+        }
+
+        var normalizedType = NormalizeOptional(type);
+        var isTryoutType = string.Equals(normalizedType, "tryout", StringComparison.OrdinalIgnoreCase);
+        if (registrationRequired && !isTryoutType)
+        {
+            ModelState.AddModelError(
+                nameof(CreateTeamOpportunityRequest.RegistrationRequired),
+                "Tryout registration can only be enabled for tryout listings.");
+        }
+
+        if (registrationRequired && !canConfigureRegistration)
+        {
+            ModelState.AddModelError(
+                nameof(CreateTeamOpportunityRequest.RegistrationRequired),
+                "Tryout registration requires Team Basic or higher.");
+        }
+
+        if (!registrationRequired && maxParticipants.HasValue)
+        {
+            ModelState.AddModelError(
+                nameof(CreateTeamOpportunityRequest.MaxParticipants),
+                "Max registrations can only be set when tryout registration is enabled.");
+        }
+
+        if (registrationRequired && maxParticipants is <= 0)
+        {
+            ModelState.AddModelError(
+                nameof(CreateTeamOpportunityRequest.MaxParticipants),
+                "Max registrations must be greater than zero when provided.");
+        }
+
+        var unknownFieldCodes = (requiredRegistrationFieldCodes ?? [])
+            .Where(code => !TryOutSpotOpportunityRegistrationFields.IsKnownCode(code))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (unknownFieldCodes.Length > 0)
+        {
+            ModelState.AddModelError(
+                nameof(CreateTeamOpportunityRequest.RequiredRegistrationFieldCodes),
+                $"Unsupported registration field codes: {string.Join(", ", unknownFieldCodes)}.");
+        }
+
+        if (waiverRequired && !registrationRequired)
+        {
+            ModelState.AddModelError(
+                nameof(CreateTeamOpportunityRequest.WaiverRequired),
+                "Waiver settings can only be enabled when tryout registration is enabled.");
+        }
+
+        if (waiverRequired && !string.Equals(waiverMethod, TryOutSpotOpportunityWaiverMethods.AtEvent, StringComparison.Ordinal)
+            && !string.Equals(waiverMethod, TryOutSpotOpportunityWaiverMethods.Downloadable, StringComparison.Ordinal))
+        {
+            ModelState.AddModelError(
+                nameof(CreateTeamOpportunityRequest.WaiverMethod),
+                "Choose a valid waiver method.");
+        }
+
+        var requiresWaiverReturnOption = waiverRequired
+            && string.Equals(
+                waiverMethod,
+                TryOutSpotOpportunityWaiverMethods.Downloadable,
+                StringComparison.Ordinal);
+        if (requiresWaiverReturnOption && !waiverReturnByEmail && !waiverReturnInPerson)
+        {
+            ModelState.AddModelError(
+                nameof(CreateTeamOpportunityRequest.WaiverReturnByEmail),
+                "Choose at least one waiver return option (email or bring to event).");
+        }
+
+        if (waiverRequired && waiverReturnByEmail && string.IsNullOrWhiteSpace(contactEmail))
+        {
+            ModelState.AddModelError(
+                nameof(CreateTeamOpportunityRequest.ContactEmail),
+                "Contact email is required when waiver return by email is enabled.");
         }
 
         var sportExists = await dbContext.Sports
@@ -487,6 +683,8 @@ public sealed class TeamListingsApiController(
         var normalizedRegistrationDeadline = NormalizeUtc(registrationDeadline);
         var normalizedEventDate = NormalizeUtc(eventDate);
         var normalizedEventEndDate = NormalizeUtc(eventEndDate);
+        var normalizedListingStartDate = NormalizeUtc(listingStartDate);
+        var normalizedListingEndDate = NormalizeUtc(listingEndDate);
         var normalizedExpiresAt = NormalizeUtc(expiresAt);
 
         if (normalizedEventDate.HasValue
@@ -513,6 +711,15 @@ public sealed class TeamListingsApiController(
                 nameof(CreateTeamOpportunityRequest.ExpiresAt),
                 "Expiration must be in the future.");
         }
+
+        if (normalizedListingStartDate.HasValue
+            && normalizedListingEndDate.HasValue
+            && normalizedListingEndDate.Value < normalizedListingStartDate.Value)
+        {
+            ModelState.AddModelError(
+                nameof(CreateTeamOpportunityRequest.ListingEndDate),
+                "Listing end date cannot be earlier than listing start date.");
+        }
     }
 
     private async Task EnsureCanPublishAsync(
@@ -534,24 +741,22 @@ public sealed class TeamListingsApiController(
             return;
         }
 
-        var now = DateTime.UtcNow;
-        var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var monthEnd = monthStart.AddMonths(1);
-        var publishedCountThisMonth = await dbContext.Opportunities
+        var windowStart = DateTime.UtcNow.AddMonths(-postingAccess.PublishingWindowMonths);
+        var publishedCountInWindow = await dbContext.Opportunities
             .AsNoTracking()
             .Where(opportunity => opportunity.TeamId == teamId)
-            .Where(opportunity => opportunity.IsActive)
-            .Where(opportunity => opportunity.IsPublished)
             .Where(opportunity => opportunity.PublishedAt != null
-                && opportunity.PublishedAt >= monthStart
-                && opportunity.PublishedAt < monthEnd)
+                && opportunity.PublishedAt >= windowStart)
+            .Where(opportunity =>
+                opportunity.IsActive
+                || opportunity.UpdatedAt > opportunity.PublishedAt!.Value.AddHours(24))
             .CountAsync(cancellationToken);
 
-        if (publishedCountThisMonth >= BasicTeamMonthlyPublishingLimit)
+        if (publishedCountInWindow >= postingAccess.PublishingLimit)
         {
             ModelState.AddModelError(
                 nameof(SetTeamOpportunityPublicationRequest.IsPublished),
-                $"Basic Team includes up to {BasicTeamMonthlyPublishingLimit} published opportunities per month. Upgrade to Professional Team for unlimited postings.");
+                $"{postingAccess.PlanLabel} includes up to {postingAccess.PublishingLimit} published opportunities every {postingAccess.PublishingWindowMonths} months.");
         }
     }
 
@@ -595,11 +800,38 @@ public sealed class TeamListingsApiController(
     private async Task<TeamPostingAccess> ResolvePostingAccessAsync(Guid userId, CancellationToken cancellationToken)
     {
         var entitlements = await entitlementService.GetEntitlementsAsync(userId, cancellationToken);
-        var featureCodes = entitlements?.FeatureCodes ?? [];
+        var activePlanCodes = entitlements?.ActivePlanCodes ?? [];
 
-        return new TeamPostingAccess(
-            featureCodes.Contains(TryOutSpotFeatureCodes.PostLimitedOpportunities, StringComparer.Ordinal),
-            featureCodes.Contains(TryOutSpotFeatureCodes.UnlimitedOpportunityPostings, StringComparer.Ordinal));
+        if (activePlanCodes.Contains(TryOutSpotPlanCodes.EnterpriseOrganization, StringComparer.Ordinal))
+        {
+            return TeamPostingAccess.Enterprise;
+        }
+
+        if (activePlanCodes.Contains(TryOutSpotPlanCodes.TeamProfessional, StringComparer.Ordinal))
+        {
+            return TeamPostingAccess.Professional;
+        }
+
+        if (activePlanCodes.Contains(TryOutSpotPlanCodes.TeamBasic, StringComparer.Ordinal))
+        {
+            return TeamPostingAccess.Basic;
+        }
+
+        var featureCodes = entitlements?.FeatureCodes ?? [];
+        if (!featureCodes.Contains(TryOutSpotFeatureCodes.PostLimitedOpportunities, StringComparer.Ordinal))
+        {
+            return TeamPostingAccess.None;
+        }
+
+        return TeamPostingAccess.FreeCoach;
+    }
+
+    private async Task<bool> CanConfigureTryoutRegistrationAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var entitlements = await entitlementService.GetEntitlementsAsync(userId, cancellationToken);
+        var featureCodes = entitlements?.FeatureCodes ?? [];
+        return featureCodes.Contains(TryOutSpotFeatureCodes.StandardRegistrationManagement, StringComparer.Ordinal)
+            || featureCodes.Contains(TryOutSpotFeatureCodes.PremiumRegistrationManagement, StringComparer.Ordinal);
     }
 
     private bool TryGetCurrentUserId(out Guid userId)
@@ -640,6 +872,7 @@ public sealed class TeamListingsApiController(
 
     private static TeamOpportunitySummaryResponse ToSummaryResponse(Opportunity opportunity)
     {
+        var requiredRegistrationFieldCodes = DeserializeRegistrationFieldCodes(opportunity.RegistrationRequiredFieldCodes);
         return new TeamOpportunitySummaryResponse(
             opportunity.Id,
             opportunity.TeamId,
@@ -650,10 +883,19 @@ public sealed class TeamListingsApiController(
             opportunity.Description,
             opportunity.CompetitionLevel,
             opportunity.AgeGroup,
+            opportunity.RegistrationRequired,
             opportunity.RegistrationFee,
+            opportunity.MaxParticipants,
+            requiredRegistrationFieldCodes,
+            opportunity.WaiverRequired,
+            TryOutSpotOpportunityWaiverMethods.Normalize(opportunity.WaiverMethod),
+            opportunity.WaiverRequired && opportunity.WaiverReturnByEmail,
+            opportunity.WaiverRequired && opportunity.WaiverReturnInPerson,
             opportunity.RegistrationDeadline,
             opportunity.EventDate,
             opportunity.EventEndDate,
+            opportunity.ListingStartDate,
+            opportunity.ListingEndDate,
             opportunity.City,
             opportunity.State,
             opportunity.ZipCode,
@@ -667,6 +909,10 @@ public sealed class TeamListingsApiController(
 
     private static TeamOpportunityDetailResponse ToDetailResponse(Opportunity opportunity)
     {
+        var requiredRegistrationFieldCodes = DeserializeRegistrationFieldCodes(opportunity.RegistrationRequiredFieldCodes);
+        var waiverPdfUrl = string.IsNullOrWhiteSpace(opportunity.WaiverUploadedPdfObjectKey)
+            ? null
+            : $"/listing-documents/{OpportunityWaiverDocumentType}/{opportunity.Id}";
         return new TeamOpportunityDetailResponse(
             opportunity.Id,
             opportunity.TeamId,
@@ -680,8 +926,16 @@ public sealed class TeamListingsApiController(
             opportunity.RegistrationRequired,
             opportunity.RegistrationDeadline,
             opportunity.RegistrationFee,
+            opportunity.MaxParticipants,
+            requiredRegistrationFieldCodes,
+            opportunity.WaiverRequired,
+            TryOutSpotOpportunityWaiverMethods.Normalize(opportunity.WaiverMethod),
+            opportunity.WaiverRequired && opportunity.WaiverReturnByEmail,
+            opportunity.WaiverRequired && opportunity.WaiverReturnInPerson,
             opportunity.EventDate,
             opportunity.EventEndDate,
+            opportunity.ListingStartDate,
+            opportunity.ListingEndDate,
             opportunity.Location,
             opportunity.Address,
             opportunity.City,
@@ -691,6 +945,7 @@ public sealed class TeamListingsApiController(
             opportunity.ContactPhone,
             opportunity.WebsiteUrl,
             opportunity.PdfUrl,
+            waiverPdfUrl,
             opportunity.RequiredEquipment,
             opportunity.WhatToBring,
             opportunity.SpecialInstructions,
@@ -727,9 +982,70 @@ public sealed class TeamListingsApiController(
         };
     }
 
-    private sealed record TeamPostingAccess(bool HasLimitedPosting, bool HasUnlimitedPosting)
+    private static IReadOnlyCollection<string> NormalizeRegistrationFieldCodes(
+        IReadOnlyCollection<string>? requiredRegistrationFieldCodes)
+    {
+        return TryOutSpotOpportunityRegistrationFields.NormalizeSelectedCodes(requiredRegistrationFieldCodes);
+    }
+
+    private static IReadOnlyCollection<string> NormalizeRequiredRegistrationFieldCodesForWaiver(
+        IReadOnlyCollection<string> requiredRegistrationFieldCodes,
+        bool waiverRequired)
+    {
+        var normalized = requiredRegistrationFieldCodes
+            .Where(code => !string.Equals(code, TryOutSpotOpportunityRegistrationFields.WaiverSignature, StringComparison.OrdinalIgnoreCase))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (waiverRequired)
+        {
+            normalized.Add(TryOutSpotOpportunityRegistrationFields.WaiverSignature);
+        }
+
+        return normalized.ToArray();
+    }
+
+    private static string? SerializeRegistrationFieldCodes(
+        IReadOnlyCollection<string> requiredRegistrationFieldCodes)
+    {
+        if (requiredRegistrationFieldCodes.Count == 0)
+        {
+            return null;
+        }
+
+        return JsonSerializer.Serialize(requiredRegistrationFieldCodes);
+    }
+
+    private static IReadOnlyCollection<string> DeserializeRegistrationFieldCodes(string? serializedFieldCodes)
+    {
+        if (string.IsNullOrWhiteSpace(serializedFieldCodes))
+        {
+            return [];
+        }
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<string[]>(serializedFieldCodes);
+            return NormalizeRegistrationFieldCodes(parsed);
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private sealed record TeamPostingAccess(
+        bool HasLimitedPosting,
+        bool HasUnlimitedPosting,
+        int PublishingLimit,
+        int PublishingWindowMonths,
+        string PlanLabel)
     {
         public bool CanPostOpportunities => HasLimitedPosting || HasUnlimitedPosting;
+
+        public static TeamPostingAccess None { get; } = new(false, false, 0, 0, "No plan");
+        public static TeamPostingAccess Professional { get; } = new(true, false, ProfessionalTeamPublishingLimit, ProfessionalTeamPublishingWindowMonths, "Professional Team");
+        public static TeamPostingAccess Enterprise { get; } = new(true, false, EnterpriseTeamPublishingLimit, EnterpriseTeamPublishingWindowMonths, "Enterprise Organization");
+        public static TeamPostingAccess Basic { get; } = new(true, false, BasicTeamPublishingLimit, BasicTeamPublishingWindowMonths, "Basic Team");
+        public static TeamPostingAccess FreeCoach { get; } = new(true, false, FreeCoachPublishingLimit, FreeCoachPublishingWindowMonths, "Free Coach");
     }
 
     private sealed record ManagedTeamContext(Team Team, string Role);

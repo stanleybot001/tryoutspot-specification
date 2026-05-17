@@ -33,7 +33,7 @@ public sealed class AccountApiController(
     /// Creates a new active user account with one or more account types.
     /// </summary>
     /// <remarks>
-    /// Account types are additive. For example, the same user can register as both Parent and Coach.
+    /// Account types are additive. For example, the same user can register as both Parent and TeamRepresentative.
     /// </remarks>
     /// <response code="201">Returns the created user account summary.</response>
     /// <response code="400">The request failed validation or Identity password rules.</response>
@@ -197,7 +197,7 @@ public sealed class AccountApiController(
             return Unauthorized();
         }
 
-        var roles = await userManager.GetRolesAsync(user);
+        var roles = TryOutSpotRoles.CanonicalizeRoleSet(await userManager.GetRolesAsync(user));
         return Ok(ToCurrentUserResponse(user, roles.ToArray()));
     }
 
@@ -481,6 +481,14 @@ public sealed class AccountApiController(
             }
         }
 
+        if (accountTypes.Count > 0
+            && !TryOutSpotRoles.TryValidateSingleRolePerBundle(accountTypes, out var validationError))
+        {
+            ModelState.AddModelError(
+                nameof(RegisterUserRequest.AccountTypes),
+                validationError ?? "Invalid role selection.");
+        }
+
         return accountTypes;
     }
 
@@ -494,12 +502,13 @@ public sealed class AccountApiController(
 
     private static UserAccountResponse ToResponse(User user, IReadOnlyCollection<string> accountTypes)
     {
+        var normalizedAccountTypes = TryOutSpotRoles.CanonicalizeRoleSet(accountTypes);
         return new UserAccountResponse(
             user.Id,
             user.Email ?? string.Empty,
             user.FirstName,
             user.LastName,
-            accountTypes,
+            normalizedAccountTypes,
             user.IsActive,
             user.SmsConsentAccepted);
     }
@@ -514,12 +523,13 @@ public sealed class AccountApiController(
 
     private static CurrentUserResponse ToCurrentUserResponse(User user, IReadOnlyCollection<string> accountTypes)
     {
+        var normalizedAccountTypes = TryOutSpotRoles.CanonicalizeRoleSet(accountTypes);
         return new CurrentUserResponse(
             user.Id,
             user.Email ?? string.Empty,
             user.FirstName,
             user.LastName,
-            accountTypes,
+            normalizedAccountTypes,
             user.IsActive,
             user.EmailConfirmed,
             user.PhoneNumber,

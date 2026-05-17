@@ -24,7 +24,7 @@ public sealed class OnboardingApiTests
         Assert.NotNull(options);
         Assert.True(options.CanSkipPlanSelection);
         Assert.Contains(options.AccountTypes, accountType => accountType.Name == TryOutSpotRoles.Parent);
-        Assert.Contains(options.AccountTypes, accountType => accountType.Name == TryOutSpotRoles.Coach);
+        Assert.Contains(options.AccountTypes, accountType => accountType.Name == TryOutSpotRoles.TeamRepresentative);
         Assert.Contains(options.Plans, plan => plan.Code == TryOutSpotPlanCodes.FreePlayerParent);
         Assert.Contains(options.Plans, plan => plan.Code == TryOutSpotPlanCodes.PremiumPlayer);
     }
@@ -89,15 +89,15 @@ public sealed class OnboardingApiTests
             "/api/onboarding/account-types",
             new UpdateOnboardingAccountTypesRequest
             {
-                AccountTypes = [TryOutSpotRoles.Coach, TryOutSpotRoles.TeamManager]
+                AccountTypes = [TryOutSpotRoles.TeamRepresentative, TryOutSpotRoles.TeamRepresentative]
             });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var status = await response.Content.ReadFromJsonAsync<OnboardingStatusResponse>();
 
         Assert.NotNull(status);
-        Assert.Contains(TryOutSpotRoles.Coach, status.User.AccountTypes);
-        Assert.Contains(TryOutSpotRoles.TeamManager, status.User.AccountTypes);
+        Assert.Contains(TryOutSpotRoles.TeamRepresentative, status.User.AccountTypes);
+        Assert.Contains(TryOutSpotRoles.TeamRepresentative, status.User.AccountTypes);
         Assert.DoesNotContain(TryOutSpotRoles.Parent, status.User.AccountTypes);
         Assert.Contains(status.RecommendedPlans, plan => plan.Code == TryOutSpotPlanCodes.TeamBasic);
         Assert.Contains(status.Steps, step => step.Code == "choose_plan" && !step.IsRequired);
@@ -145,3 +145,4 @@ public sealed class OnboardingApiTests
             tokenResponse.AccessToken);
     }
 }
+

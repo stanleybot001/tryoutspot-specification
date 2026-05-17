@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
+using TryOutSpot.Web.Identity;
 using TryOutSpot.Web.Models.Account;
 using TryOutSpot.Web.Security;
 
@@ -24,7 +25,9 @@ public sealed class AuthTokenService(
 
     public async Task<AuthTokenResponse> CreateTokenResponseAsync(User user, CancellationToken cancellationToken)
     {
-        var roles = await userManager.GetRolesAsync(user);
+        var roles = TryOutSpotRoles.CanonicalizeRoleSet(
+            await userManager.GetRolesAsync(user),
+            includePlatformAdmin: true);
         var now = DateTime.UtcNow;
         var accessTokenExpiresAt = now.AddMinutes(Math.Max(1, jwtOptions.Value.AccessTokenMinutes));
         var refreshTokenExpiresAt = now.AddDays(Math.Max(1, jwtOptions.Value.RefreshTokenDays));
@@ -173,12 +176,13 @@ public sealed class AuthTokenService(
 
     private static UserAccountResponse ToResponse(User user, IReadOnlyCollection<string> roles)
     {
+        var normalizedRoles = TryOutSpotRoles.CanonicalizeRoleSet(roles, includePlatformAdmin: true);
         return new UserAccountResponse(
             user.Id,
             user.Email ?? string.Empty,
             user.FirstName,
             user.LastName,
-            roles,
+            normalizedRoles,
             user.IsActive,
             user.SmsConsentAccepted);
     }

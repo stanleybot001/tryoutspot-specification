@@ -70,7 +70,7 @@ This matrix maps logged-in access to current subscription entitlements and shows
 | Free Player/Parent (active) | Can access player profile onboarding (`players.profiles.basic`) and other free player/parent features. |
 | Premium Player (active/trialing) | Free access plus premium player feature codes in entitlement set. |
 | Team Basic (active/trialing) | Can access team profile onboarding (`opportunities.post.limited` present). |
-| Team Offseason Hold (active/trialing) | Keeps team/org searchable while contact visibility is hidden; does **not** grant team posting entitlements. |
+| Free Coach (internal plan) | Grants starter team access with limited posting entitlement (`opportunities.post.limited`) under free-tier quota rules. |
 | Team Professional (active/trialing) | Team pro entitlements granted; annual-commitment plan behavior enforced in catalog and Stripe config. |
 | Enterprise Organization (active/trialing) | Enterprise entitlements granted; annual-commitment plan behavior enforced in catalog and Stripe config. |
 | Paid plan cancel-at-period-end | Entitlements remain until period end; cancellation state reflected in subscription row/web summary. |
@@ -113,4 +113,3 @@ These are the feature-to-capability checks to add as each module is built.
   - `[Authorize(Policy = TryOutSpotAuthorizationPolicies.Feature("feature.code"))]`
   - or a specific named policy when multi-feature rules are needed.
 - For quota and timed-release behavior (posting limits, early access windows), enforce in application services, not only controller attributes.
-

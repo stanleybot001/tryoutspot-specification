@@ -35,16 +35,30 @@ public sealed class AccountController(
     IExternalLoginTicketService externalLoginTicketService,
     IStripeBillingService stripeBillingService,
     IStripeSubscriptionSyncService stripeSubscriptionSyncService,
+    IAccountTypeChangeWorkflowService accountTypeChangeWorkflowService,
     IOptions<GoogleAuthenticationOptions> googleOptions,
     IOptions<StripeBillingOptions> stripeOptions) : Controller
 {
-    private const int BasicTeamMonthlyPublishingLimit = 5;
+    private const int FreeCoachPublishingLimit = 1;
+    private const int FreeCoachPublishingWindowMonths = 6;
+    private const int BasicTeamPublishingLimit = 9;
+    private const int BasicTeamPublishingWindowMonths = 12;
+    private const int ProfessionalTeamPublishingLimit = 24;
+    private const int ProfessionalTeamPublishingWindowMonths = 12;
+    private const int EnterpriseTeamPublishingLimit = 50;
+    private const int EnterpriseTeamPublishingWindowMonths = 12;
     private const int ListingPdfMaxSizeMegabytes = 10;
     private const long ListingPdfMaxSizeBytes = ListingPdfMaxSizeMegabytes * 1024L * 1024L;
     private const string PlayerListingDocumentType = "player-listings";
     private const string OpportunityDocumentType = "opportunities";
+    private const string OpportunityWaiverDocumentType = "opportunity-waivers";
     private const string TeamLogoDocumentType = "team-logos";
     private const string PlayerProfileImageDocumentType = "player-profile-images";
+    private const string RegistrationWorkflowStatusPending = "pending";
+    private const string RegistrationWorkflowStatusAccepted = "accepted";
+    private const string RegistrationWorkflowStatusDeclined = "declined";
+    private const string RegistrationAttendancePresentStatus = "present";
+    private const string RegistrationAttendancePendingStatus = "pending";
     private const string R2ObjectStoragePrefix = "r2:";
     private const int ProfileImageMaxSizeMegabytes = 2;
     private const long ProfileImageMaxSizeBytes = ProfileImageMaxSizeMegabytes * 1024L * 1024L;
@@ -61,10 +75,7 @@ public sealed class AccountController(
     private static readonly string[] PlayerContactVisibilityOptions = ["Public", "VerifiedCoachesOnly"];
     private static readonly string[] TeamOnboardingRoleOptions =
     [
-        TryOutSpotRoles.Coach,
-        TryOutSpotRoles.TeamManager,
-        TryOutSpotRoles.AcademyDirector,
-        TryOutSpotRoles.OrganizationAdmin
+        TryOutSpotRoles.TeamRepresentative
     ];
     private static readonly string[] TeamGeographicScopeOptions = ["Local", "Regional", "National"];
     private static readonly string[] TeamOpportunityTypeOptions =
@@ -758,7 +769,9 @@ public sealed class AccountController(
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
     [HttpPost("onboarding/account-types")]
     public async Task<IActionResult> UpdateOnboardingAccountTypes(
-        [FromForm] List<string> accountTypes,
+        [FromForm] List<string>? accountTypes,
+        [FromForm] string? playerParentRole,
+        [FromForm] string? teamRole,
         CancellationToken cancellationToken)
     {
         var user = await GetCurrentWebUserAsync();
@@ -767,43 +780,17 @@ public sealed class AccountController(
             return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Onboarding)) });
         }
 
-        var validatedAccountTypes = GetValidatedPublicAccountTypes(accountTypes, nameof(accountTypes));
-        if (validatedAccountTypes.Count == 0)
+        var normalizationMessage = await NormalizeCurrentUserPublicRoleBundlesAsync(user, cancellationToken);
+        var requestedAccountTypes = BuildRequestedAccountTypesFromBundles(accountTypes, playerParentRole, teamRole);
+        var validatedAccountTypes = GetValidatedPublicAccountTypes(requestedAccountTypes, nameof(accountTypes));
+        var result = await accountTypeChangeWorkflowService.QueueOrApplyAsync(user, validatedAccountTypes, cancellationToken);
+        if (result.AppliedImmediately)
         {
-            TempData["StatusMessage"] = "Choose at least one account type.";
-            return RedirectToAction(nameof(Onboarding));
+            await SignInWebUserAsync(user, isPersistent: true);
         }
-
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-
-        var currentRoles = await userManager.GetRolesAsync(user);
-        var publicRolesToRemove = currentRoles
-            .Where(role => TryOutSpotRoles.PublicRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
-            .ToArray();
-
-        if (publicRolesToRemove.Length > 0)
-        {
-            var removeResult = await userManager.RemoveFromRolesAsync(user, publicRolesToRemove);
-            if (!removeResult.Succeeded)
-            {
-                TempData["StatusMessage"] = string.Join(" ", removeResult.Errors.Select(error => error.Description));
-                return RedirectToAction(nameof(Onboarding));
-            }
-        }
-
-        var addResult = await userManager.AddToRolesAsync(user, validatedAccountTypes);
-        if (!addResult.Succeeded)
-        {
-            TempData["StatusMessage"] = string.Join(" ", addResult.Errors.Select(error => error.Description));
-            return RedirectToAction(nameof(Onboarding));
-        }
-
-        user.UpdatedAt = DateTime.UtcNow;
-        await userManager.UpdateAsync(user);
-        await transaction.CommitAsync(cancellationToken);
-        await SignInWebUserAsync(user, isPersistent: true);
-
-        TempData["StatusMessage"] = "Account types updated.";
+        TempData["StatusMessage"] = string.IsNullOrWhiteSpace(normalizationMessage)
+            ? result.Message
+            : $"{normalizationMessage} {result.Message}";
         return RedirectToAction(nameof(Onboarding));
     }
 
@@ -1530,7 +1517,7 @@ public sealed class AccountController(
 
         if (model.AvailableTeamRoleOptions.Count == 0)
         {
-            TempData["StatusMessage"] = "Select a coach, team manager, academy director, or organization admin account type before adding a team.";
+            TempData["StatusMessage"] = "Select the Team representative account type before adding a team.";
             return RedirectToAction(nameof(Onboarding));
         }
 
@@ -1554,7 +1541,7 @@ public sealed class AccountController(
         model = await BuildAddTeamOrOrganizationPageModelAsync(user, model, cancellationToken);
         if (model.AvailableTeamRoleOptions.Count == 0)
         {
-            TempData["StatusMessage"] = "Select a coach, team manager, academy director, or organization admin account type before adding a team.";
+            TempData["StatusMessage"] = "Select the Team representative account type before adding a team.";
             return RedirectToAction(nameof(Onboarding));
         }
 
@@ -1643,7 +1630,7 @@ public sealed class AccountController(
                 SocialMediaLinks = socialMediaLinks,
                 IsSearchable = model.IsSearchable,
                 IsContactInfoVisible = true,
-                IsAcademy = string.Equals(teamRole, TryOutSpotRoles.AcademyDirector, StringComparison.Ordinal),
+                IsAcademy = false,
                 IsVerified = false,
                 CreatedAt = now,
                 UpdatedAt = now,
@@ -1659,6 +1646,7 @@ public sealed class AccountController(
             OrganizationId = organization?.Id,
             Name = model.TeamName.Trim(),
             TeamLevel = NormalizeOptional(model.TeamLevel),
+            Description = NormalizeOptional(model.TeamDescription),
             GeographicScope = geographicScope!,
             LogoImageUrl = NormalizeOptional(model.ProfileImageUrl),
             WebsiteUrl = NormalizeOptional(model.WebsiteUrl),
@@ -1762,6 +1750,7 @@ public sealed class AccountController(
                 OrganizationName = managedTeam.Team.Organization?.Name,
                 TeamRole = managedTeam.Role,
                 TeamLevel = managedTeam.Team.TeamLevel,
+                TeamDescription = managedTeam.Team.Description,
                 GeographicScope = managedTeam.Team.GeographicScope,
                 IsSearchable = managedTeam.Team.IsSearchable,
                 ContactEmail = managedTeam.Team.Email,
@@ -1869,6 +1858,7 @@ public sealed class AccountController(
 
         managedTeam.Team.Name = model.TeamName.Trim();
         managedTeam.Team.TeamLevel = NormalizeOptional(model.TeamLevel);
+        managedTeam.Team.Description = NormalizeOptional(model.TeamDescription);
         managedTeam.Team.GeographicScope = geographicScope!;
         if (uploadedTeamLogo is null && !model.RemoveProfileImage)
         {
@@ -2039,7 +2029,15 @@ public sealed class AccountController(
             model.ZipCode,
             managedTeam.Team.ZipCode,
             nameof(model.ZipCode));
-        await ValidateTeamOpportunityEditorInputAsync(model, managedTeam.Team, cancellationToken);
+        var normalizedRequiredRegistrationFieldCodes = NormalizeOpportunityRegistrationEditorInput(
+            model,
+            model.CanConfigureTryoutRegistration);
+        await ValidateTeamOpportunityEditorInputAsync(
+            model,
+            managedTeam.Team,
+            model.CanConfigureTryoutRegistration,
+            normalizedRequiredRegistrationFieldCodes,
+            cancellationToken);
 
         if (model.IsPublished)
         {
@@ -2067,10 +2065,20 @@ public sealed class AccountController(
             CompetitionLevel = NormalizeOptional(model.CompetitionLevel),
             AgeGroup = NormalizeOptional(model.AgeGroup),
             RegistrationRequired = model.RegistrationRequired,
+            MaxParticipants = model.RegistrationRequired && model.LimitRegistrationCapacity ? model.MaxParticipants : null,
+            RegistrationRequiredFieldCodes = model.RegistrationRequired
+                ? SerializeRegistrationFieldCodes(normalizedRequiredRegistrationFieldCodes)
+                : null,
+            WaiverRequired = model.WaiverRequired,
+            WaiverMethod = model.WaiverMethod,
+            WaiverReturnByEmail = model.WaiverReturnByEmail,
+            WaiverReturnInPerson = model.WaiverReturnInPerson,
             RegistrationDeadline = NormalizeUtc(model.RegistrationDeadline),
             RegistrationFee = model.RegistrationFee,
             EventDate = NormalizeUtc(model.EventDate),
             EventEndDate = NormalizeUtc(model.EventEndDate),
+            ListingStartDate = NormalizeUtc(model.ListingStartDate),
+            ListingEndDate = NormalizeUtc(model.ListingEndDate),
             Location = NormalizeOptional(model.Location),
             Address = NormalizeOptional(model.Address),
             City = NormalizeOptional(model.City) ?? managedTeam.Team.City,
@@ -2085,7 +2093,7 @@ public sealed class AccountController(
             SpecialInstructions = NormalizeOptional(model.SpecialInstructions),
             IsPublished = model.IsPublished,
             PublishedAt = model.IsPublished ? now : null,
-            ExpiresAt = NormalizeUtc(model.ExpiresAt),
+            ExpiresAt = NormalizeUtc(model.ListingEndDate) ?? NormalizeUtc(model.ExpiresAt),
             ViewCount = 0,
             CreatedAt = now,
             UpdatedAt = now,
@@ -2098,6 +2106,13 @@ public sealed class AccountController(
             model.PdfUpload,
             model.RemoveUploadedPdf,
             nameof(model.PdfUpload),
+            cancellationToken);
+        await ApplyOpportunityWaiverPdfUploadChangesAsync(
+            opportunity,
+            user.Id,
+            model.WaiverPdfUpload,
+            model.RemoveUploadedWaiverPdf,
+            nameof(model.WaiverPdfUpload),
             cancellationToken);
 
         if (!ModelState.IsValid)
@@ -2207,7 +2222,15 @@ public sealed class AccountController(
             model.ZipCode,
             managedTeam.Team.ZipCode,
             nameof(model.ZipCode));
-        await ValidateTeamOpportunityEditorInputAsync(model, managedTeam.Team, cancellationToken);
+        var normalizedRequiredRegistrationFieldCodes = NormalizeOpportunityRegistrationEditorInput(
+            model,
+            model.CanConfigureTryoutRegistration);
+        await ValidateTeamOpportunityEditorInputAsync(
+            model,
+            managedTeam.Team,
+            model.CanConfigureTryoutRegistration,
+            normalizedRequiredRegistrationFieldCodes,
+            cancellationToken);
 
         if (model.IsPublished)
         {
@@ -2220,6 +2243,14 @@ public sealed class AccountController(
 
         if (!ModelState.IsValid)
         {
+            LogTeamOpportunityEditModelStateFailure(
+                user.Id,
+                teamId,
+                opportunityId,
+                model,
+                "pre-save-validation");
+            ViewData["StatusMessage"] = BuildTeamOpportunityEditFailureMessage();
+            ViewData["StatusMessageType"] = "error";
             return View("EditTeamOpportunity", model);
         }
 
@@ -2231,10 +2262,20 @@ public sealed class AccountController(
         opportunity.CompetitionLevel = NormalizeOptional(model.CompetitionLevel);
         opportunity.AgeGroup = NormalizeOptional(model.AgeGroup);
         opportunity.RegistrationRequired = model.RegistrationRequired;
+        opportunity.MaxParticipants = model.RegistrationRequired && model.LimitRegistrationCapacity ? model.MaxParticipants : null;
+        opportunity.RegistrationRequiredFieldCodes = model.RegistrationRequired
+            ? SerializeRegistrationFieldCodes(normalizedRequiredRegistrationFieldCodes)
+            : null;
+        opportunity.WaiverRequired = model.WaiverRequired;
+        opportunity.WaiverMethod = model.WaiverMethod;
+        opportunity.WaiverReturnByEmail = model.WaiverReturnByEmail;
+        opportunity.WaiverReturnInPerson = model.WaiverReturnInPerson;
         opportunity.RegistrationDeadline = NormalizeUtc(model.RegistrationDeadline);
         opportunity.RegistrationFee = model.RegistrationFee;
         opportunity.EventDate = NormalizeUtc(model.EventDate);
         opportunity.EventEndDate = NormalizeUtc(model.EventEndDate);
+        opportunity.ListingStartDate = NormalizeUtc(model.ListingStartDate);
+        opportunity.ListingEndDate = NormalizeUtc(model.ListingEndDate);
         opportunity.Location = NormalizeOptional(model.Location);
         opportunity.Address = NormalizeOptional(model.Address);
         opportunity.City = NormalizeOptional(model.City) ?? managedTeam.Team.City;
@@ -2251,7 +2292,7 @@ public sealed class AccountController(
         opportunity.PublishedAt = model.IsPublished
             ? opportunity.PublishedAt ?? now
             : null;
-        opportunity.ExpiresAt = NormalizeUtc(model.ExpiresAt);
+        opportunity.ExpiresAt = NormalizeUtc(model.ListingEndDate) ?? NormalizeUtc(model.ExpiresAt);
         opportunity.UpdatedAt = now;
 
         await ApplyOpportunityPdfUploadChangesAsync(
@@ -2261,13 +2302,34 @@ public sealed class AccountController(
             model.RemoveUploadedPdf,
             nameof(model.PdfUpload),
             cancellationToken);
+        await ApplyOpportunityWaiverPdfUploadChangesAsync(
+            opportunity,
+            user.Id,
+            model.WaiverPdfUpload,
+            model.RemoveUploadedWaiverPdf,
+            nameof(model.WaiverPdfUpload),
+            cancellationToken);
 
         if (!ModelState.IsValid)
         {
+            LogTeamOpportunityEditModelStateFailure(
+                user.Id,
+                teamId,
+                opportunityId,
+                model,
+                "post-upload-validation");
+            ViewData["StatusMessage"] = BuildTeamOpportunityEditFailureMessage();
+            ViewData["StatusMessageType"] = "error";
             return View("EditTeamOpportunity", model);
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        logger.LogInformation(
+            "Team opportunity edit saved. UserId {UserId}, TeamId {TeamId}, OpportunityId {OpportunityId}, IsPublished {IsPublished}.",
+            user.Id,
+            teamId,
+            opportunityId,
+            model.IsPublished);
 
         TempData["StatusMessage"] = "Opportunity updated.";
         return RedirectToAction(nameof(TeamOpportunities), new { teamId });
@@ -2342,7 +2404,7 @@ public sealed class AccountController(
         opportunity.IsPublished = isPublished;
         opportunity.PublishedAt = isPublished
             ? opportunity.PublishedAt ?? now
-            : null;
+            : opportunity.PublishedAt;
         opportunity.UpdatedAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -2391,14 +2453,199 @@ public sealed class AccountController(
 
         opportunity.IsActive = false;
         opportunity.IsPublished = false;
-        opportunity.PublishedAt = null;
         opportunity.UpdatedAt = DateTime.UtcNow;
 
         await RemoveOpportunityPdfAsync(opportunity, cancellationToken);
+        await RemoveOpportunityWaiverPdfAsync(opportunity, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         TempData["StatusMessage"] = "Opportunity deactivated.";
         return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
+    [HttpPost("onboarding/team-opportunities/{teamId:guid}/{opportunityId:guid}/registrations/{registrationId:guid}/attendance")]
+    public async Task<IActionResult> SetTeamOpportunityRegistrationAttendance(
+        Guid teamId,
+        Guid opportunityId,
+        Guid registrationId,
+        [FromForm] bool isPresent,
+        [FromForm] int? page = null,
+        [FromForm] int? pageSize = null,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(TeamOpportunities), new { teamId, page, pageSize })
+            });
+        }
+
+        var managedTeam = await GetManagedTeamRoleContextAsync(user.Id, teamId, cancellationToken);
+        if (managedTeam is null)
+        {
+            TempData["StatusMessage"] = "Team access was not found for this account.";
+            return RedirectToAction(nameof(ManageTeamOpportunities));
+        }
+
+        var registration = await dbContext.Registrations
+            .SingleOrDefaultAsync(current =>
+                current.Id == registrationId
+                && current.OpportunityId == opportunityId
+                && current.Opportunity.TeamId == teamId
+                && current.Opportunity.IsActive,
+                cancellationToken);
+        if (registration is null)
+        {
+            TempData["StatusMessage"] = "Registration was not found for this listing.";
+            return RedirectToAction(nameof(TeamOpportunities), new { teamId, page, pageSize });
+        }
+
+        var now = DateTime.UtcNow;
+        if (isPresent)
+        {
+            registration.AttendanceStatus = RegistrationAttendancePresentStatus;
+            registration.CheckInTime ??= now;
+        }
+        else
+        {
+            registration.AttendanceStatus = RegistrationAttendancePendingStatus;
+            registration.CheckInTime = null;
+        }
+
+        registration.UpdatedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = isPresent
+            ? "Player marked present."
+            : "Player attendance reset.";
+        return RedirectToAction(nameof(TeamOpportunities), new { teamId, page, pageSize });
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
+    [HttpPost("onboarding/team-opportunities/{teamId:guid}/{opportunityId:guid}/registrations/{registrationId:guid}/waiver")]
+    public async Task<IActionResult> SetTeamOpportunityRegistrationWaiverStatus(
+        Guid teamId,
+        Guid opportunityId,
+        Guid registrationId,
+        [FromForm] bool waiverReceived,
+        [FromForm] int? page = null,
+        [FromForm] int? pageSize = null,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(TeamOpportunities), new { teamId, page, pageSize })
+            });
+        }
+
+        var managedTeam = await GetManagedTeamRoleContextAsync(user.Id, teamId, cancellationToken);
+        if (managedTeam is null)
+        {
+            TempData["StatusMessage"] = "Team access was not found for this account.";
+            return RedirectToAction(nameof(ManageTeamOpportunities));
+        }
+
+        var registration = await dbContext.Registrations
+            .SingleOrDefaultAsync(current =>
+                current.Id == registrationId
+                && current.OpportunityId == opportunityId
+                && current.Opportunity.TeamId == teamId
+                && current.Opportunity.IsActive,
+                cancellationToken);
+        if (registration is null)
+        {
+            TempData["StatusMessage"] = "Registration was not found for this listing.";
+            return RedirectToAction(nameof(TeamOpportunities), new { teamId, page, pageSize });
+        }
+
+        var now = DateTime.UtcNow;
+        registration.WaiverSigned = waiverReceived;
+        registration.WaiverSignedAt = waiverReceived ? registration.WaiverSignedAt ?? now : null;
+        if (!waiverReceived)
+        {
+            registration.WaiverSignerName = null;
+        }
+
+        registration.UpdatedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = waiverReceived
+            ? "Waiver marked received."
+            : "Waiver status reset.";
+        return RedirectToAction(nameof(TeamOpportunities), new { teamId, page, pageSize });
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
+    [HttpPost("onboarding/team-opportunities/{teamId:guid}/{opportunityId:guid}/registrations/{registrationId:guid}/status")]
+    public async Task<IActionResult> SetTeamOpportunityRegistrationStatus(
+        Guid teamId,
+        Guid opportunityId,
+        Guid registrationId,
+        [FromForm] string status = "",
+        [FromForm] int? page = null,
+        [FromForm] int? pageSize = null,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(TeamOpportunities), new { teamId, page, pageSize })
+            });
+        }
+
+        var managedTeam = await GetManagedTeamRoleContextAsync(user.Id, teamId, cancellationToken);
+        if (managedTeam is null)
+        {
+            TempData["StatusMessage"] = "Team access was not found for this account.";
+            return RedirectToAction(nameof(ManageTeamOpportunities));
+        }
+
+        var normalizedStatus = NormalizeRegistrationWorkflowStatus(status);
+        if (normalizedStatus is null)
+        {
+            TempData["StatusMessage"] = "Registration status update was not recognized.";
+            return RedirectToAction(nameof(TeamOpportunities), new { teamId, page, pageSize });
+        }
+
+        var registration = await dbContext.Registrations
+            .SingleOrDefaultAsync(current =>
+                current.Id == registrationId
+                && current.OpportunityId == opportunityId
+                && current.Opportunity.TeamId == teamId
+                && current.Opportunity.IsActive,
+                cancellationToken);
+        if (registration is null)
+        {
+            TempData["StatusMessage"] = "Registration was not found for this listing.";
+            return RedirectToAction(nameof(TeamOpportunities), new { teamId, page, pageSize });
+        }
+
+        registration.Status = normalizedStatus;
+        registration.UpdatedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = normalizedStatus switch
+        {
+            RegistrationWorkflowStatusAccepted => "Registration accepted.",
+            RegistrationWorkflowStatusDeclined => "Registration declined.",
+            _ => "Registration moved back to pending review."
+        };
+
+        return RedirectToAction(nameof(TeamOpportunities), new { teamId, page, pageSize });
     }
 
     [AllowAnonymous]
@@ -2407,26 +2654,521 @@ public sealed class AccountController(
         Guid opportunityId,
         CancellationToken cancellationToken = default)
     {
-        var now = DateTime.UtcNow;
-        var opportunity = await dbContext.Opportunities
-            .AsNoTracking()
-            .Where(currentOpportunity => currentOpportunity.Id == opportunityId)
-            .Where(currentOpportunity => currentOpportunity.IsActive)
-            .Where(currentOpportunity => currentOpportunity.IsPublished)
-            .Where(currentOpportunity => currentOpportunity.ExpiresAt == null || currentOpportunity.ExpiresAt > now)
-            .Where(currentOpportunity => currentOpportunity.Team.IsActive)
-            .Where(currentOpportunity => currentOpportunity.Team.IsSearchable)
-            .Include(currentOpportunity => currentOpportunity.Team)
-                .ThenInclude(team => team.Organization)
-            .Include(currentOpportunity => currentOpportunity.Sport)
-            .SingleOrDefaultAsync(cancellationToken);
+        var currentUser = await GetCurrentWebUserAsync();
+        var hasAdvancedOpportunitySearch = currentUser is not null
+            && await HasAdvancedOpportunitySearchAsync(currentUser.Id, cancellationToken);
+        var opportunity = await GetPublishedOpportunityForDiscoveryAsync(
+            opportunityId,
+            hasAdvancedOpportunitySearch,
+            cancellationToken);
         if (opportunity is null)
         {
             return NotFound();
         }
 
-        var model = await BuildTeamOpportunityDetailPageModelAsync(opportunity, cancellationToken);
+        var model = await BuildTeamOpportunityDetailPageModelAsync(
+            opportunity,
+            currentUser,
+            null,
+            cancellationToken);
         return View(model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ManagePlayerProfile)]
+    [IgnoreAntiforgeryToken]
+    [HttpPost("/opportunities/{opportunityId:guid}/register")]
+    public async Task<IActionResult> RegisterForTeamOpportunity(
+        Guid opportunityId,
+        [Bind(Prefix = "RegistrationForm")]
+        TeamOpportunityRegistrationInputPageModel registrationForm,
+        CancellationToken cancellationToken = default)
+    {
+        logger.LogInformation(
+            "Team opportunity registration submit started. OpportunityId {OpportunityId}, PlayerId {PlayerId}",
+            opportunityId,
+            registrationForm.PlayerId);
+
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            logger.LogWarning(
+                "Team opportunity registration submit rejected because user was not authenticated. OpportunityId {OpportunityId}",
+                opportunityId);
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = Url.Action(nameof(TeamOpportunityDetail), new { opportunityId })
+            });
+        }
+
+        var hasAdvancedOpportunitySearch = await HasAdvancedOpportunitySearchAsync(user.Id, cancellationToken);
+        var opportunity = await GetPublishedOpportunityForDiscoveryAsync(
+            opportunityId,
+            hasAdvancedOpportunitySearch,
+            cancellationToken);
+        if (opportunity is null)
+        {
+            return NotFound();
+        }
+
+        var requiredRegistrationFieldCodes = opportunity.RegistrationRequired
+            ? DeserializeRegistrationFieldCodes(opportunity.RegistrationRequiredFieldCodes)
+            : [];
+        var now = DateTime.UtcNow;
+        var activeRegistrationCount = await GetActiveOpportunityRegistrationCountAsync(
+            opportunity.Id,
+            cancellationToken);
+        var registrationClosedReason = GetRegistrationClosedReason(
+            opportunity,
+            now,
+            activeRegistrationCount);
+        if (!opportunity.RegistrationRequired || registrationClosedReason is not null)
+        {
+            TempData["StatusMessage"] = registrationClosedReason
+                ?? "Registration is not required for this opportunity.";
+            return RedirectToAction(nameof(TeamOpportunityDetail), new { opportunityId });
+        }
+
+        var managedPlayerOptions = await GetOpportunityRegistrationPlayersAsync(
+            opportunity.Id,
+            user.Id,
+            cancellationToken);
+        var selectedPlayer = managedPlayerOptions.FirstOrDefault(
+            playerOption => playerOption.PlayerId == registrationForm.PlayerId);
+        if (registrationForm.PlayerId == Guid.Empty)
+        {
+            ModelState.AddModelError(
+                BuildRegistrationFormModelStateKey(nameof(registrationForm.PlayerId)),
+                "Choose a player profile to register.");
+        }
+        else if (selectedPlayer is null)
+        {
+            ModelState.AddModelError(
+                BuildRegistrationFormModelStateKey(nameof(registrationForm.PlayerId)),
+                "Choose a player profile you can manage.");
+        }
+        else if (selectedPlayer.AlreadyRegistered)
+        {
+            ModelState.AddModelError(
+                BuildRegistrationFormModelStateKey(nameof(registrationForm.PlayerId)),
+                "This player is already registered for this tryout.");
+        }
+
+        ApplySelectedPlayerRegistrationDefaults(registrationForm, selectedPlayer);
+        ValidateOpportunityRegistrationForm(registrationForm, requiredRegistrationFieldCodes);
+
+        if (!ModelState.IsValid)
+        {
+            logger.LogWarning(
+                "Team opportunity registration submit failed validation. OpportunityId {OpportunityId}, UserId {UserId}, PlayerId {PlayerId}, ModelStateErrors {@ModelStateErrors}",
+                opportunityId,
+                user.Id,
+                registrationForm.PlayerId,
+                BuildModelStateErrorMap());
+            var invalidModel = await BuildTeamOpportunityDetailPageModelAsync(
+                opportunity,
+                user,
+                registrationForm,
+                cancellationToken);
+            return View("TeamOpportunityDetail", invalidModel);
+        }
+
+        var normalizedPlayerName = NormalizeOptional(registrationForm.PlayerName);
+        var normalizedPlayerBirthDate = NormalizeUtc(registrationForm.PlayerBirthDate);
+        var normalizedPlayerSchool = NormalizeOptional(registrationForm.PlayerSchool);
+        var normalizedPlayerPhone = NormalizeOptional(registrationForm.PlayerPhone);
+        var normalizedPlayerEmail = NormalizeOptional(registrationForm.PlayerEmail);
+        var normalizedGuardianName = NormalizeOptional(registrationForm.GuardianName);
+        var normalizedGuardianEmail = NormalizeOptional(registrationForm.GuardianEmail);
+        var normalizedGuardianPhone = NormalizeOptional(registrationForm.GuardianPhone);
+        var normalizedEmergencyContactName = NormalizeOptional(registrationForm.EmergencyContactName);
+        var normalizedEmergencyContactPhone = NormalizeOptional(registrationForm.EmergencyContactPhone);
+        var normalizedMedicalInfo = NormalizeOptional(registrationForm.MedicalInfo);
+        var normalizedWaiverSignerName = NormalizeOptional(registrationForm.WaiverSignerName);
+        var normalizedAdditionalNotes = NormalizeOptional(registrationForm.AdditionalNotes);
+
+        var registrationData = BuildOpportunityRegistrationDataJson(
+            requiredRegistrationFieldCodes,
+            normalizedPlayerName,
+            normalizedPlayerBirthDate,
+            normalizedPlayerSchool,
+            normalizedPlayerPhone,
+            normalizedPlayerEmail,
+            normalizedGuardianName,
+            normalizedGuardianEmail,
+            normalizedGuardianPhone,
+            normalizedAdditionalNotes,
+            now);
+
+        var registration = new Registration
+        {
+            Id = Guid.NewGuid(),
+            OpportunityId = opportunity.Id,
+            PlayerId = registrationForm.PlayerId,
+            RegisteredByUserId = user.Id,
+            Status = RegistrationWorkflowStatusPending,
+            RegistrationData = registrationData,
+            PaymentStatus = opportunity.RegistrationFee > 0 ? "in_person" : "not_required",
+            Amount = opportunity.RegistrationFee > 0 ? opportunity.RegistrationFee : null,
+            MedicalInfo = normalizedMedicalInfo,
+            EmergencyContactName = normalizedEmergencyContactName,
+            EmergencyContactPhone = normalizedEmergencyContactPhone,
+            WaiverSigned = registrationForm.WaiverAcknowledged,
+            WaiverSignedAt = registrationForm.WaiverAcknowledged ? now : null,
+            WaiverSignerName = registrationForm.WaiverAcknowledged ? normalizedWaiverSignerName : null,
+            AttendanceStatus = RegistrationAttendancePendingStatus,
+            Notes = normalizedAdditionalNotes,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        dbContext.Registrations.Add(registration);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Team opportunity registration saved. OpportunityId {OpportunityId}, UserId {UserId}, PlayerId {PlayerId}, RegistrationId {RegistrationId}",
+            opportunityId,
+            user.Id,
+            registrationForm.PlayerId,
+            registration.Id);
+
+        TempData["StatusMessage"] = "Registration submitted. The team will review your entry.";
+        return RedirectToAction(nameof(TeamOpportunityDetail), new { opportunityId });
+    }
+
+    private async Task<Opportunity?> GetPublishedOpportunityForDiscoveryAsync(
+        Guid opportunityId,
+        bool hasAdvancedOpportunitySearch,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        IQueryable<Opportunity> query = dbContext.Opportunities
+            .AsNoTracking()
+            .Where(currentOpportunity => currentOpportunity.Id == opportunityId)
+            .Where(currentOpportunity => currentOpportunity.IsActive)
+            .Where(currentOpportunity => currentOpportunity.IsPublished)
+            .Where(currentOpportunity =>
+                (currentOpportunity.ListingEndDate ?? currentOpportunity.ExpiresAt) == null
+                || (currentOpportunity.ListingEndDate ?? currentOpportunity.ExpiresAt) > now)
+            .Where(currentOpportunity => currentOpportunity.Team.IsActive)
+            .Where(currentOpportunity => currentOpportunity.Team.IsSearchable);
+
+        if (!hasAdvancedOpportunitySearch)
+        {
+            query = query.Where(currentOpportunity =>
+                currentOpportunity.ListingStartDate == null
+                || currentOpportunity.ListingStartDate <= now);
+        }
+
+        return await query
+            .Include(currentOpportunity => currentOpportunity.Team)
+                .ThenInclude(team => team.Organization)
+            .Include(currentOpportunity => currentOpportunity.Sport)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<int> GetActiveOpportunityRegistrationCountAsync(
+        Guid opportunityId,
+        CancellationToken cancellationToken)
+    {
+        var registrationStatuses = await dbContext.Registrations
+            .AsNoTracking()
+            .Where(registration => registration.OpportunityId == opportunityId)
+            .Select(registration => registration.Status)
+            .ToArrayAsync(cancellationToken);
+
+        return registrationStatuses.Count(status =>
+            ClassifyRegistrationStatus(status) != RegistrationStatusCategory.Declined);
+    }
+
+    private static string? GetRegistrationClosedReason(
+        Opportunity opportunity,
+        DateTime now,
+        int activeRegistrationCount)
+    {
+        if (opportunity.RegistrationDeadline.HasValue
+            && opportunity.RegistrationDeadline.Value < now)
+        {
+            return "Registration is closed because the deadline has passed.";
+        }
+
+        if (opportunity.MaxParticipants is > 0
+            && activeRegistrationCount >= opportunity.MaxParticipants.Value)
+        {
+            return "Registration is closed because this session reached max capacity.";
+        }
+
+        return null;
+    }
+
+    private async Task<OpportunityRegistrationPlayerOptionPageItem[]> GetOpportunityRegistrationPlayersAsync(
+        Guid opportunityId,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var managedPlayers = await dbContext.UserPlayerRelationships
+            .AsNoTracking()
+            .Where(relationship => relationship.UserId == userId)
+            .Where(relationship => relationship.CanManage)
+            .Where(relationship => relationship.Player.IsActive)
+            .Select(relationship => relationship.Player)
+            .Distinct()
+            .OrderBy(player => player.LastName)
+            .ThenBy(player => player.FirstName)
+            .Select(player => new
+            {
+                player.Id,
+                DisplayName = (player.FirstName + " " + player.LastName).Trim(),
+                ProfileName = (player.FirstName + " " + player.LastName).Trim(),
+                ProfileBirthDate = (DateTime?)player.DateOfBirth.Date,
+                player.SchoolName,
+                player.ContactPhone,
+                player.ContactEmail
+            })
+            .ToArrayAsync(cancellationToken);
+
+        if (managedPlayers.Length == 0)
+        {
+            return [];
+        }
+
+        var playerIds = managedPlayers
+            .Select(player => player.Id)
+            .ToArray();
+        var activeRegisteredPlayerIds = await dbContext.Registrations
+            .AsNoTracking()
+            .Where(registration => registration.OpportunityId == opportunityId)
+            .Where(registration => playerIds.Contains(registration.PlayerId))
+            .Select(registration => new
+            {
+                registration.PlayerId,
+                registration.Status
+            })
+            .ToArrayAsync(cancellationToken);
+        var activeRegisteredPlayerIdSet = activeRegisteredPlayerIds
+            .Where(registration => ClassifyRegistrationStatus(registration.Status) != RegistrationStatusCategory.Declined)
+            .Select(registration => registration.PlayerId)
+            .Distinct()
+            .ToHashSet();
+
+        return managedPlayers
+            .Select(player => new OpportunityRegistrationPlayerOptionPageItem(
+                player.Id,
+                player.DisplayName,
+                activeRegisteredPlayerIdSet.Contains(player.Id),
+                player.ProfileName,
+                player.ProfileBirthDate,
+                player.SchoolName,
+                player.ContactPhone,
+                player.ContactEmail))
+            .ToArray();
+    }
+
+    private static void ApplySelectedPlayerRegistrationDefaults(
+        TeamOpportunityRegistrationInputPageModel registrationForm,
+        OpportunityRegistrationPlayerOptionPageItem? selectedPlayer)
+    {
+        if (selectedPlayer is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(registrationForm.PlayerName))
+        {
+            registrationForm.PlayerName = selectedPlayer.ProfileName;
+        }
+
+        if (registrationForm.PlayerBirthDate is null && selectedPlayer.ProfileBirthDate.HasValue)
+        {
+            registrationForm.PlayerBirthDate = selectedPlayer.ProfileBirthDate.Value.Date;
+        }
+
+        if (string.IsNullOrWhiteSpace(registrationForm.PlayerSchool))
+        {
+            registrationForm.PlayerSchool = selectedPlayer.ProfileSchool;
+        }
+
+        if (string.IsNullOrWhiteSpace(registrationForm.PlayerPhone))
+        {
+            registrationForm.PlayerPhone = selectedPlayer.ProfilePhone;
+        }
+
+        if (string.IsNullOrWhiteSpace(registrationForm.PlayerEmail))
+        {
+            registrationForm.PlayerEmail = selectedPlayer.ProfileEmail;
+        }
+    }
+
+    private void ValidateOpportunityRegistrationForm(
+        TeamOpportunityRegistrationInputPageModel registrationForm,
+        IReadOnlyCollection<string> requiredRegistrationFieldCodes)
+    {
+        static string FieldKey(string fieldName) => BuildRegistrationFormModelStateKey(fieldName);
+
+        bool RequiresField(string code)
+        {
+            return requiredRegistrationFieldCodes.Contains(code, StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (RequiresField(TryOutSpotOpportunityRegistrationFields.PlayerName)
+            && string.IsNullOrWhiteSpace(registrationForm.PlayerName))
+        {
+            ModelState.AddModelError(FieldKey(nameof(registrationForm.PlayerName)), "Player name is required.");
+        }
+
+        if (RequiresField(TryOutSpotOpportunityRegistrationFields.PlayerBirthDate)
+            && registrationForm.PlayerBirthDate is null)
+        {
+            ModelState.AddModelError(FieldKey(nameof(registrationForm.PlayerBirthDate)), "Player birthdate is required.");
+        }
+
+        if (RequiresField(TryOutSpotOpportunityRegistrationFields.PlayerSchool)
+            && string.IsNullOrWhiteSpace(registrationForm.PlayerSchool))
+        {
+            ModelState.AddModelError(FieldKey(nameof(registrationForm.PlayerSchool)), "Player school is required.");
+        }
+
+        if (RequiresField(TryOutSpotOpportunityRegistrationFields.PlayerPhone)
+            && string.IsNullOrWhiteSpace(registrationForm.PlayerPhone))
+        {
+            ModelState.AddModelError(FieldKey(nameof(registrationForm.PlayerPhone)), "Player cell phone is required.");
+        }
+
+        if (RequiresField(TryOutSpotOpportunityRegistrationFields.PlayerEmail)
+            && string.IsNullOrWhiteSpace(registrationForm.PlayerEmail))
+        {
+            ModelState.AddModelError(FieldKey(nameof(registrationForm.PlayerEmail)), "Player email address is required.");
+        }
+
+        if (RequiresField(TryOutSpotOpportunityRegistrationFields.GuardianName)
+            && string.IsNullOrWhiteSpace(registrationForm.GuardianName))
+        {
+            ModelState.AddModelError(FieldKey(nameof(registrationForm.GuardianName)), "Guardian name is required.");
+        }
+
+        if (RequiresField(TryOutSpotOpportunityRegistrationFields.GuardianEmail)
+            && string.IsNullOrWhiteSpace(registrationForm.GuardianEmail))
+        {
+            ModelState.AddModelError(FieldKey(nameof(registrationForm.GuardianEmail)), "Guardian email is required.");
+        }
+
+        if (RequiresField(TryOutSpotOpportunityRegistrationFields.GuardianPhone)
+            && string.IsNullOrWhiteSpace(registrationForm.GuardianPhone))
+        {
+            ModelState.AddModelError(FieldKey(nameof(registrationForm.GuardianPhone)), "Guardian phone is required.");
+        }
+
+        if (RequiresField(TryOutSpotOpportunityRegistrationFields.EmergencyContactName)
+            && string.IsNullOrWhiteSpace(registrationForm.EmergencyContactName))
+        {
+            ModelState.AddModelError(FieldKey(nameof(registrationForm.EmergencyContactName)), "Emergency contact name is required.");
+        }
+
+        if (RequiresField(TryOutSpotOpportunityRegistrationFields.EmergencyContactPhone)
+            && string.IsNullOrWhiteSpace(registrationForm.EmergencyContactPhone))
+        {
+            ModelState.AddModelError(FieldKey(nameof(registrationForm.EmergencyContactPhone)), "Emergency contact phone is required.");
+        }
+
+        if (RequiresField(TryOutSpotOpportunityRegistrationFields.MedicalInfo)
+            && string.IsNullOrWhiteSpace(registrationForm.MedicalInfo))
+        {
+            ModelState.AddModelError(FieldKey(nameof(registrationForm.MedicalInfo)), "Medical notes are required.");
+        }
+
+        if (RequiresField(TryOutSpotOpportunityRegistrationFields.WaiverSignature)
+            && !registrationForm.WaiverAcknowledged)
+        {
+            ModelState.AddModelError(FieldKey(nameof(registrationForm.WaiverAcknowledged)), "Waiver acknowledgment is required.");
+        }
+
+        if (RequiresField(TryOutSpotOpportunityRegistrationFields.WaiverSignature)
+            && registrationForm.WaiverAcknowledged
+            && string.IsNullOrWhiteSpace(registrationForm.WaiverSignerName))
+        {
+            ModelState.AddModelError(FieldKey(nameof(registrationForm.WaiverSignerName)), "Waiver signer name is required.");
+        }
+
+        if (RequiresField(TryOutSpotOpportunityRegistrationFields.AdditionalNotes)
+            && string.IsNullOrWhiteSpace(registrationForm.AdditionalNotes))
+        {
+            ModelState.AddModelError(FieldKey(nameof(registrationForm.AdditionalNotes)), "Additional notes are required.");
+        }
+    }
+
+    private static string? BuildOpportunityRegistrationDataJson(
+        IReadOnlyCollection<string> requiredRegistrationFieldCodes,
+        string? playerName,
+        DateTime? playerBirthDate,
+        string? playerSchool,
+        string? playerPhone,
+        string? playerEmail,
+        string? guardianName,
+        string? guardianEmail,
+        string? guardianPhone,
+        string? additionalNotes,
+        DateTime submittedAtUtc)
+    {
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["submittedAtUtc"] = submittedAtUtc,
+            ["requiredFieldCodes"] = requiredRegistrationFieldCodes
+        };
+
+        if (!string.IsNullOrWhiteSpace(playerName))
+        {
+            payload["playerName"] = playerName;
+        }
+
+        if (playerBirthDate.HasValue)
+        {
+            payload["playerBirthDate"] = playerBirthDate.Value.Date.ToString("yyyy-MM-dd");
+        }
+
+        if (!string.IsNullOrWhiteSpace(playerSchool))
+        {
+            payload["playerSchool"] = playerSchool;
+        }
+
+        if (!string.IsNullOrWhiteSpace(playerPhone))
+        {
+            payload["playerPhone"] = playerPhone;
+        }
+
+        if (!string.IsNullOrWhiteSpace(playerEmail))
+        {
+            payload["playerEmail"] = playerEmail;
+        }
+
+        if (!string.IsNullOrWhiteSpace(guardianName))
+        {
+            payload["guardianName"] = guardianName;
+        }
+
+        if (!string.IsNullOrWhiteSpace(guardianEmail))
+        {
+            payload["guardianEmail"] = guardianEmail;
+        }
+
+        if (!string.IsNullOrWhiteSpace(guardianPhone))
+        {
+            payload["guardianPhone"] = guardianPhone;
+        }
+
+        if (!string.IsNullOrWhiteSpace(additionalNotes))
+        {
+            payload["additionalNotes"] = additionalNotes;
+        }
+
+        return payload.Count == 0
+            ? null
+            : JsonSerializer.Serialize(payload);
+    }
+
+    private static string BuildRegistrationFormModelStateKey(string fieldName)
+    {
+        return $"{nameof(TeamOpportunityDetailPageModel.RegistrationForm)}.{fieldName}";
     }
 
     [AllowAnonymous]
@@ -2468,7 +3210,6 @@ public sealed class AccountController(
             .AsNoTracking()
             .Where(currentPlayer => currentPlayer.Id == playerId)
             .Where(currentPlayer => currentPlayer.IsActive)
-            .Where(currentPlayer => currentPlayer.IsSearchable)
             .SingleOrDefaultAsync(cancellationToken);
         if (player is null)
         {
@@ -2551,9 +3292,7 @@ public sealed class AccountController(
             return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(ChoosePlan)) });
         }
 
-        var roles = (await userManager.GetRolesAsync(user))
-            .Where(role => TryOutSpotRoles.PublicRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
-            .ToArray();
+        var roles = await GetCanonicalPublicRolesAsync(user);
         var availablePlans = GetPlansForAccountTypes(roles);
         if (availablePlans.Count == 0)
         {
@@ -3144,7 +3883,9 @@ public sealed class AccountController(
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
     [HttpPost("settings/account-types")]
     public async Task<IActionResult> UpdateAccountTypes(
-        [FromForm] List<string> accountTypes,
+        [FromForm] List<string>? accountTypes,
+        [FromForm] string? playerParentRole,
+        [FromForm] string? teamRole,
         CancellationToken cancellationToken)
     {
         var user = await GetCurrentWebUserAsync();
@@ -3153,43 +3894,17 @@ public sealed class AccountController(
             return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Settings)) });
         }
 
-        var validatedAccountTypes = GetValidatedPublicAccountTypes(accountTypes, nameof(accountTypes));
-        if (validatedAccountTypes.Count == 0)
+        var normalizationMessage = await NormalizeCurrentUserPublicRoleBundlesAsync(user, cancellationToken);
+        var requestedAccountTypes = BuildRequestedAccountTypesFromBundles(accountTypes, playerParentRole, teamRole);
+        var validatedAccountTypes = GetValidatedPublicAccountTypes(requestedAccountTypes, nameof(accountTypes));
+        var result = await accountTypeChangeWorkflowService.QueueOrApplyAsync(user, validatedAccountTypes, cancellationToken);
+        if (result.AppliedImmediately)
         {
-            TempData["StatusMessage"] = "Choose at least one account type.";
-            return RedirectToAction(nameof(Settings));
+            await SignInWebUserAsync(user, isPersistent: true);
         }
-
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-
-        var currentRoles = await userManager.GetRolesAsync(user);
-        var publicRolesToRemove = currentRoles
-            .Where(role => TryOutSpotRoles.PublicRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
-            .ToArray();
-
-        if (publicRolesToRemove.Length > 0)
-        {
-            var removeResult = await userManager.RemoveFromRolesAsync(user, publicRolesToRemove);
-            if (!removeResult.Succeeded)
-            {
-                TempData["StatusMessage"] = string.Join(" ", removeResult.Errors.Select(error => error.Description));
-                return RedirectToAction(nameof(Settings));
-            }
-        }
-
-        var addResult = await userManager.AddToRolesAsync(user, validatedAccountTypes);
-        if (!addResult.Succeeded)
-        {
-            TempData["StatusMessage"] = string.Join(" ", addResult.Errors.Select(error => error.Description));
-            return RedirectToAction(nameof(Settings));
-        }
-
-        user.UpdatedAt = DateTime.UtcNow;
-        await userManager.UpdateAsync(user);
-        await transaction.CommitAsync(cancellationToken);
-        await SignInWebUserAsync(user, isPersistent: true);
-
-        TempData["StatusMessage"] = "Account types updated.";
+        TempData["StatusMessage"] = string.IsNullOrWhiteSpace(normalizationMessage)
+            ? result.Message
+            : $"{normalizationMessage} {result.Message}";
         return RedirectToAction(nameof(Settings));
     }
 
@@ -3303,18 +4018,13 @@ public sealed class AccountController(
         User user,
         CancellationToken cancellationToken)
     {
-        var roles = (await userManager.GetRolesAsync(user))
-            .Where(role => TryOutSpotRoles.PublicRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
-            .OrderBy(role => role)
-            .ToArray();
+        var roles = await GetCanonicalPublicRolesAsync(user);
         var entitlements = await entitlementService.GetEntitlementsAsync(user.Id, cancellationToken);
         var hasPlayerOrParentRole = HasAnyRole(roles, TryOutSpotRoles.Parent, TryOutSpotRoles.Player);
-        var hasTeamOrOrganizationRole = HasAnyRole(
-            roles,
-            TryOutSpotRoles.Coach,
-            TryOutSpotRoles.TeamManager,
-            TryOutSpotRoles.AcademyDirector,
-            TryOutSpotRoles.OrganizationAdmin);
+        var hasTeamOrOrganizationRole = roles.Any(TryOutSpotRoles.IsTeamBundleRole);
+        var upcomingTryoutRegistrations = hasPlayerOrParentRole
+            ? await GetOnboardingTryoutRegistrationsAsync(user.Id, cancellationToken)
+            : [];
 
         var hasLinkedPlayers = hasPlayerOrParentRole
             && await dbContext.UserPlayerRelationships
@@ -3375,7 +4085,7 @@ public sealed class AccountController(
                 "Choose account type",
                 "Select how you plan to use TryOutSpot.",
                 true,
-                roles.Length > 0),
+                roles.Count > 0),
             new(
                 "verify_email",
                 "Verify email",
@@ -3442,8 +4152,82 @@ public sealed class AccountController(
             RecommendedPlans = recommendedPlans,
             ShowRecommendedPlans = !hasCompletedPlanSelection,
             FeatureCodes = entitlements?.FeatureCodes ?? [],
+            ShowTryoutRegistrationList = hasPlayerOrParentRole,
+            UpcomingTryoutRegistrations = upcomingTryoutRegistrations,
             Steps = steps
         };
+    }
+
+    private async Task<IReadOnlyCollection<OnboardingTryoutRegistrationPageItem>> GetOnboardingTryoutRegistrationsAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var cutoffDate = now.Date.AddDays(-1);
+        var registrationRows = await dbContext.Registrations
+            .AsNoTracking()
+            .Where(registration => registration.Player.IsActive)
+            .Where(registration =>
+                registration.RegisteredByUserId == userId
+                || registration.Player.UserPlayerRelationships.Any(relationship =>
+                    relationship.UserId == userId
+                    && relationship.CanManage))
+            .Where(registration => registration.Opportunity.IsActive)
+            .Where(registration => registration.Opportunity.IsPublished)
+            .Where(registration => registration.Opportunity.Type.ToLower() == "tryout")
+            .Select(registration => new
+            {
+                registration.Id,
+                registration.OpportunityId,
+                registration.PlayerId,
+                PlayerName = $"{registration.Player.FirstName} {registration.Player.LastName}",
+                OpportunityTitle = registration.Opportunity.Title,
+                TeamName = registration.Opportunity.Team.Name,
+                SportName = registration.Opportunity.Sport.Name,
+                registration.Status,
+                registration.CreatedAt,
+                registration.Opportunity.EventDate,
+                registration.Opportunity.EventEndDate,
+                registration.Opportunity.RegistrationDeadline,
+                registration.Opportunity.City,
+                registration.Opportunity.State,
+                registration.Opportunity.ExpiresAt
+            })
+            .ToArrayAsync(cancellationToken);
+
+        return registrationRows
+            .Where(registrationRow =>
+                ClassifyRegistrationStatus(registrationRow.Status) != RegistrationStatusCategory.Declined)
+            .Where(registrationRow =>
+                (registrationRow.EventEndDate
+                 ?? registrationRow.EventDate
+                 ?? registrationRow.RegistrationDeadline
+                 ?? registrationRow.ExpiresAt
+                 ?? registrationRow.CreatedAt) >= cutoffDate)
+            .OrderBy(registrationRow =>
+                registrationRow.EventDate
+                ?? registrationRow.EventEndDate
+                ?? registrationRow.RegistrationDeadline
+                ?? registrationRow.CreatedAt)
+            .ThenBy(registrationRow => registrationRow.PlayerName)
+            .ThenBy(registrationRow => registrationRow.OpportunityTitle)
+            .Take(12)
+            .Select(registrationRow => new OnboardingTryoutRegistrationPageItem(
+                registrationRow.Id,
+                registrationRow.OpportunityId,
+                registrationRow.PlayerId,
+                registrationRow.PlayerName.Trim(),
+                registrationRow.OpportunityTitle,
+                registrationRow.TeamName,
+                registrationRow.SportName,
+                FormatRegistrationStatusLabel(registrationRow.Status),
+                registrationRow.EventDate,
+                registrationRow.EventEndDate,
+                registrationRow.RegistrationDeadline,
+                registrationRow.CreatedAt,
+                registrationRow.City,
+                registrationRow.State))
+            .ToArray();
     }
 
     private async Task<AddPlayerProfilePageModel> BuildAddPlayerProfilePageModelAsync(
@@ -3451,6 +4235,11 @@ public sealed class AccountController(
         AddPlayerProfilePageModel model,
         CancellationToken cancellationToken)
     {
+        model.EnhancedProfileVisibleToTeams = await entitlementService.HasFeatureAsync(
+            user.Id,
+            TryOutSpotFeatureCodes.EnhancedPlayerProfile,
+            cancellationToken);
+
         var selectedSportIds = model.SportDetails
             .Where(detail => detail.IsSelected)
             .Select(detail => detail.SportId)
@@ -3756,7 +4545,8 @@ public sealed class AccountController(
         player.DateOfBirth = NormalizeUtcDate(model.DateOfBirth);
         player.ContactEmail = NormalizeOptional(model.ContactEmail);
         player.ContactPhone = NormalizeOptional(model.ContactPhone);
-        if (model.ProfileImageUpload is null || model.ProfileImageUpload.Length == 0)
+        if ((model.ProfileImageUpload is null || model.ProfileImageUpload.Length == 0)
+            && !model.RemoveProfileImage)
         {
             player.ProfileImageUrl = NormalizeOptional(model.ProfileImageUrl);
         }
@@ -4035,11 +4825,15 @@ public sealed class AccountController(
         return new PlayerListingValidationContext(listingTypeOption, player);
     }
 
-    private Task<PlayerListingDetailPageModel> BuildPlayerListingDetailPageModelAsync(
+    private async Task<PlayerListingDetailPageModel> BuildPlayerListingDetailPageModelAsync(
         PlayerListing listing,
         CancellationToken cancellationToken)
     {
         var player = listing.Player;
+        var hasEnhancedProfileVisibility = await entitlementService.HasFeatureAsync(
+            listing.UserId,
+            TryOutSpotFeatureCodes.EnhancedPlayerProfile,
+            cancellationToken);
         var isContactPublic = player is not null
             && string.Equals(player.ContactVisibility, "Public", StringComparison.OrdinalIgnoreCase);
         var sports = player?.PlayerSports
@@ -4047,33 +4841,39 @@ public sealed class AccountController(
             .OrderBy(playerSport => playerSport.Sport.Name)
             .Select(playerSport => new PlayerListingSportSummaryPageItem(
                 playerSport.Sport.Name,
-                NormalizeOptional(playerSport.SkillLevel),
-                NormalizeOptional(playerSport.PrimaryPosition),
-                NormalizeOptional(playerSport.SecondaryPositions)))
+                hasEnhancedProfileVisibility ? NormalizeOptional(playerSport.SkillLevel) : null,
+                hasEnhancedProfileVisibility ? NormalizeOptional(playerSport.PrimaryPosition) : null,
+                hasEnhancedProfileVisibility ? NormalizeOptional(playerSport.SecondaryPositions) : null))
             .ToArray() ?? [];
 
         var visibleSocialLinkKeys = ParsePlayerListingVisibleSocialKeys(listing.VisibleSocialLinkKeys);
-        var socialLinks = BuildPlayerExternalLinkItems(
+        var socialLinks = hasEnhancedProfileVisibility
+            ? BuildPlayerExternalLinkItems(
             player?.SocialMediaLinks,
             visibleSocialLinkKeys,
             ("facebook", "Facebook"),
             ("x", "X"),
             ("instagram", "Instagram"),
             ("youtube", "YouTube"),
-            ("tiktok", "TikTok"));
-        var profileVideoLinks = BuildPlayerExternalLinkItems(
+            ("tiktok", "TikTok"))
+            : [];
+        var profileVideoLinks = hasEnhancedProfileVisibility
+            ? BuildPlayerExternalLinkItems(
             player?.SocialMediaLinks,
             visibleSocialLinkKeys,
             ("highlight_video_1", "Highlight video 1"),
-            ("highlight_video_2", "Highlight video 2"));
-        var recruitingLinks = BuildPlayerExternalLinkItems(
+            ("highlight_video_2", "Highlight video 2"))
+            : [];
+        var recruitingLinks = hasEnhancedProfileVisibility
+            ? BuildPlayerExternalLinkItems(
             player?.RecruitingProfileLinks,
             ("sportsrecruits", "SportsRecruits"),
             ("fieldlevel", "FieldLevel"),
             ("ncsa", "NCSA"),
-            ("other", "Other recruiting profile"));
+            ("other", "Other recruiting profile"))
+            : [];
 
-        return Task.FromResult(new PlayerListingDetailPageModel
+        return new PlayerListingDetailPageModel
         {
             ListingId = listing.Id,
             ListingTypeLabel = GetPlayerListingTypeLabel(listing.ListingType),
@@ -4090,13 +4890,13 @@ public sealed class AccountController(
             ExpiresAt = listing.ExpiresAt,
             PlayerName = player is null ? null : $"{player.FirstName} {player.LastName}".Trim(),
             ProfileImageUrl = ResolvePlayerProfileImagePublicUrl(player?.Id, player?.ProfileImageUrl),
-            SchoolName = player?.SchoolName,
-            CurrentTeamName = player?.CurrentTeamName,
-            GraduationYear = player?.GraduationYear,
-            Height = player?.Height,
-            Weight = player?.Weight,
-            ThrowsHand = player?.ThrowsHand,
-            BatsHand = player?.BatsHand,
+            SchoolName = hasEnhancedProfileVisibility ? player?.SchoolName : null,
+            CurrentTeamName = hasEnhancedProfileVisibility ? player?.CurrentTeamName : null,
+            GraduationYear = hasEnhancedProfileVisibility ? player?.GraduationYear : null,
+            Height = hasEnhancedProfileVisibility ? player?.Height : null,
+            Weight = hasEnhancedProfileVisibility ? player?.Weight : null,
+            ThrowsHand = hasEnhancedProfileVisibility ? player?.ThrowsHand : null,
+            BatsHand = hasEnhancedProfileVisibility ? player?.BatsHand : null,
             IsContactPublic = isContactPublic,
             ContactEmail = isContactPublic ? player?.ContactEmail : null,
             ContactPhone = isContactPublic ? player?.ContactPhone : null,
@@ -4108,11 +4908,13 @@ public sealed class AccountController(
                 ? null
                 : BuildListingDocumentPath(PlayerListingDocumentType, listing.Id),
             PdfFileName = listing.UploadedPdfFileName
-        });
+        };
     }
 
-    private Task<TeamOpportunityDetailPageModel> BuildTeamOpportunityDetailPageModelAsync(
+    private async Task<TeamOpportunityDetailPageModel> BuildTeamOpportunityDetailPageModelAsync(
         Opportunity opportunity,
+        User? currentUser,
+        TeamOpportunityRegistrationInputPageModel? registrationForm,
         CancellationToken cancellationToken)
     {
         var isContactInfoVisible = opportunity.Team.IsContactInfoVisible
@@ -4128,14 +4930,95 @@ public sealed class AccountController(
         var pdfUrl = isContactInfoVisible && !string.IsNullOrWhiteSpace(opportunity.UploadedPdfObjectKey)
             ? BuildListingDocumentPath(OpportunityDocumentType, opportunity.Id)
             : externalPdfUrl;
+        var requiredRegistrationFieldCodes = opportunity.RegistrationRequired
+            ? DeserializeRegistrationFieldCodes(opportunity.RegistrationRequiredFieldCodes)
+            : [];
+        var waiverRequired = ResolveWaiverRequired(
+            opportunity.WaiverRequired,
+            requiredRegistrationFieldCodes);
+        var waiverMethod = ResolveWaiverMethod(opportunity.WaiverMethod, waiverRequired);
+        var waiverReturnByEmail = waiverRequired && opportunity.WaiverReturnByEmail;
+        var waiverReturnInPerson = waiverRequired && opportunity.WaiverReturnInPerson;
+        var waiverPdfUrl = waiverRequired
+            && string.Equals(waiverMethod, TryOutSpotOpportunityWaiverMethods.Downloadable, StringComparison.Ordinal)
+            && !string.IsNullOrWhiteSpace(opportunity.WaiverUploadedPdfObjectKey)
+                ? BuildListingDocumentPath(OpportunityWaiverDocumentType, opportunity.Id)
+                : null;
+        var waiverReturnEmail = waiverReturnByEmail
+            ? NormalizeOptional(opportunity.ContactEmail)
+            : null;
+        var requiredRegistrationFieldOptions = TryOutSpotOpportunityRegistrationFields.All
+            .Where(field => requiredRegistrationFieldCodes.Contains(field.Code, StringComparer.OrdinalIgnoreCase))
+            .Select(field => new OpportunityRegistrationFieldOptionPageItem(
+                field.Code,
+                field.Label,
+                field.Description,
+                IsRequired: true))
+            .ToArray();
 
-        return Task.FromResult(new TeamOpportunityDetailPageModel
+        var activeRegistrationCount = opportunity.RegistrationRequired
+            ? await GetActiveOpportunityRegistrationCountAsync(opportunity.Id, cancellationToken)
+            : 0;
+        var maxParticipants = opportunity.RegistrationRequired && opportunity.MaxParticipants is > 0
+            ? opportunity.MaxParticipants
+            : (int?)null;
+        var remainingRegistrationSpots = maxParticipants.HasValue
+            ? (int?)Math.Max(0, maxParticipants.Value - activeRegistrationCount)
+            : (int?)null;
+        var registrationClosedReason = opportunity.RegistrationRequired
+            ? GetRegistrationClosedReason(opportunity, DateTime.UtcNow, activeRegistrationCount)
+            : "Registration is not required for this opportunity.";
+
+        var registrationPlayers = Array.Empty<OpportunityRegistrationPlayerOptionPageItem>();
+        if (opportunity.RegistrationRequired && currentUser is not null)
+        {
+            registrationPlayers = await GetOpportunityRegistrationPlayersAsync(
+                opportunity.Id,
+                currentUser.Id,
+                cancellationToken);
+        }
+
+        var effectiveRegistrationForm = registrationForm ?? new TeamOpportunityRegistrationInputPageModel();
+        if (registrationPlayers.Length > 0
+            && effectiveRegistrationForm.PlayerId == Guid.Empty)
+        {
+            var firstAvailablePlayer = registrationPlayers.FirstOrDefault(player => !player.AlreadyRegistered);
+            if (firstAvailablePlayer is not null)
+            {
+                effectiveRegistrationForm.PlayerId = firstAvailablePlayer.PlayerId;
+            }
+        }
+
+        var selectedPlayerOption = registrationPlayers.FirstOrDefault(
+            player => player.PlayerId == effectiveRegistrationForm.PlayerId);
+        ApplySelectedPlayerRegistrationDefaults(effectiveRegistrationForm, selectedPlayerOption);
+
+        var viewerCanSubmitRegistration = opportunity.RegistrationRequired
+            && currentUser is not null
+            && registrationPlayers.Any(player => !player.AlreadyRegistered)
+            && registrationClosedReason is null;
+
+        if (opportunity.RegistrationRequired && currentUser is null)
+        {
+            registrationClosedReason ??= "Sign in as a parent or player to register.";
+        }
+        else if (opportunity.RegistrationRequired && currentUser is not null && registrationPlayers.Length == 0)
+        {
+            registrationClosedReason ??= "Add a player profile you can manage to submit registration.";
+        }
+        else if (opportunity.RegistrationRequired && currentUser is not null && !registrationPlayers.Any(player => !player.AlreadyRegistered))
+        {
+            registrationClosedReason ??= "All of your managed players are already registered for this tryout.";
+        }
+
+        return new TeamOpportunityDetailPageModel
         {
             OpportunityId = opportunity.Id,
             TeamId = opportunity.TeamId,
             TeamName = opportunity.Team.Name,
             TeamLogoImageUrl = ResolveTeamLogoPublicUrl(opportunity.Team.Id, opportunity.Team.LogoImageUrl),
             OrganizationName = opportunity.Team.Organization?.Name,
+            TeamDescription = NormalizeOptional(opportunity.Team.Description),
             SportName = opportunity.Sport.Name,
             Type = opportunity.Type,
             Title = opportunity.Title,
@@ -4144,6 +5027,9 @@ public sealed class AccountController(
             AgeGroup = NormalizeOptional(opportunity.AgeGroup),
             RegistrationRequired = opportunity.RegistrationRequired,
             RegistrationFee = opportunity.RegistrationFee,
+            MaxParticipants = maxParticipants,
+            ActiveRegistrationCount = activeRegistrationCount,
+            RemainingRegistrationSpots = remainingRegistrationSpots,
             RegistrationDeadline = opportunity.RegistrationDeadline,
             EventDate = opportunity.EventDate,
             EventEndDate = opportunity.EventEndDate,
@@ -4161,8 +5047,21 @@ public sealed class AccountController(
             PdfUrl = pdfUrl,
             RequiredEquipment = NormalizeOptional(opportunity.RequiredEquipment),
             WhatToBring = NormalizeOptional(opportunity.WhatToBring),
-            SpecialInstructions = NormalizeOptional(opportunity.SpecialInstructions)
-        });
+            SpecialInstructions = NormalizeOptional(opportunity.SpecialInstructions),
+            ViewerIsAuthenticated = currentUser is not null,
+            ViewerCanSubmitRegistration = viewerCanSubmitRegistration,
+            IsRegistrationOpen = opportunity.RegistrationRequired && registrationClosedReason is null,
+            RegistrationClosedReason = registrationClosedReason,
+            WaiverRequired = waiverRequired,
+            WaiverMethod = waiverMethod,
+            WaiverReturnByEmail = waiverReturnByEmail,
+            WaiverReturnInPerson = waiverReturnInPerson,
+            WaiverPdfUrl = waiverPdfUrl,
+            WaiverReturnEmail = waiverReturnEmail,
+            RequiredRegistrationFields = requiredRegistrationFieldOptions,
+            RegistrationPlayers = registrationPlayers,
+            RegistrationForm = effectiveRegistrationForm
+        };
     }
 
     private async Task<ChoosePlanPageModel> BuildChoosePlanPageModelAsync(
@@ -4170,9 +5069,7 @@ public sealed class AccountController(
         ChoosePlanPageModel model,
         CancellationToken cancellationToken)
     {
-        var roles = (await userManager.GetRolesAsync(user))
-            .Where(role => TryOutSpotRoles.PublicRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
-            .ToArray();
+        var roles = await GetCanonicalPublicRolesAsync(user);
         var availablePlans = GetPlansForAccountTypes(roles);
         var latestSelection = await dbContext.Subscriptions
             .AsNoTracking()
@@ -4230,9 +5127,7 @@ public sealed class AccountController(
         AddTeamOrOrganizationPageModel model,
         CancellationToken cancellationToken)
     {
-        var roles = (await userManager.GetRolesAsync(user))
-            .Where(role => TryOutSpotRoles.PublicRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
-            .ToArray();
+        var roles = await GetCanonicalPublicRolesAsync(user);
         var availableTeamRoleOptions = TeamOnboardingRoleOptions
             .Where(teamRole => roles.Contains(teamRole, StringComparer.OrdinalIgnoreCase))
             .ToArray();
@@ -4290,13 +5185,16 @@ public sealed class AccountController(
             .Select(managedTeam => managedTeam.Team.Id)
             .Distinct()
             .ToArray();
-        var publishedCountsByTeam = await GetPublishedOpportunityCountsForCurrentMonthAsync(teamIds, cancellationToken);
+        var publishedCountsByTeam = await GetPublishedOpportunityCountsForWindowAsync(
+            teamIds,
+            postingAccess.PublishingWindowMonths,
+            cancellationToken);
 
         var teams = managedTeams
             .Select(managedTeam =>
             {
-                publishedCountsByTeam.TryGetValue(managedTeam.Team.Id, out var publishedThisMonthCount);
-                return ToManagedTeamOpportunitySummary(managedTeam.Team, managedTeam.Role, publishedThisMonthCount);
+                publishedCountsByTeam.TryGetValue(managedTeam.Team.Id, out var publishedInWindowCount);
+                return ToManagedTeamOpportunitySummary(managedTeam.Team, managedTeam.Role, publishedInWindowCount);
             })
             .OrderBy(team => team.TeamName)
             .ToArray();
@@ -4306,7 +5204,9 @@ public sealed class AccountController(
             CanPostOpportunities = postingAccess.CanPostOpportunities,
             HasLimitedPosting = postingAccess.HasLimitedPosting,
             HasUnlimitedPosting = postingAccess.HasUnlimitedPosting,
-            BasicMonthlyPublishingLimit = BasicTeamMonthlyPublishingLimit,
+            PublishingLimit = postingAccess.PublishingLimit,
+            PublishingWindowMonths = postingAccess.PublishingWindowMonths,
+            PublishingPlanLabel = postingAccess.PlanLabel,
             Teams = teams
         };
     }
@@ -4339,33 +5239,154 @@ public sealed class AccountController(
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToArrayAsync(cancellationToken);
-        var publishedThisMonthCount = await GetPublishedOpportunityCountForCurrentMonthAsync(teamId, cancellationToken);
+        var entitlements = await entitlementService.GetEntitlementsAsync(user.Id, cancellationToken);
+        var featureCodes = entitlements?.FeatureCodes ?? [];
+        var hasDetailedAnalytics = featureCodes.Contains(TryOutSpotFeatureCodes.DetailedTeamAnalytics, StringComparer.Ordinal);
+        var hasBasicAnalytics = hasDetailedAnalytics
+            || featureCodes.Contains(TryOutSpotFeatureCodes.BasicTeamAnalytics, StringComparer.Ordinal);
+
+        var registrationStatsByOpportunityId = new Dictionary<Guid, ListingRegistrationStats>();
+        var registrationDetailsByOpportunityId = new Dictionary<Guid, TeamOpportunityRegistrantPageItem[]>();
+        if (opportunities.Length > 0)
+        {
+            var opportunityIds = opportunities.Select(opportunity => opportunity.Id).ToHashSet();
+            var registrationRows = await dbContext.Registrations
+                .AsNoTracking()
+                .Where(registration => opportunityIds.Contains(registration.OpportunityId))
+                .Select(registration => new
+                {
+                    registration.Id,
+                    registration.OpportunityId,
+                    registration.PlayerId,
+                    registration.Status,
+                    registration.AttendanceStatus,
+                    registration.CheckInTime,
+                    registration.WaiverSigned,
+                    registration.WaiverSignedAt,
+                    registration.CreatedAt,
+                    registration.Player.FirstName,
+                    registration.Player.LastName,
+                    registration.Player.SchoolName
+                })
+                .ToArrayAsync(cancellationToken);
+
+            registrationDetailsByOpportunityId = registrationRows
+                .GroupBy(row => row.OpportunityId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group
+                        .OrderByDescending(row => row.CreatedAt)
+                        .ThenBy(row => row.LastName)
+                        .ThenBy(row => row.FirstName)
+                        .Select(row => new TeamOpportunityRegistrantPageItem(
+                            row.Id,
+                            row.PlayerId,
+                            BuildPlayerDisplayName(row.FirstName, row.LastName),
+                            NormalizeOptional(row.SchoolName),
+                            ToRegistrationStatusCode(row.Status),
+                            FormatRegistrationStatusLabel(row.Status),
+                            IsRegistrationMarkedPresent(row.AttendanceStatus),
+                            row.CheckInTime,
+                            row.WaiverSigned,
+                            row.WaiverSignedAt,
+                            row.CreatedAt))
+                        .ToArray());
+
+            if (hasBasicAnalytics)
+            {
+                registrationStatsByOpportunityId = registrationRows
+                .GroupBy(row => row.OpportunityId)
+                .ToDictionary(
+                    group => group.Key,
+                    group =>
+                    {
+                        var pendingCount = 0;
+                        var approvedCount = 0;
+                        var declinedCount = 0;
+
+                        foreach (var row in group)
+                        {
+                            switch (ClassifyRegistrationStatus(row.Status))
+                            {
+                                case RegistrationStatusCategory.Approved:
+                                    approvedCount++;
+                                    break;
+                                case RegistrationStatusCategory.Declined:
+                                    declinedCount++;
+                                    break;
+                                default:
+                                    pendingCount++;
+                                    break;
+                            }
+                        }
+
+                            return new ListingRegistrationStats(
+                                group.Count(),
+                                group.Select(row => row.PlayerId).Distinct().Count(),
+                                pendingCount,
+                                approvedCount,
+                                declinedCount);
+                        });
+            }
+        }
+
+        var publishedInWindowCount = await GetPublishedOpportunityCountForWindowAsync(
+            teamId,
+            postingAccess.PublishingWindowMonths,
+            cancellationToken);
+
+        var opportunitySummaries = opportunities.Select(opportunity =>
+        {
+            var summary = ToTeamOpportunitySummary(opportunity);
+            if (!string.IsNullOrWhiteSpace(opportunity.UploadedPdfObjectKey))
+            {
+                summary.UploadedPdfUrl = BuildListingDocumentPath(OpportunityDocumentType, opportunity.Id);
+                summary.UploadedPdfFileName = opportunity.UploadedPdfFileName;
+            }
+
+            if (registrationStatsByOpportunityId.TryGetValue(opportunity.Id, out var stats))
+            {
+                summary.RegistrationCount = stats.TotalCount;
+                summary.UniqueApplicantCount = stats.UniqueApplicantCount;
+                summary.PendingRegistrationCount = stats.PendingCount;
+                summary.ApprovedRegistrationCount = stats.ApprovedCount;
+                summary.DeclinedRegistrationCount = stats.DeclinedCount;
+            }
+
+            if (registrationDetailsByOpportunityId.TryGetValue(opportunity.Id, out var registrants))
+            {
+                summary.Registrants = registrants;
+            }
+
+            summary.ViewToRegistrationConversionRate = CalculateConversionRate(summary.RegistrationCount, summary.ViewCount);
+            return summary;
+        }).ToArray();
+
+        var pageViewCountTotal = opportunitySummaries.Sum(summary => summary.ViewCount);
+        var pageRegistrationCountTotal = opportunitySummaries.Sum(summary => summary.RegistrationCount);
 
         return new TeamOpportunityListPageModel
         {
             Team = ToManagedTeamOpportunitySummary(
                 managedTeam.Team,
                 managedTeam.Role,
-                publishedThisMonthCount),
+                publishedInWindowCount),
             CanPostOpportunities = postingAccess.CanPostOpportunities,
             HasLimitedPosting = postingAccess.HasLimitedPosting,
             HasUnlimitedPosting = postingAccess.HasUnlimitedPosting,
-            BasicMonthlyPublishingLimit = BasicTeamMonthlyPublishingLimit,
+            PublishingLimit = postingAccess.PublishingLimit,
+            PublishingWindowMonths = postingAccess.PublishingWindowMonths,
+            PublishingPlanLabel = postingAccess.PlanLabel,
             Page = page,
             PageSize = pageSize,
             TotalCount = totalCount,
             TotalPages = totalCount == 0 ? 1 : (int)Math.Ceiling(totalCount / (double)pageSize),
-            Opportunities = opportunities.Select(opportunity =>
-            {
-                var summary = ToTeamOpportunitySummary(opportunity);
-                if (!string.IsNullOrWhiteSpace(opportunity.UploadedPdfObjectKey))
-                {
-                    summary.UploadedPdfUrl = BuildListingDocumentPath(OpportunityDocumentType, opportunity.Id);
-                    summary.UploadedPdfFileName = opportunity.UploadedPdfFileName;
-                }
-
-                return summary;
-            }).ToArray()
+            ShowBasicAnalytics = hasBasicAnalytics,
+            ShowDetailedAnalytics = hasDetailedAnalytics,
+            PageViewCountTotal = pageViewCountTotal,
+            PageRegistrationCountTotal = pageRegistrationCountTotal,
+            PageViewToRegistrationConversionRate = CalculateConversionRate(pageRegistrationCountTotal, pageViewCountTotal),
+            Opportunities = opportunitySummaries
         };
     }
 
@@ -4399,12 +5420,23 @@ public sealed class AccountController(
         }
 
         var postingAccess = await ResolveTeamPostingAccessAsync(user.Id, cancellationToken);
-        var publishedThisMonthCount = await GetPublishedOpportunityCountForCurrentMonthAsync(teamId, cancellationToken);
+        var canConfigureTryoutRegistration = await CanConfigureTryoutRegistrationAsync(user.Id, cancellationToken);
+        var publishedInWindowCount = await GetPublishedOpportunityCountForWindowAsync(
+            teamId,
+            postingAccess.PublishingWindowMonths,
+            cancellationToken);
 
         if (model is null)
         {
             if (existingOpportunity is not null && opportunityId is not null)
             {
+                var existingRequiredFieldCodes = DeserializeRegistrationFieldCodes(existingOpportunity.RegistrationRequiredFieldCodes).ToList();
+                var existingWaiverRequired = ResolveWaiverRequired(
+                    existingOpportunity.WaiverRequired,
+                    existingRequiredFieldCodes);
+                var existingWaiverMethod = ResolveWaiverMethod(
+                    existingOpportunity.WaiverMethod,
+                    existingWaiverRequired);
                 model = new TeamOpportunityEditorPageModel
                 {
                     TeamId = teamId,
@@ -4418,9 +5450,18 @@ public sealed class AccountController(
                     AgeGroup = existingOpportunity.AgeGroup,
                     RegistrationFee = existingOpportunity.RegistrationFee,
                     RegistrationRequired = existingOpportunity.RegistrationRequired,
+                    LimitRegistrationCapacity = existingOpportunity.MaxParticipants is > 0,
+                    MaxParticipants = existingOpportunity.MaxParticipants,
+                    RequiredRegistrationFieldCodes = existingRequiredFieldCodes,
+                    WaiverRequired = existingWaiverRequired,
+                    WaiverMethod = existingWaiverMethod,
+                    WaiverReturnByEmail = existingWaiverRequired && existingOpportunity.WaiverReturnByEmail,
+                    WaiverReturnInPerson = existingWaiverRequired && existingOpportunity.WaiverReturnInPerson,
                     RegistrationDeadline = existingOpportunity.RegistrationDeadline?.Date,
                     EventDate = existingOpportunity.EventDate?.Date,
                     EventEndDate = existingOpportunity.EventEndDate?.Date,
+                    ListingStartDate = existingOpportunity.ListingStartDate?.Date,
+                    ListingEndDate = (existingOpportunity.ListingEndDate ?? existingOpportunity.ExpiresAt)?.Date,
                     Location = existingOpportunity.Location,
                     Address = existingOpportunity.Address,
                     City = existingOpportunity.City,
@@ -4450,7 +5491,9 @@ public sealed class AccountController(
                     WebsiteUrl = managedTeam.Team.WebsiteUrl,
                     PdfUrl = null,
                     Type = TeamOpportunityTypeOptions[0],
-                    RegistrationRequired = true,
+                    RegistrationRequired = canConfigureTryoutRegistration,
+                    WaiverMethod = TryOutSpotOpportunityWaiverMethods.AtEvent,
+                    WaiverReturnInPerson = true,
                     IsPublished = true
                 };
             }
@@ -4481,18 +5524,38 @@ public sealed class AccountController(
         model.TeamName = managedTeam.Team.Name;
         model.OrganizationName = managedTeam.Team.Organization?.Name;
         model.CanPostOpportunities = postingAccess.CanPostOpportunities;
+        model.CanConfigureTryoutRegistration = canConfigureTryoutRegistration;
         model.HasLimitedPosting = postingAccess.HasLimitedPosting;
         model.HasUnlimitedPosting = postingAccess.HasUnlimitedPosting;
-        model.BasicMonthlyPublishingLimit = BasicTeamMonthlyPublishingLimit;
-        model.PublishedThisMonthCount = publishedThisMonthCount;
+        model.PublishingLimit = postingAccess.PublishingLimit;
+        model.PublishingWindowMonths = postingAccess.PublishingWindowMonths;
+        model.PublishingPlanLabel = postingAccess.PlanLabel;
+        model.PublishedInWindowCount = publishedInWindowCount;
         model.AvailableSports = availableSports;
         model.AvailableOpportunityTypes = TeamOpportunityTypeOptions;
+        var normalizedRequiredRegistrationFieldCodes = NormalizeOpportunityRegistrationEditorInput(
+            model,
+            canConfigureTryoutRegistration);
+        model.AvailableRegistrationFieldOptions = TryOutSpotOpportunityRegistrationFields.All
+            .Where(field => !string.Equals(field.Code, TryOutSpotOpportunityRegistrationFields.WaiverSignature, StringComparison.OrdinalIgnoreCase))
+            .Select(field => new OpportunityRegistrationFieldOptionPageItem(
+                field.Code,
+                field.Label,
+                field.Description,
+                normalizedRequiredRegistrationFieldCodes.Contains(field.Code, StringComparer.OrdinalIgnoreCase)))
+            .ToArray();
         model.HasUploadedPdf = existingOpportunity is not null
             && !string.IsNullOrWhiteSpace(existingOpportunity.UploadedPdfObjectKey);
         model.UploadedPdfFileName = existingOpportunity?.UploadedPdfFileName;
         model.UploadedPdfUrl = existingOpportunity is null || string.IsNullOrWhiteSpace(existingOpportunity.UploadedPdfObjectKey)
             ? null
             : BuildListingDocumentPath(OpportunityDocumentType, existingOpportunity.Id);
+        model.HasUploadedWaiverPdf = existingOpportunity is not null
+            && !string.IsNullOrWhiteSpace(existingOpportunity.WaiverUploadedPdfObjectKey);
+        model.UploadedWaiverPdfFileName = existingOpportunity?.WaiverUploadedPdfFileName;
+        model.UploadedWaiverPdfUrl = existingOpportunity is null || string.IsNullOrWhiteSpace(existingOpportunity.WaiverUploadedPdfObjectKey)
+            ? null
+            : BuildListingDocumentPath(OpportunityWaiverDocumentType, existingOpportunity.Id);
 
         return model;
     }
@@ -4500,11 +5563,103 @@ public sealed class AccountController(
     private async Task ValidateTeamOpportunityEditorInputAsync(
         TeamOpportunityEditorPageModel model,
         Team team,
+        bool canConfigureTryoutRegistration,
+        IReadOnlyCollection<string> normalizedRequiredRegistrationFieldCodes,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(model.Type))
         {
             ModelState.AddModelError(nameof(model.Type), "Opportunity type is required.");
+        }
+
+        if (!canConfigureTryoutRegistration && model.RegistrationRequired)
+        {
+            ModelState.AddModelError(
+                nameof(model.RegistrationRequired),
+                "Tryout registration requires Team Basic or higher.");
+        }
+
+        var isTryoutType = string.Equals(
+            NormalizeOptional(model.Type),
+            "tryout",
+            StringComparison.OrdinalIgnoreCase);
+        if (model.RegistrationRequired && !isTryoutType)
+        {
+            ModelState.AddModelError(
+                nameof(model.RegistrationRequired),
+                "Tryout registration can only be enabled for tryout listings.");
+        }
+
+        if (!model.RegistrationRequired && model.RegistrationFee > 0)
+        {
+            ModelState.AddModelError(
+                nameof(model.RegistrationFee),
+                "Registration fee can only be set when registration is enabled.");
+        }
+
+        if (model.RegistrationRequired && model.LimitRegistrationCapacity && model.MaxParticipants is null)
+        {
+            ModelState.AddModelError(
+                nameof(model.MaxParticipants),
+                "Provide a max registration count when registration capacity is limited.");
+        }
+
+        if (!model.RegistrationRequired && normalizedRequiredRegistrationFieldCodes.Count > 0)
+        {
+            ModelState.AddModelError(
+                nameof(model.RequiredRegistrationFieldCodes),
+                "Required registration fields can only be selected when registration is enabled.");
+        }
+
+        if (model.WaiverRequired && !model.RegistrationRequired)
+        {
+            ModelState.AddModelError(
+                nameof(model.WaiverRequired),
+                "Waiver settings can only be enabled when tryout registration is enabled.");
+        }
+
+        if (model.WaiverRequired
+            && !string.Equals(model.WaiverMethod, TryOutSpotOpportunityWaiverMethods.AtEvent, StringComparison.Ordinal)
+            && !string.Equals(model.WaiverMethod, TryOutSpotOpportunityWaiverMethods.Downloadable, StringComparison.Ordinal))
+        {
+            ModelState.AddModelError(
+                nameof(model.WaiverMethod),
+                "Choose whether waiver forms are handled at the event or provided as a downloadable PDF.");
+        }
+
+        var requiresWaiverReturnOption = model.WaiverRequired
+            && string.Equals(
+                model.WaiverMethod,
+                TryOutSpotOpportunityWaiverMethods.Downloadable,
+                StringComparison.Ordinal);
+        if (requiresWaiverReturnOption && !model.WaiverReturnByEmail && !model.WaiverReturnInPerson)
+        {
+            ModelState.AddModelError(
+                nameof(model.WaiverReturnByEmail),
+                "Choose at least one waiver return option (email or bring to event).");
+        }
+
+        if (model.WaiverRequired && model.WaiverReturnByEmail)
+        {
+            var effectiveContactEmail = NormalizeOptional(model.ContactEmail) ?? team.Email;
+            if (string.IsNullOrWhiteSpace(effectiveContactEmail))
+            {
+                ModelState.AddModelError(
+                    nameof(model.ContactEmail),
+                    "Contact email is required when waiver return by email is enabled.");
+            }
+        }
+
+        var hasExistingWaiverPdf = model.HasUploadedWaiverPdf && !model.RemoveUploadedWaiverPdf;
+        var hasNewWaiverPdfUpload = model.WaiverPdfUpload is { Length: > 0 };
+        if (model.WaiverRequired
+            && string.Equals(model.WaiverMethod, TryOutSpotOpportunityWaiverMethods.Downloadable, StringComparison.Ordinal)
+            && !hasExistingWaiverPdf
+            && !hasNewWaiverPdfUpload)
+        {
+            ModelState.AddModelError(
+                nameof(model.WaiverPdfUpload),
+                "Upload a waiver PDF when downloadable waiver access is enabled.");
         }
 
         var sportExists = await dbContext.Sports
@@ -4529,6 +5684,8 @@ public sealed class AccountController(
         var normalizedRegistrationDeadline = NormalizeUtc(model.RegistrationDeadline);
         var normalizedEventDate = NormalizeUtc(model.EventDate);
         var normalizedEventEndDate = NormalizeUtc(model.EventEndDate);
+        var normalizedListingStartDate = NormalizeUtc(model.ListingStartDate);
+        var normalizedListingEndDate = NormalizeUtc(model.ListingEndDate);
         var normalizedExpiresAt = NormalizeUtc(model.ExpiresAt);
 
         if (normalizedEventDate.HasValue
@@ -4555,6 +5712,150 @@ public sealed class AccountController(
                 nameof(model.ExpiresAt),
                 "Expiration must be in the future.");
         }
+
+        if (normalizedListingStartDate.HasValue
+            && normalizedListingEndDate.HasValue
+            && normalizedListingEndDate.Value < normalizedListingStartDate.Value)
+        {
+            ModelState.AddModelError(
+                nameof(model.ListingEndDate),
+                "Listing end date cannot be earlier than listing start date.");
+        }
+    }
+
+    private static IReadOnlyCollection<string> NormalizeOpportunityRegistrationEditorInput(
+        TeamOpportunityEditorPageModel model,
+        bool canConfigureTryoutRegistration)
+    {
+        var isTryoutType = string.Equals(
+            NormalizeOptional(model.Type),
+            "tryout",
+            StringComparison.OrdinalIgnoreCase);
+        if (!canConfigureTryoutRegistration || !isTryoutType)
+        {
+            model.RegistrationRequired = false;
+        }
+
+        if (!model.RegistrationRequired)
+        {
+            model.LimitRegistrationCapacity = false;
+            model.MaxParticipants = null;
+            model.RegistrationDeadline = null;
+            model.WaiverRequired = false;
+            model.WaiverMethod = null;
+            model.WaiverReturnByEmail = false;
+            model.WaiverReturnInPerson = false;
+            model.RemoveUploadedWaiverPdf = false;
+            model.RequiredRegistrationFieldCodes = [];
+            model.RegistrationFee = 0;
+            return [];
+        }
+
+        if (!model.LimitRegistrationCapacity)
+        {
+            model.MaxParticipants = null;
+        }
+
+        model.WaiverRequired = model.RegistrationRequired && model.WaiverRequired;
+        model.WaiverMethod = model.WaiverRequired
+            ? TryOutSpotOpportunityWaiverMethods.Normalize(model.WaiverMethod) ?? TryOutSpotOpportunityWaiverMethods.AtEvent
+            : null;
+        var isDownloadableWaiverMethod = model.WaiverRequired
+            && string.Equals(
+                model.WaiverMethod,
+                TryOutSpotOpportunityWaiverMethods.Downloadable,
+                StringComparison.Ordinal);
+        model.WaiverReturnByEmail = isDownloadableWaiverMethod && model.WaiverReturnByEmail;
+        model.WaiverReturnInPerson = isDownloadableWaiverMethod && model.WaiverReturnInPerson;
+        if (!model.WaiverRequired)
+        {
+            model.WaiverPdfUpload = null;
+        }
+
+        var normalizedRequiredFieldCodes = TryOutSpotOpportunityRegistrationFields.NormalizeSelectedCodes(
+            model.RequiredRegistrationFieldCodes)
+            .Where(code => !string.Equals(code, TryOutSpotOpportunityRegistrationFields.WaiverSignature, StringComparison.OrdinalIgnoreCase))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (model.WaiverRequired)
+        {
+            normalizedRequiredFieldCodes.Add(TryOutSpotOpportunityRegistrationFields.WaiverSignature);
+        }
+
+        model.RequiredRegistrationFieldCodes = normalizedRequiredFieldCodes.ToList();
+        return model.RequiredRegistrationFieldCodes;
+    }
+
+    private void LogTeamOpportunityEditModelStateFailure(
+        Guid userId,
+        Guid teamId,
+        Guid opportunityId,
+        TeamOpportunityEditorPageModel model,
+        string stage)
+    {
+        var modelStateErrors = BuildModelStateErrorMap();
+        logger.LogWarning(
+            "Team opportunity edit failed validation at stage {Stage}. UserId {UserId}, TeamId {TeamId}, OpportunityId {OpportunityId}, IsPublished {IsPublished}, RegistrationRequired {RegistrationRequired}, LimitRegistrationCapacity {LimitRegistrationCapacity}, MaxParticipants {MaxParticipants}, WaiverRequired {WaiverRequired}, WaiverMethod {WaiverMethod}, WaiverReturnByEmail {WaiverReturnByEmail}, WaiverReturnInPerson {WaiverReturnInPerson}, ListingStartDate {ListingStartDate}, ListingEndDate {ListingEndDate}, EventDate {EventDate}, EventEndDate {EventEndDate}, RegistrationDeadline {RegistrationDeadline}, RequiredRegistrationFieldCodes {RequiredRegistrationFieldCodes}, ModelStateErrors {@ModelStateErrors}",
+            stage,
+            userId,
+            teamId,
+            opportunityId,
+            model.IsPublished,
+            model.RegistrationRequired,
+            model.LimitRegistrationCapacity,
+            model.MaxParticipants,
+            model.WaiverRequired,
+            model.WaiverMethod,
+            model.WaiverReturnByEmail,
+            model.WaiverReturnInPerson,
+            model.ListingStartDate,
+            model.ListingEndDate,
+            model.EventDate,
+            model.EventEndDate,
+            model.RegistrationDeadline,
+            model.RequiredRegistrationFieldCodes,
+            modelStateErrors);
+    }
+
+    private Dictionary<string, string[]> BuildModelStateErrorMap()
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in ModelState)
+        {
+            if (entry.Value is null || entry.Value.Errors.Count == 0)
+            {
+                continue;
+            }
+
+            var key = string.IsNullOrWhiteSpace(entry.Key)
+                ? "<model>"
+                : entry.Key;
+            var messages = entry.Value.Errors
+                .Select(error => string.IsNullOrWhiteSpace(error.ErrorMessage)
+                    ? "Validation failed."
+                    : error.ErrorMessage)
+                .ToArray();
+            errors[key] = messages;
+        }
+
+        return errors;
+    }
+
+    private string BuildTeamOpportunityEditFailureMessage()
+    {
+        var messages = ModelState.Values
+            .SelectMany(entry => entry.Errors)
+            .Select(error => string.IsNullOrWhiteSpace(error.ErrorMessage) ? null : error.ErrorMessage.Trim())
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .Distinct(StringComparer.Ordinal)
+            .Take(3)
+            .ToArray();
+
+        if (messages.Length == 0)
+        {
+            return "Update was not saved. Please review the form and try again.";
+        }
+
+        return $"Update was not saved. {string.Join(" ", messages)}";
     }
 
     private async Task EnsureCanPublishTeamOpportunityAsync(
@@ -4576,22 +5877,60 @@ public sealed class AccountController(
             return;
         }
 
-        var publishedThisMonthCount = await GetPublishedOpportunityCountForCurrentMonthAsync(teamId, cancellationToken);
-        if (publishedThisMonthCount >= BasicTeamMonthlyPublishingLimit)
+        var publishedInWindowCount = await GetPublishedOpportunityCountForWindowAsync(
+            teamId,
+            postingAccess.PublishingWindowMonths,
+            cancellationToken);
+        if (publishedInWindowCount >= postingAccess.PublishingLimit)
         {
             ModelState.AddModelError(
                 nameof(TeamOpportunityEditorPageModel.IsPublished),
-                $"Basic Team includes up to {BasicTeamMonthlyPublishingLimit} published opportunities per month. Upgrade to Professional Team for unlimited postings.");
+                $"{postingAccess.PlanLabel} includes up to {postingAccess.PublishingLimit} published opportunities every {postingAccess.PublishingWindowMonths} months.");
         }
     }
 
     private async Task<TeamPostingAccess> ResolveTeamPostingAccessAsync(Guid userId, CancellationToken cancellationToken)
     {
         var entitlements = await entitlementService.GetEntitlementsAsync(userId, cancellationToken);
+        var activePlanCodes = entitlements?.ActivePlanCodes ?? [];
+
+        if (activePlanCodes.Contains(TryOutSpotPlanCodes.EnterpriseOrganization, StringComparer.Ordinal))
+        {
+            return TeamPostingAccess.Enterprise;
+        }
+
+        if (activePlanCodes.Contains(TryOutSpotPlanCodes.TeamProfessional, StringComparer.Ordinal))
+        {
+            return TeamPostingAccess.Professional;
+        }
+
+        if (activePlanCodes.Contains(TryOutSpotPlanCodes.TeamBasic, StringComparer.Ordinal))
+        {
+            return TeamPostingAccess.Basic;
+        }
+
         var featureCodes = entitlements?.FeatureCodes ?? [];
-        return new TeamPostingAccess(
-            featureCodes.Contains(TryOutSpotFeatureCodes.PostLimitedOpportunities, StringComparer.Ordinal),
-            featureCodes.Contains(TryOutSpotFeatureCodes.UnlimitedOpportunityPostings, StringComparer.Ordinal));
+        if (!featureCodes.Contains(TryOutSpotFeatureCodes.PostLimitedOpportunities, StringComparer.Ordinal))
+        {
+            return TeamPostingAccess.None;
+        }
+
+        return TeamPostingAccess.FreeCoach;
+    }
+
+    private async Task<bool> CanConfigureTryoutRegistrationAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var entitlements = await entitlementService.GetEntitlementsAsync(userId, cancellationToken);
+        var featureCodes = entitlements?.FeatureCodes ?? [];
+        return featureCodes.Contains(TryOutSpotFeatureCodes.StandardRegistrationManagement, StringComparer.Ordinal)
+            || featureCodes.Contains(TryOutSpotFeatureCodes.PremiumRegistrationManagement, StringComparer.Ordinal);
+    }
+
+    private async Task<bool> HasAdvancedOpportunitySearchAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var entitlements = await entitlementService.GetEntitlementsAsync(userId, cancellationToken);
+        var featureCodes = entitlements?.FeatureCodes ?? [];
+        return featureCodes.Contains(TryOutSpotFeatureCodes.AdvancedOpportunitySearch, StringComparer.Ordinal);
     }
 
     private async Task<TeamCreationAccess> ResolveTeamCreationAccessAsync(
@@ -4673,7 +6012,6 @@ public sealed class AccountController(
         CancellationToken cancellationToken)
     {
         var managedTeam = await dbContext.UserTeamRoles
-            .AsNoTracking()
             .AsSplitQuery()
             .Where(teamRole => teamRole.UserId == userId)
             .Where(teamRole => teamRole.TeamId == teamId)
@@ -4693,8 +6031,9 @@ public sealed class AccountController(
             : new ManagedTeamRoleContext(managedTeam.Team, managedTeam.Role);
     }
 
-    private async Task<Dictionary<Guid, int>> GetPublishedOpportunityCountsForCurrentMonthAsync(
+    private async Task<Dictionary<Guid, int>> GetPublishedOpportunityCountsForWindowAsync(
         IReadOnlyCollection<Guid> teamIds,
+        int windowMonths,
         CancellationToken cancellationToken)
     {
         if (teamIds.Count == 0)
@@ -4702,15 +6041,15 @@ public sealed class AccountController(
             return [];
         }
 
-        var (monthStart, monthEnd) = GetCurrentMonthRangeUtc();
+        var windowStart = DateTime.UtcNow.AddMonths(-windowMonths);
         return await dbContext.Opportunities
             .AsNoTracking()
             .Where(opportunity => teamIds.Contains(opportunity.TeamId))
-            .Where(opportunity => opportunity.IsActive)
-            .Where(opportunity => opportunity.IsPublished)
             .Where(opportunity => opportunity.PublishedAt != null
-                && opportunity.PublishedAt >= monthStart
-                && opportunity.PublishedAt < monthEnd)
+                && opportunity.PublishedAt >= windowStart)
+            .Where(opportunity =>
+                opportunity.IsActive
+                || opportunity.UpdatedAt > opportunity.PublishedAt!.Value.AddHours(24))
             .GroupBy(opportunity => opportunity.TeamId)
             .Select(group => new
             {
@@ -4720,25 +6059,19 @@ public sealed class AccountController(
             .ToDictionaryAsync(group => group.TeamId, group => group.Count, cancellationToken);
     }
 
-    private async Task<int> GetPublishedOpportunityCountForCurrentMonthAsync(
+    private async Task<int> GetPublishedOpportunityCountForWindowAsync(
         Guid teamId,
+        int windowMonths,
         CancellationToken cancellationToken)
     {
-        var counts = await GetPublishedOpportunityCountsForCurrentMonthAsync([teamId], cancellationToken);
+        var counts = await GetPublishedOpportunityCountsForWindowAsync([teamId], windowMonths, cancellationToken);
         return counts.TryGetValue(teamId, out var count) ? count : 0;
-    }
-
-    private static (DateTime MonthStart, DateTime MonthEnd) GetCurrentMonthRangeUtc()
-    {
-        var now = DateTime.UtcNow;
-        var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        return (monthStart, monthStart.AddMonths(1));
     }
 
     private static ManagedTeamOpportunitySummaryPageModel ToManagedTeamOpportunitySummary(
         Team team,
         string role,
-        int publishedThisMonthCount)
+        int publishedInWindowCount)
     {
         var activeOpportunities = team.Opportunities
             .Where(opportunity => opportunity.IsActive)
@@ -4758,6 +6091,7 @@ public sealed class AccountController(
             LogoImageUrl = ResolveTeamLogoPublicUrl(team.Id, team.LogoImageUrl),
             Role = role,
             TeamLevel = team.TeamLevel,
+            TeamDescription = NormalizeOptional(team.Description),
             GeographicScope = team.GeographicScope,
             City = team.City,
             State = team.State,
@@ -4766,7 +6100,7 @@ public sealed class AccountController(
             IsContactInfoVisible = team.IsContactInfoVisible,
             ActiveOpportunityCount = activeOpportunities.Length,
             PublishedOpportunityCount = activeOpportunities.Count(opportunity => opportunity.IsPublished),
-            PublishedThisMonthCount = publishedThisMonthCount,
+            PublishedInWindowCount = publishedInWindowCount,
             Sports = sports
         };
     }
@@ -4796,8 +6130,121 @@ public sealed class AccountController(
             IsPublished = opportunity.IsPublished,
             PublishedAt = opportunity.PublishedAt,
             ExpiresAt = opportunity.ExpiresAt,
+            ViewCount = opportunity.ViewCount,
             UpdatedAt = opportunity.UpdatedAt
         };
+    }
+
+    private static RegistrationStatusCategory ClassifyRegistrationStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return RegistrationStatusCategory.Pending;
+        }
+
+        var normalizedStatus = status.Trim().ToLowerInvariant();
+        if (normalizedStatus.Contains("accept", StringComparison.Ordinal)
+            || normalizedStatus.Contains("approve", StringComparison.Ordinal)
+            || normalizedStatus.Contains("confirm", StringComparison.Ordinal))
+        {
+            return RegistrationStatusCategory.Approved;
+        }
+
+        if (normalizedStatus.Contains("declin", StringComparison.Ordinal)
+            || normalizedStatus.Contains("reject", StringComparison.Ordinal)
+            || normalizedStatus.Contains("denied", StringComparison.Ordinal)
+            || normalizedStatus.Contains("withdraw", StringComparison.Ordinal)
+            || normalizedStatus.Contains("cancel", StringComparison.Ordinal))
+        {
+            return RegistrationStatusCategory.Declined;
+        }
+
+        return RegistrationStatusCategory.Pending;
+    }
+
+    private static string FormatRegistrationStatusLabel(string? status)
+    {
+        return ClassifyRegistrationStatus(status) switch
+        {
+            RegistrationStatusCategory.Approved => "Accepted",
+            RegistrationStatusCategory.Declined => "Declined",
+            _ => "Pending review"
+        };
+    }
+
+    private static string ToRegistrationStatusCode(string? status)
+    {
+        return ClassifyRegistrationStatus(status) switch
+        {
+            RegistrationStatusCategory.Approved => RegistrationWorkflowStatusAccepted,
+            RegistrationStatusCategory.Declined => RegistrationWorkflowStatusDeclined,
+            _ => RegistrationWorkflowStatusPending
+        };
+    }
+
+    private static string? NormalizeRegistrationWorkflowStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return null;
+        }
+
+        var normalized = status.Trim().ToLowerInvariant();
+        if (normalized.Contains("accept", StringComparison.Ordinal)
+            || normalized.Contains("approv", StringComparison.Ordinal)
+            || normalized.Contains("confirm", StringComparison.Ordinal))
+        {
+            return RegistrationWorkflowStatusAccepted;
+        }
+
+        if (normalized.Contains("declin", StringComparison.Ordinal)
+            || normalized.Contains("reject", StringComparison.Ordinal)
+            || normalized.Contains("deni", StringComparison.Ordinal)
+            || normalized.Contains("withdraw", StringComparison.Ordinal)
+            || normalized.Contains("cancel", StringComparison.Ordinal))
+        {
+            return RegistrationWorkflowStatusDeclined;
+        }
+
+        if (normalized.Contains("pending", StringComparison.Ordinal)
+            || normalized.Contains("review", StringComparison.Ordinal)
+            || normalized.Contains("new", StringComparison.Ordinal)
+            || normalized.Contains("submit", StringComparison.Ordinal))
+        {
+            return RegistrationWorkflowStatusPending;
+        }
+
+        return normalized switch
+        {
+            RegistrationWorkflowStatusAccepted => RegistrationWorkflowStatusAccepted,
+            RegistrationWorkflowStatusDeclined => RegistrationWorkflowStatusDeclined,
+            RegistrationWorkflowStatusPending => RegistrationWorkflowStatusPending,
+            _ => null
+        };
+    }
+
+    private static bool IsRegistrationMarkedPresent(string? attendanceStatus)
+    {
+        return string.Equals(
+            attendanceStatus?.Trim(),
+            RegistrationAttendancePresentStatus,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildPlayerDisplayName(string? firstName, string? lastName)
+    {
+        var displayName = $"{firstName} {lastName}".Trim();
+        return string.IsNullOrWhiteSpace(displayName) ? "Player" : displayName;
+    }
+
+    private static decimal? CalculateConversionRate(int registrations, int views)
+    {
+        if (views <= 0)
+        {
+            return null;
+        }
+
+        return Math.Round((decimal)registrations * 100m / views, 1, MidpointRounding.AwayFromZero);
     }
 
     private static PlayerListingSummaryPageModel ToPlayerListingSummaryPageModel(PlayerListing listing)
@@ -4993,6 +6440,59 @@ public sealed class AccountController(
                 "Failed to upload opportunity PDF to R2 for opportunity {OpportunityId}.",
                 opportunity.Id);
             ModelState.AddModelError(modelStateKey, "We could not upload the PDF right now. Please try again.");
+        }
+    }
+
+    private async Task ApplyOpportunityWaiverPdfUploadChangesAsync(
+        Opportunity opportunity,
+        Guid uploadedByUserId,
+        IFormFile? uploadedPdf,
+        bool removeUploadedPdf,
+        string modelStateKey,
+        CancellationToken cancellationToken)
+    {
+        if (uploadedPdf is null || uploadedPdf.Length == 0)
+        {
+            if (removeUploadedPdf)
+            {
+                await RemoveOpportunityWaiverPdfAsync(opportunity, cancellationToken);
+            }
+
+            return;
+        }
+
+        logger.LogInformation(
+            "Opportunity waiver PDF upload requested. OpportunityId={OpportunityId} UserId={UserId} FileName={FileName} FileSizeBytes={FileSizeBytes}",
+            opportunity.Id,
+            uploadedByUserId,
+            uploadedPdf.FileName,
+            uploadedPdf.Length);
+
+        var parsedUpload = await ParseUploadedPdfAsync(uploadedPdf, modelStateKey, cancellationToken);
+        if (parsedUpload is null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(opportunity.WaiverUploadedPdfObjectKey))
+        {
+            await pdfStorageService.DeletePdfAsync(opportunity.WaiverUploadedPdfObjectKey, cancellationToken);
+        }
+
+        try
+        {
+            var objectKey = BuildPdfObjectKey(OpportunityWaiverDocumentType, opportunity.Id, uploadedByUserId, parsedUpload.FileName);
+            await pdfStorageService.UploadPdfAsync(objectKey, parsedUpload.Content, cancellationToken);
+            opportunity.WaiverUploadedPdfObjectKey = objectKey;
+            opportunity.WaiverUploadedPdfFileName = parsedUpload.FileName;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "Failed to upload opportunity waiver PDF to R2 for opportunity {OpportunityId}.",
+                opportunity.Id);
+            ModelState.AddModelError(modelStateKey, "We could not upload the waiver PDF right now. Please try again.");
         }
     }
 
@@ -5203,6 +6703,17 @@ public sealed class AccountController(
         opportunity.UploadedPdfFileName = null;
     }
 
+    private async Task RemoveOpportunityWaiverPdfAsync(Opportunity opportunity, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(opportunity.WaiverUploadedPdfObjectKey))
+        {
+            await pdfStorageService.DeletePdfAsync(opportunity.WaiverUploadedPdfObjectKey, cancellationToken);
+        }
+
+        opportunity.WaiverUploadedPdfObjectKey = null;
+        opportunity.WaiverUploadedPdfFileName = null;
+    }
+
     private static string BuildListingDocumentPath(string listingType, Guid listingId)
     {
         return $"/listing-documents/{listingType}/{listingId}";
@@ -5223,6 +6734,11 @@ public sealed class AccountController(
         if (string.Equals(listingType, OpportunityDocumentType, StringComparison.OrdinalIgnoreCase))
         {
             return OpportunityDocumentType;
+        }
+
+        if (string.Equals(listingType, OpportunityWaiverDocumentType, StringComparison.OrdinalIgnoreCase))
+        {
+            return OpportunityWaiverDocumentType;
         }
 
         return null;
@@ -5322,6 +6838,16 @@ public sealed class AccountController(
             return listing is null ? null : (listing.UploadedPdfObjectKey, listing.UploadedPdfFileName);
         }
 
+        if (string.Equals(listingType, OpportunityWaiverDocumentType, StringComparison.Ordinal))
+        {
+            var listing = await dbContext.Opportunities
+                .AsNoTracking()
+                .Where(item => item.Id == listingId)
+                .Select(item => new { item.WaiverUploadedPdfObjectKey, item.WaiverUploadedPdfFileName })
+                .SingleOrDefaultAsync(cancellationToken);
+            return listing is null ? null : (listing.WaiverUploadedPdfObjectKey, listing.WaiverUploadedPdfFileName);
+        }
+
         return null;
     }
 
@@ -5355,6 +6881,31 @@ public sealed class AccountController(
         if (string.Equals(listingType, OpportunityDocumentType, StringComparison.Ordinal))
         {
             if (await CanAccessTeamOpportunityDocumentAsPublicAsync(listingId, cancellationToken))
+            {
+                return true;
+            }
+
+            var currentUserId = await GetCurrentAuthenticatedWebUserIdAsync();
+            if (!currentUserId.HasValue)
+            {
+                return false;
+            }
+
+            return await dbContext.Opportunities
+                .AsNoTracking()
+                .Where(opportunity => opportunity.Id == listingId)
+                .Where(opportunity => opportunity.IsActive)
+                .AnyAsync(opportunity =>
+                    opportunity.Team.UserTeamRoles.Any(teamRole =>
+                        teamRole.UserId == currentUserId.Value
+                        && teamRole.IsActive
+                        && teamRole.Team.IsActive),
+                    cancellationToken);
+        }
+
+        if (string.Equals(listingType, OpportunityWaiverDocumentType, StringComparison.Ordinal))
+        {
+            if (await CanAccessTeamOpportunityWaiverDocumentAsPublicAsync(listingId, cancellationToken))
             {
                 return true;
             }
@@ -5412,6 +6963,27 @@ public sealed class AccountController(
                 && opportunity.Team.IsSearchable
                 && opportunity.Team.IsContactInfoVisible
                 && (opportunity.Team.Organization == null || opportunity.Team.Organization.IsContactInfoVisible),
+                cancellationToken);
+    }
+
+    private async Task<bool> CanAccessTeamOpportunityWaiverDocumentAsPublicAsync(
+        Guid opportunityId,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        return await dbContext.Opportunities
+            .AsNoTracking()
+            .AnyAsync(opportunity =>
+                opportunity.Id == opportunityId
+                && opportunity.IsActive
+                && opportunity.IsPublished
+                && (opportunity.ExpiresAt == null || opportunity.ExpiresAt > now)
+                && opportunity.RegistrationRequired
+                && (opportunity.WaiverRequired
+                    || (opportunity.RegistrationRequiredFieldCodes != null
+                        && opportunity.RegistrationRequiredFieldCodes.Contains(TryOutSpotOpportunityRegistrationFields.WaiverSignature)))
+                && opportunity.Team.IsActive
+                && opportunity.Team.IsSearchable,
                 cancellationToken);
     }
 
@@ -5722,10 +7294,7 @@ public sealed class AccountController(
         User user,
         CancellationToken cancellationToken)
     {
-        var roles = (await userManager.GetRolesAsync(user))
-            .Where(role => TryOutSpotRoles.PublicRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
-            .OrderBy(role => role)
-            .ToArray();
+        var roles = await GetCanonicalPublicRolesAsync(user);
         var entitlements = await entitlementService.GetEntitlementsAsync(user.Id, cancellationToken);
         var subscriptions = await dbContext.Subscriptions
             .AsNoTracking()
@@ -5836,9 +7405,18 @@ public sealed class AccountController(
     private async Task<User?> GetCurrentWebUserAsync()
     {
         var result = await HttpContext.AuthenticateAsync(TryOutSpotAuthenticationSchemes.WebCookie);
+        if (!result.Succeeded || result.Principal is null)
+        {
+            logger.LogInformation("Web cookie authentication failed for request path {Path}.", HttpContext.Request.Path);
+            return null;
+        }
+
         var userIdClaim = result.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!Guid.TryParse(userIdClaim, out var userId))
         {
+            logger.LogInformation(
+                "Web cookie did not contain a valid user id for request path {Path}.",
+                HttpContext.Request.Path);
             return null;
         }
 
@@ -5875,45 +7453,31 @@ public sealed class AccountController(
     private static IReadOnlyCollection<AccountTypeSelectionItem> GetAccountTypeOptions(
         IEnumerable<string> selectedAccountTypes)
     {
-        var selected = selectedAccountTypes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var selected = selectedAccountTypes
+            .Select(TryOutSpotRoles.NormalizePublicRegistrationRole)
+            .Where(role => role is not null)
+            .Cast<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         return
         [
             new(
                 TryOutSpotRoles.Parent,
                 "Parent or guardian",
-                "Find tryouts, manage player profiles, and track registrations.",
+                "Role for managing player profiles and registrations. Subscription level controls unlocked tools.",
                 true,
                 selected.Contains(TryOutSpotRoles.Parent)),
             new(
                 TryOutSpotRoles.Player,
                 "Player",
-                "Build a profile and discover baseball or softball opportunities.",
+                "Role for player profile and discovery workflows. Subscription level controls unlocked tools.",
                 true,
                 selected.Contains(TryOutSpotRoles.Player)),
             new(
-                TryOutSpotRoles.Coach,
-                "Coach",
-                "Find players, manage tryouts, and communicate with families.",
+                TryOutSpotRoles.TeamRepresentative,
+                "Team representative",
+                "Team role. Eligible for Free Coach and paid team plans.",
                 true,
-                selected.Contains(TryOutSpotRoles.Coach)),
-            new(
-                TryOutSpotRoles.TeamManager,
-                "Team manager",
-                "Help operate a team, registrations, and opportunity listings.",
-                false,
-                selected.Contains(TryOutSpotRoles.TeamManager)),
-            new(
-                TryOutSpotRoles.AcademyDirector,
-                "Academy director",
-                "Manage academy-level teams, listings, and development programs.",
-                false,
-                selected.Contains(TryOutSpotRoles.AcademyDirector)),
-            new(
-                TryOutSpotRoles.OrganizationAdmin,
-                "Organization admin",
-                "Manage multi-team organizations, staff, and workflows.",
-                false,
-                selected.Contains(TryOutSpotRoles.OrganizationAdmin))
+                selected.Contains(TryOutSpotRoles.TeamRepresentative))
         ];
     }
 
@@ -5967,7 +7531,113 @@ public sealed class AccountController(
             }
         }
 
+        if (accountTypes.Count > 0
+            && !TryOutSpotRoles.TryValidateSingleRolePerBundle(accountTypes, out var validationError))
+        {
+            ModelState.AddModelError(modelStateKey, validationError ?? "Invalid role selection.");
+        }
+
         return accountTypes;
+    }
+
+    private static IReadOnlyCollection<string> BuildRequestedAccountTypesFromBundles(
+        IReadOnlyCollection<string>? accountTypes,
+        string? playerParentRole,
+        string? teamRole)
+    {
+        var selected = new List<string>();
+
+        if (accountTypes is not null && accountTypes.Count > 0)
+        {
+            selected.AddRange(accountTypes);
+        }
+
+        if (!string.IsNullOrWhiteSpace(playerParentRole))
+        {
+            selected.Add(playerParentRole);
+        }
+
+        if (!string.IsNullOrWhiteSpace(teamRole))
+        {
+            selected.Add(teamRole);
+        }
+
+        return selected;
+    }
+
+    private async Task<string?> NormalizeCurrentUserPublicRoleBundlesAsync(
+        User user,
+        CancellationToken cancellationToken)
+    {
+        var currentPublicRoles = (await userManager.GetRolesAsync(user))
+            .Where(role => TryOutSpotRoles.PublicOrLegacyRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+        if (currentPublicRoles.Length == 0)
+        {
+            return null;
+        }
+
+        var selectedPlayerRole = currentPublicRoles
+            .FirstOrDefault(TryOutSpotRoles.IsPlayerParentRole);
+        var selectedTeamRole = TryOutSpotRoles.SelectHighestPrecedenceTeamRole(currentPublicRoles);
+
+        var normalizedRoles = new List<string>();
+        if (!string.IsNullOrWhiteSpace(selectedPlayerRole))
+        {
+            normalizedRoles.Add(selectedPlayerRole);
+        }
+
+        if (!string.IsNullOrWhiteSpace(selectedTeamRole))
+        {
+            normalizedRoles.Add(selectedTeamRole);
+        }
+
+        if (normalizedRoles.Count == 0)
+        {
+            return null;
+        }
+
+        var normalizedSet = normalizedRoles.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var currentSet = currentPublicRoles.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (normalizedSet.SetEquals(currentSet))
+        {
+            return null;
+        }
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var removeResult = await userManager.RemoveFromRolesAsync(user, currentPublicRoles);
+        if (!removeResult.Succeeded)
+        {
+            logger.LogWarning(
+                "Unable to normalize account-type bundles for user {UserId}: {Errors}",
+                user.Id,
+                string.Join(" ", removeResult.Errors.Select(error => error.Description)));
+            return null;
+        }
+
+        var addResult = await userManager.AddToRolesAsync(user, normalizedRoles);
+        if (!addResult.Succeeded)
+        {
+            logger.LogWarning(
+                "Unable to add normalized account-type bundles for user {UserId}: {Errors}",
+                user.Id,
+                string.Join(" ", addResult.Errors.Select(error => error.Description)));
+            return null;
+        }
+
+        user.UpdatedAt = DateTime.UtcNow;
+        await userManager.UpdateAsync(user);
+        await transaction.CommitAsync(cancellationToken);
+        await SignInWebUserAsync(user, isPersistent: true);
+
+        var keptTeamRole = selectedTeamRole is null ? "none" : selectedTeamRole;
+        logger.LogInformation(
+            "Normalized legacy account-type roles for user {UserId}. Kept player bundle role '{PlayerRole}' and team bundle role '{TeamRole}'.",
+            user.Id,
+            selectedPlayerRole ?? "none",
+            keptTeamRole);
+
+        return $"We standardized account types to one selection per bundle. Kept {selectedPlayerRole ?? "no parent/player role"} and {keptTeamRole}.";
     }
 
     private static ExternalLoginTicket CreateTicket(
@@ -6115,6 +7785,208 @@ public sealed class AccountController(
     private static bool HasAnyRole(IReadOnlyCollection<string> roles, params string[] candidates)
     {
         return roles.Any(role => candidates.Contains(role, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private async Task<IReadOnlyCollection<string>> GetCanonicalPublicRolesAsync(User user)
+    {
+        return (await userManager.GetRolesAsync(user))
+            .Select(TryOutSpotRoles.NormalizePublicRegistrationRole)
+            .Where(role => role is not null)
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(role => role)
+            .ToArray();
+    }
+
+    private async Task<AccountTypeUpdateResult> UpdateAccountTypesInternalAsync(
+        User user,
+        IReadOnlyCollection<string> requestedAccountTypes,
+        CancellationToken cancellationToken)
+    {
+        var validatedAccountTypes = GetValidatedPublicAccountTypes(requestedAccountTypes, nameof(requestedAccountTypes));
+        if (validatedAccountTypes.Count == 0)
+        {
+            return AccountTypeUpdateResult.Failed("Choose at least one account type.");
+        }
+
+        var requestedRoles = validatedAccountTypes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var currentRoles = (await userManager.GetRolesAsync(user))
+            .Where(role => TryOutSpotRoles.PublicOrLegacyRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+
+        var hasCurrentTeamRole = currentRoles.Any(TryOutSpotRoles.IsTeamBundleRole);
+        var hasRequestedTeamRole = requestedRoles.Any(TryOutSpotRoles.IsTeamBundleRole);
+        var hasCurrentPlayerParentRole = HasAnyRole(currentRoles, TryOutSpotRoles.Parent, TryOutSpotRoles.Player);
+        var hasRequestedPlayerParentRole = requestedRoles.Contains(TryOutSpotRoles.Parent)
+            || requestedRoles.Contains(TryOutSpotRoles.Player);
+
+        if (hasCurrentTeamRole && !hasRequestedTeamRole)
+        {
+            var hasActiveTeamPaidSubscription = await HasActivePaidBundleSubscriptionAsync(user.Id, BundleType.Team, cancellationToken);
+            if (hasActiveTeamPaidSubscription)
+            {
+                return AccountTypeUpdateResult.Failed(
+                    "Team roles stay active while a paid team subscription is active. Cancel or downgrade team billing first, then remove team roles after billing ends.");
+            }
+        }
+
+        if (hasCurrentPlayerParentRole && !hasRequestedPlayerParentRole)
+        {
+            var hasActivePlayerPaidSubscription = await HasActivePaidBundleSubscriptionAsync(user.Id, BundleType.PlayerParent, cancellationToken);
+            if (hasActivePlayerPaidSubscription)
+            {
+                return AccountTypeUpdateResult.Failed(
+                    "Parent/player roles stay active while a paid player subscription is active. Cancel or downgrade player billing first, then remove those roles after billing ends.");
+            }
+        }
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var publicRolesToRemove = currentRoles
+            .Where(role => TryOutSpotRoles.PublicOrLegacyRegistrationRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+        if (publicRolesToRemove.Length > 0)
+        {
+            var removeResult = await userManager.RemoveFromRolesAsync(user, publicRolesToRemove);
+            if (!removeResult.Succeeded)
+            {
+                return AccountTypeUpdateResult.Failed(string.Join(" ", removeResult.Errors.Select(error => error.Description)));
+            }
+        }
+
+        var addResult = await userManager.AddToRolesAsync(user, validatedAccountTypes);
+        if (!addResult.Succeeded)
+        {
+            return AccountTypeUpdateResult.Failed(string.Join(" ", addResult.Errors.Select(error => error.Description)));
+        }
+
+        var now = DateTime.UtcNow;
+        if (hasCurrentTeamRole && !hasRequestedTeamRole)
+        {
+            await SoftDeactivateTeamBundleDataAsync(user.Id, now, cancellationToken);
+        }
+
+        if (hasCurrentPlayerParentRole && !hasRequestedPlayerParentRole)
+        {
+            await SoftDeactivatePlayerBundleDataAsync(user.Id, now, cancellationToken);
+        }
+
+        user.UpdatedAt = now;
+        await userManager.UpdateAsync(user);
+        await transaction.CommitAsync(cancellationToken);
+        await SignInWebUserAsync(user, isPersistent: true);
+        return AccountTypeUpdateResult.Success("Account types updated.");
+    }
+
+    private async Task<bool> HasActivePaidBundleSubscriptionAsync(
+        Guid userId,
+        BundleType bundleType,
+        CancellationToken cancellationToken)
+    {
+        var subscriptions = await dbContext.Subscriptions
+            .AsNoTracking()
+            .Where(subscription => subscription.UserId == userId)
+            .Where(subscription => TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status))
+            .ToArrayAsync(cancellationToken);
+
+        foreach (var subscription in subscriptions)
+        {
+            var normalizedPlanCode = TryOutSpotBillingCatalog.NormalizePlanCode(subscription.PlanType);
+            if (normalizedPlanCode is null)
+            {
+                continue;
+            }
+
+            if (bundleType == BundleType.Team
+                && (normalizedPlanCode == TryOutSpotPlanCodes.TeamBasic
+                    || normalizedPlanCode == TryOutSpotPlanCodes.TeamProfessional
+                    || normalizedPlanCode == TryOutSpotPlanCodes.EnterpriseOrganization))
+            {
+                return true;
+            }
+
+            if (bundleType == BundleType.PlayerParent
+                && normalizedPlanCode == TryOutSpotPlanCodes.PremiumPlayer)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private async Task SoftDeactivateTeamBundleDataAsync(
+        Guid userId,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var teams = await dbContext.Teams
+            .Where(team => team.UserTeamRoles.Any(role => role.UserId == userId))
+            .ToArrayAsync(cancellationToken);
+        if (teams.Length == 0)
+        {
+            return;
+        }
+
+        var teamIds = teams.Select(team => team.Id).ToArray();
+        foreach (var team in teams)
+        {
+            team.IsActive = false;
+            team.IsSearchable = false;
+            team.IsContactInfoVisible = false;
+            team.UpdatedAt = now;
+        }
+
+        var opportunities = await dbContext.Opportunities
+            .Where(opportunity => teamIds.Contains(opportunity.TeamId))
+            .Where(opportunity => opportunity.IsActive || opportunity.IsPublished)
+            .ToArrayAsync(cancellationToken);
+        foreach (var opportunity in opportunities)
+        {
+            opportunity.IsActive = false;
+            opportunity.IsPublished = false;
+            opportunity.ExpiresAt ??= now;
+            opportunity.UpdatedAt = now;
+        }
+    }
+
+    private async Task SoftDeactivatePlayerBundleDataAsync(
+        Guid userId,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var playerIds = await dbContext.UserPlayerRelationships
+            .AsNoTracking()
+            .Where(relationship => relationship.UserId == userId && relationship.CanManage)
+            .Select(relationship => relationship.PlayerId)
+            .Distinct()
+            .ToArrayAsync(cancellationToken);
+        if (playerIds.Length == 0)
+        {
+            return;
+        }
+
+        var players = await dbContext.Players
+            .Where(player => playerIds.Contains(player.Id))
+            .ToArrayAsync(cancellationToken);
+        foreach (var player in players)
+        {
+            player.IsActive = false;
+            player.IsSearchable = false;
+            player.UpdatedAt = now;
+        }
+
+        var listings = await dbContext.PlayerListings
+            .Where(listing => listing.UserId == userId)
+            .Where(listing => listing.PlayerId.HasValue && playerIds.Contains(listing.PlayerId.Value))
+            .Where(listing => listing.IsActive || listing.IsPublished)
+            .ToArrayAsync(cancellationToken);
+        foreach (var listing in listings)
+        {
+            listing.IsActive = false;
+            listing.IsPublished = false;
+            listing.ExpiresAt ??= now;
+            listing.UpdatedAt = now;
+        }
     }
 
     private static bool IsActivePaidSubscription(Subscription subscription)
@@ -6330,6 +8202,55 @@ public sealed class AccountController(
             : JsonSerializer.Serialize(populatedLinks);
     }
 
+    private static string? SerializeRegistrationFieldCodes(IReadOnlyCollection<string> requiredFieldCodes)
+    {
+        if (requiredFieldCodes.Count == 0)
+        {
+            return null;
+        }
+
+        return JsonSerializer.Serialize(requiredFieldCodes);
+    }
+
+    private static IReadOnlyCollection<string> DeserializeRegistrationFieldCodes(string? serializedFieldCodes)
+    {
+        if (string.IsNullOrWhiteSpace(serializedFieldCodes))
+        {
+            return [];
+        }
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<string[]>(serializedFieldCodes);
+            return TryOutSpotOpportunityRegistrationFields.NormalizeSelectedCodes(parsed);
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static bool ResolveWaiverRequired(
+        bool storedWaiverRequired,
+        IReadOnlyCollection<string> requiredFieldCodes)
+    {
+        return storedWaiverRequired
+            || requiredFieldCodes.Contains(TryOutSpotOpportunityRegistrationFields.WaiverSignature, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string? ResolveWaiverMethod(
+        string? storedWaiverMethod,
+        bool waiverRequired)
+    {
+        if (!waiverRequired)
+        {
+            return null;
+        }
+
+        return TryOutSpotOpportunityWaiverMethods.Normalize(storedWaiverMethod)
+            ?? TryOutSpotOpportunityWaiverMethods.AtEvent;
+    }
+
     private static string? NormalizeSocialHandleOrUrl(string? value, string baseUrl)
     {
         var normalized = NormalizeOptional(value);
@@ -6504,9 +8425,20 @@ public sealed class AccountController(
         Guid[] SelectedSportIds,
         PlayerSportDetailPageModel[] SelectedSportDetails);
 
-    private sealed record TeamPostingAccess(bool HasLimitedPosting, bool HasUnlimitedPosting)
+    private sealed record TeamPostingAccess(
+        bool HasLimitedPosting,
+        bool HasUnlimitedPosting,
+        int PublishingLimit,
+        int PublishingWindowMonths,
+        string PlanLabel)
     {
         public bool CanPostOpportunities => HasLimitedPosting || HasUnlimitedPosting;
+
+        public static TeamPostingAccess None { get; } = new(false, false, 0, 0, "No plan");
+        public static TeamPostingAccess Professional { get; } = new(true, false, ProfessionalTeamPublishingLimit, ProfessionalTeamPublishingWindowMonths, "Professional Team");
+        public static TeamPostingAccess Enterprise { get; } = new(true, false, EnterpriseTeamPublishingLimit, EnterpriseTeamPublishingWindowMonths, "Enterprise Organization");
+        public static TeamPostingAccess Basic { get; } = new(true, false, BasicTeamPublishingLimit, BasicTeamPublishingWindowMonths, "Basic Team");
+        public static TeamPostingAccess FreeCoach { get; } = new(true, false, FreeCoachPublishingLimit, FreeCoachPublishingWindowMonths, "Free Coach");
     }
 
     private sealed record TeamCreationAccess(bool CanCreateAdditionalTeam, string? BlockReason)
@@ -6517,5 +8449,31 @@ public sealed class AccountController(
     }
 
     private sealed record ManagedTeamRoleContext(Team Team, string Role);
+    private sealed record ListingRegistrationStats(
+        int TotalCount,
+        int UniqueApplicantCount,
+        int PendingCount,
+        int ApprovedCount,
+        int DeclinedCount);
+
+    private enum RegistrationStatusCategory
+    {
+        Pending,
+        Approved,
+        Declined
+    }
+
     private sealed record UploadedImagePayload(string FileName, byte[] Content, string ContentType);
+    private enum BundleType
+    {
+        Team,
+        PlayerParent
+    }
+
+    private sealed record AccountTypeUpdateResult(bool Updated, string Message)
+    {
+        public static AccountTypeUpdateResult Success(string message) => new(true, message);
+
+        public static AccountTypeUpdateResult Failed(string message) => new(false, message);
+    }
 }
