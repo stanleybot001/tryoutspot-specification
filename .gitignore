@@ -5,6 +5,7 @@ obj/
 # User/local tooling
 .vs/
 .vscode/
+.codex-temp/
 Application/TryOutSpot.Web/.config/
 *.user
 *.suo
@@ -12,6 +13,7 @@ Application/TryOutSpot.Web/.config/
 # Local app data and secrets
 Application/TryOutSpot.Web/App_Data/
 Application/TryOutSpot.Web/Properties/PublishProfiles/
+uszips/
 appsettings.Local.json
 appsettings.Production.json
 *.Development.local.json
