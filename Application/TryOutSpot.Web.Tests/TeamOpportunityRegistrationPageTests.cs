@@ -182,6 +182,7 @@ public sealed class TeamOpportunityRegistrationPageTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("Registration roster", html, StringComparison.Ordinal);
+        Assert.Contains("registration-share-table", html, StringComparison.Ordinal);
         Assert.Contains("Email link", html, StringComparison.Ordinal);
         Assert.Contains("sms:?body=", html, StringComparison.Ordinal);
         Assert.Contains("Pending Registrant", html, StringComparison.Ordinal);

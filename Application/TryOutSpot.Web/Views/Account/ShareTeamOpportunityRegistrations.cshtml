@@ -18,29 +18,29 @@
                 @: - @Model.OrganizationName
             }</p>
         <div class="form-actions registration-share-actions">
-            <a class="btn btn-primary" href="@emailHref">Email link</a>
-            <a class="btn btn-outline-primary" href="@smsHref">Text link</a>
-            <a class="btn btn-outline-secondary" href="/account/onboarding/team-opportunities/@Model.TeamId">Back to listing</a>
+            <a class="btn btn-primary btn-sm" href="@emailHref">Email link</a>
+            <a class="btn btn-outline-primary btn-sm" href="@smsHref">Text link</a>
+            <a class="btn btn-outline-secondary btn-sm" href="/account/onboarding/team-opportunities/@Model.TeamId">Back to listing</a>
         </div>
     </div>
 
-    <section class="form-section registration-share-summary">
-        <div class="team-summary-grid opportunity-summary-grid">
-            <div><span>Sport</span><strong>@Model.SportName</strong></div>
-            <div><span>Type</span><strong>@FormatOpportunityType(Model.Type)</strong></div>
-            <div><span>Registered players</span><strong>@Model.RegistrantCount</strong></div>
-            <div><span>Generated</span><strong>@FormatDateTime(Model.GeneratedAt)</strong></div>
-            <div><span>Age group</span><strong>@FormatValue(Model.AgeGroup)</strong></div>
-            <div><span>Competition</span><strong>@FormatValue(Model.CompetitionLevel)</strong></div>
-            <div><span>Event start</span><strong>@FormatDate(Model.EventDate)</strong></div>
-            <div><span>Event end</span><strong>@FormatDate(Model.EventEndDate)</strong></div>
-            <div><span>Location</span><strong>@FormatValue(Model.Location)</strong></div>
-            <div><span>Address</span><strong>@FormatValue(Model.Address)</strong></div>
-            <div><span>City/State/ZIP</span><strong>@FormatLocation(Model.City, Model.State, Model.ZipCode)</strong></div>
+    <section class="form-section registration-share-summary p-3">
+        <div class="d-flex flex-wrap gap-2 small text-muted">
+            <span><strong class="text-body">Sport:</strong> @Model.SportName</span>
+            <span><strong class="text-body">Type:</strong> @FormatOpportunityType(Model.Type)</span>
+            <span><strong class="text-body">Players:</strong> @Model.RegistrantCount</span>
+            <span><strong class="text-body">Generated:</strong> @FormatDateTime(Model.GeneratedAt)</span>
+            <span><strong class="text-body">Age:</strong> @FormatValue(Model.AgeGroup)</span>
+            <span><strong class="text-body">Competition:</strong> @FormatValue(Model.CompetitionLevel)</span>
+            <span><strong class="text-body">Start:</strong> @FormatDate(Model.EventDate)</span>
+            <span><strong class="text-body">End:</strong> @FormatDate(Model.EventEndDate)</span>
+            <span><strong class="text-body">Location:</strong> @FormatValue(Model.Location)</span>
+            <span><strong class="text-body">Address:</strong> @FormatValue(Model.Address)</span>
+            <span><strong class="text-body">City/State/ZIP:</strong> @FormatLocation(Model.City, Model.State, Model.ZipCode)</span>
         </div>
     </section>
 
-    <section class="form-section registration-share-roster">
+    <section class="form-section registration-share-roster p-3">
         <h2>Players</h2>
         @if (Model.Registrants.Count == 0)
         {
@@ -48,67 +48,71 @@
         }
         else
         {
-            <div class="registration-share-list">
-                @foreach (var registrant in Model.Registrants)
-                {
-                    <article class="registration-share-player @(registrant.IsFavoritedByViewer ? "favorited" : string.Empty)">
-                        <div class="registration-share-player-head">
-                            <div>
-                                <h3>
-                                    @registrant.PlayerName
-                                    @if (registrant.IsFavoritedByViewer)
-                                    {
-                                        <span class="favorite-player-marker"
-                                              title="Favorited player listing"
-                                              aria-label="Favorited player listing">&#9733;</span>
-                                    }
-                                </h3>
-                                <p>
-                                    <span>@registrant.StatusLabel</span>
-                                    <span>Registered @FormatDateTime(registrant.RegisteredAt)</span>
-                                </p>
-                            </div>
-                            <div class="registration-share-badges">
-                                <span>@(registrant.IsPresent ? "Present" : "Not checked in")</span>
-                                <span>@(registrant.IsWaiverReceived ? "Waiver received" : "Waiver missing")</span>
-                            </div>
-                        </div>
-
-                        <div class="registration-share-grid">
-                            <div><span>School</span><strong>@FormatValue(registrant.SchoolName)</strong></div>
-                            <div><span>Player contact</span><strong>@FormatContact(registrant.PlayerPhone, registrant.PlayerEmail)</strong></div>
-                            <div><span>Guardian</span><strong>@FormatValue(registrant.GuardianName)</strong></div>
-                            <div><span>Guardian contact</span><strong>@FormatContact(registrant.GuardianPhone, registrant.GuardianEmail)</strong></div>
-                            <div><span>Emergency contact</span><strong>@FormatValue(registrant.EmergencyContactName)</strong></div>
-                            <div><span>Emergency phone</span><strong>@FormatValue(registrant.EmergencyContactPhone)</strong></div>
-                        </div>
-
-                        @if (!string.IsNullOrWhiteSpace(registrant.MedicalInfo)
-                            || !string.IsNullOrWhiteSpace(registrant.AdditionalNotes)
-                            || registrant.CheckedInAt.HasValue
-                            || registrant.WaiverReceivedAt.HasValue)
+            <div class="table-responsive">
+                <table class="table table-sm align-middle registration-share-table mb-0">
+                    <thead>
+                        <tr>
+                            <th scope="col">Player</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Player contact</th>
+                            <th scope="col">Guardian</th>
+                            <th scope="col">Emergency</th>
+                            <th scope="col">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var registrant in Model.Registrants)
                         {
-                            <div class="registration-share-notes">
-                                @if (registrant.CheckedInAt.HasValue)
-                                {
-                                    <p><strong>Checked in:</strong> @FormatDateTime(registrant.CheckedInAt.Value)</p>
-                                }
-                                @if (registrant.WaiverReceivedAt.HasValue)
-                                {
-                                    <p><strong>Waiver logged:</strong> @FormatDateTime(registrant.WaiverReceivedAt.Value)</p>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(registrant.MedicalInfo))
-                                {
-                                    <p><strong>Medical notes:</strong> @registrant.MedicalInfo</p>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(registrant.AdditionalNotes))
-                                {
-                                    <p><strong>Additional notes:</strong> @registrant.AdditionalNotes</p>
-                                }
-                            </div>
+                            <tr class="@(registrant.IsFavoritedByViewer ? "table-warning" : string.Empty)">
+                                <td>
+                                    <strong>
+                                        @registrant.PlayerName
+                                        @if (registrant.IsFavoritedByViewer)
+                                        {
+                                            <span class="favorite-player-marker"
+                                                  title="Favorited player listing"
+                                                  aria-label="Favorited player listing">&#9733;</span>
+                                        }
+                                    </strong>
+                                    <span class="d-block small text-muted">@FormatValue(registrant.SchoolName)</span>
+                                </td>
+                                <td>
+                                    <span>@registrant.StatusLabel</span>
+                                    <span class="d-block small text-muted">Registered @FormatDateTime(registrant.RegisteredAt)</span>
+                                    <span class="d-block small text-muted">@(registrant.IsPresent ? "Present" : "Not checked in")</span>
+                                    <span class="d-block small text-muted">@(registrant.IsWaiverReceived ? "Waiver received" : "Waiver missing")</span>
+                                </td>
+                                <td>@FormatContact(registrant.PlayerPhone, registrant.PlayerEmail)</td>
+                                <td>
+                                    <span>@FormatValue(registrant.GuardianName)</span>
+                                    <span class="d-block small text-muted">@FormatContact(registrant.GuardianPhone, registrant.GuardianEmail)</span>
+                                </td>
+                                <td>
+                                    <span>@FormatValue(registrant.EmergencyContactName)</span>
+                                    <span class="d-block small text-muted">@FormatValue(registrant.EmergencyContactPhone)</span>
+                                </td>
+                                <td>
+                                    @if (registrant.CheckedInAt.HasValue)
+                                    {
+                                        <span class="d-block">Checked in @FormatDateTime(registrant.CheckedInAt.Value)</span>
+                                    }
+                                    @if (registrant.WaiverReceivedAt.HasValue)
+                                    {
+                                        <span class="d-block">Waiver logged @FormatDateTime(registrant.WaiverReceivedAt.Value)</span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(registrant.MedicalInfo))
+                                    {
+                                        <span class="d-block">Medical: @registrant.MedicalInfo</span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(registrant.AdditionalNotes))
+                                    {
+                                        <span class="d-block">Notes: @registrant.AdditionalNotes</span>
+                                    }
+                                </td>
+                            </tr>
                         }
-                    </article>
-                }
+                    </tbody>
+                </table>
             </div>
         }
     </section>
