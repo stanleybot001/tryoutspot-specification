@@ -278,10 +278,12 @@ public sealed class AccountPageTests
         Assert.Equal(HttpStatusCode.OK, onboardingResponse.StatusCode);
 
         var html = await onboardingResponse.Content.ReadAsStringAsync();
-        Assert.Contains("Setup checklist", html);
+        Assert.Contains("Dashboard menu", html);
+        Assert.Contains("Player dashboard", html);
+        Assert.DoesNotContain("Setup checklist", html);
+        Assert.DoesNotContain("Available features", html);
         Assert.DoesNotContain("name=\"playerParentRole\"", html);
         Assert.DoesNotContain("name=\"teamRole\"", html);
-        Assert.Contains("Completed setup", html);
         Assert.Contains("Recommended plan options", html);
         Assert.Contains("href=\"/account/onboarding/add-player-profile\"", html);
         Assert.Contains("href=\"/account/onboarding/choose-plan\"", html);
@@ -302,6 +304,8 @@ public sealed class AccountPageTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Team dashboard", html);
+        Assert.DoesNotContain("Available features", html);
         Assert.Contains("href=\"/account/onboarding/add-team-or-organization\"", html);
         Assert.Contains("href=\"/account/onboarding/choose-plan\"", html);
     }
@@ -1391,6 +1395,7 @@ public sealed class AccountPageTests
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("<strong>Choose plan</strong>", html);
         Assert.Contains("href=\"/account/onboarding/choose-plan\">Open</a>", html);
+        Assert.DoesNotContain("Available features", html);
     }
 
     [Fact]

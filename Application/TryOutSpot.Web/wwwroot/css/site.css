@@ -549,6 +549,64 @@ body.splash-page {
   background: #f2fbf7;
 }
 
+.dashboard-menu-section {
+  display: grid;
+  gap: 1rem;
+}
+
+.dashboard-menu-group {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.dashboard-menu-group h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.dashboard-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.dashboard-menu-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.85rem;
+  align-items: start;
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0.9rem;
+}
+
+.dashboard-menu-card.complete {
+  border-color: #9fd4c0;
+  background: #f2fbf7;
+}
+
+.dashboard-menu-card strong,
+.dashboard-menu-card span {
+  display: block;
+}
+
+.dashboard-menu-card span,
+.dashboard-menu-state {
+  color: #64748b;
+}
+
+.dashboard-menu-action {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 130px;
+  text-align: right;
+}
+
 .plan-row.plan-row-active {
   border-color: #60a5fa;
   background: #eff6ff;
@@ -1301,13 +1359,17 @@ body.splash-page {
   .account-summary-strip.settings-summary,
   .settings-layout,
   .onboarding-layout,
+  .dashboard-menu-grid,
+  .dashboard-menu-card,
   .step-row,
   .plan-row {
     grid-template-columns: 1fr;
   }
 
   .step-status,
+  .dashboard-menu-action,
   .plan-price {
+    justify-content: flex-start;
     text-align: left;
   }
 

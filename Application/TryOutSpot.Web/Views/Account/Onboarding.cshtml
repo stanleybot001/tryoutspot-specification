@@ -13,9 +13,27 @@
     var visibleSteps = Model.Steps
         .Where(step => !step.IsComplete || !hiddenWhenCompleteStepCodes.Contains(step.Code))
         .ToArray();
-    var completedSteps = Model.Steps
-        .Where(step => step.IsComplete && hiddenWhenCompleteStepCodes.Contains(step.Code))
+    var accountMenuSteps = visibleSteps
+        .Where(step => IsAccountSetupStep(step.Code))
         .ToArray();
+    var playerMenuSteps = visibleSteps
+        .Where(step => IsPlayerDashboardStep(step.Code))
+        .ToArray();
+    var teamMenuSteps = visibleSteps
+        .Where(step => IsTeamDashboardStep(step.Code))
+        .ToArray();
+    var savedMenuSteps = visibleSteps
+        .Where(step => string.Equals(step.Code, "my_favorites", StringComparison.OrdinalIgnoreCase))
+        .ToArray();
+    var menuGroups = new[]
+    {
+        new { Title = "Account setup", Steps = accountMenuSteps },
+        new { Title = "Player dashboard", Steps = playerMenuSteps },
+        new { Title = "Team dashboard", Steps = teamMenuSteps },
+        new { Title = "Saved items", Steps = savedMenuSteps }
+    }
+    .Where(group => group.Steps.Length > 0)
+    .ToArray();
     var showAccountTypeEditor = !Model.Steps.Any(step =>
         string.Equals(step.Code, "choose_account_types", StringComparison.OrdinalIgnoreCase) && step.IsComplete);
 }
@@ -49,60 +67,43 @@
     </section>
 
     <div class="onboarding-layout">
-        <section class="form-section">
-            <h2>Setup checklist</h2>
-            <div class="step-list">
-                @foreach (var step in visibleSteps)
+        <section class="form-section dashboard-menu-section">
+            <h2>Dashboard menu</h2>
+            <p class="section-help">Use these shortcuts to manage the areas tied to your account.</p>
+            @if (menuGroups.Length == 0)
+            {
+                <p class="section-help">No dashboard actions are available yet.</p>
+            }
+            else
+            {
+                @foreach (var group in menuGroups)
                 {
-                    <div class="step-row @(step.IsComplete ? "complete" : string.Empty)">
-                        <div>
-                            <strong>@step.Title</strong>
-                            <span>@step.Description</span>
-                        </div>
-                        <div class="step-status">
-                            @if (step.IsRequired)
+                    <div class="dashboard-menu-group">
+                        <h3>@group.Title</h3>
+                        <div class="dashboard-menu-grid">
+                            @foreach (var step in group.Steps)
                             {
-                                <span class="required-pill">Required</span>
-                            }
-                            @if (step.IsComplete)
-                            {
-                                <span>Complete</span>
-                            }
-                            @if (TryGetStepOpenUrl(step.Code, out var stepOpenUrl))
-                            {
-                                <a class="btn btn-sm btn-outline-primary" href="@stepOpenUrl">@(step.IsComplete ? "View" : "Open")</a>
-                            }
-                            else if (!step.IsComplete)
-                            {
-                                <span>Open</span>
+                                <article class="dashboard-menu-card @(step.IsComplete ? "complete" : string.Empty)">
+                                    <div>
+                                        <strong>@step.Title</strong>
+                                        <span>@step.Description</span>
+                                    </div>
+                                    <div class="dashboard-menu-action">
+                                        @if (step.IsRequired)
+                                        {
+                                            <span class="required-pill">Required</span>
+                                        }
+                                        <span class="dashboard-menu-state">@(step.IsComplete ? "Complete" : "Next")</span>
+                                        @if (TryGetStepOpenUrl(step.Code, out var stepOpenUrl))
+                                        {
+                                            <a class="btn btn-sm btn-outline-primary" href="@stepOpenUrl">@(step.IsComplete ? "View" : "Open")</a>
+                                        }
+                                    </div>
+                                </article>
                             }
                         </div>
                     </div>
                 }
-            </div>
-            @if (completedSteps.Length > 0)
-            {
-                <details class="mt-3">
-                    <summary class="section-help">Completed setup (@completedSteps.Length)</summary>
-                    <div class="step-list mt-2">
-                        @foreach (var step in completedSteps)
-                        {
-                            <div class="step-row complete">
-                                <div>
-                                    <strong>@step.Title</strong>
-                                    <span>@step.Description</span>
-                                </div>
-                                <div class="step-status">
-                                    <span>Complete</span>
-                                    @if (TryGetStepOpenUrl(step.Code, out var stepOpenUrl))
-                                    {
-                                        <a class="btn btn-sm btn-outline-primary" href="@stepOpenUrl">View</a>
-                                    }
-                                </div>
-                            </div>
-                        }
-                    </div>
-                </details>
             }
         </section>
 
@@ -262,19 +263,6 @@
         </section>
     }
 
-    @if (Model.FeatureCodes.Count > 0)
-    {
-        <section class="form-section">
-            <h2>Available features</h2>
-            <div class="feature-code-list">
-                @foreach (var featureCode in Model.FeatureCodes.OrderBy(code => code))
-                {
-                    <span>@featureCode</span>
-                }
-            </div>
-        </section>
-    }
-
     <form asp-action="Logout" asp-controller="Account" method="post" class="logout-form">
         <button type="submit" class="btn btn-outline-secondary">Sign out</button>
     </form>
@@ -302,6 +290,25 @@
         };
 
         return !string.IsNullOrWhiteSpace(url);
+    }
+
+    private static bool IsAccountSetupStep(string stepCode)
+    {
+        return string.Equals(stepCode, "choose_account_types", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(stepCode, "verify_email", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(stepCode, "choose_plan", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPlayerDashboardStep(string stepCode)
+    {
+        return string.Equals(stepCode, "add_player_profile", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(stepCode, "manage_player_listings", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTeamDashboardStep(string stepCode)
+    {
+        return string.Equals(stepCode, "add_team_or_organization", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(stepCode, "manage_team_opportunities", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FormatAgendaDate(DateTime? value)
