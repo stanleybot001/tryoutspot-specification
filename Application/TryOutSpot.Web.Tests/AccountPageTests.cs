@@ -311,6 +311,63 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task Onboarding_WithCompletedTeamOrganizationDetails_UsesEverydayDashboardCopy()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync(
+            "web-onboarding-team-complete@example.com",
+            [TryOutSpotRoles.TeamRepresentative]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.TeamBasic, "active");
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var now = DateTime.UtcNow;
+            var teamId = Guid.NewGuid();
+            dbContext.Teams.Add(new Team
+            {
+                Id = teamId,
+                Name = "Everyday Dashboard 14U",
+                TeamLevel = "14U",
+                GeographicScope = "Regional",
+                City = "McPherson",
+                State = "KS",
+                ZipCode = "67460",
+                IsSearchable = true,
+                IsContactInfoVisible = true,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+            dbContext.UserTeamRoles.Add(new UserTeamRole
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                TeamId = teamId,
+                Role = TryOutSpotRoles.TeamRepresentative,
+                StartDate = now,
+                IsActive = true,
+                CreatedAt = now
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var response = await client.GetAsync("/account/onboarding");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Taylor, manage your TryOutSpot activity.", html);
+        Assert.Contains("Keep team details, listings, favorites, and account settings ready for everyday work.", html);
+        Assert.DoesNotContain("Taylor, finish the pieces that matter.", html);
+    }
+
+    [Fact]
     public async Task Onboarding_WithManagedPlayerTryoutRegistration_ShowsUpcomingRegistrationList()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();

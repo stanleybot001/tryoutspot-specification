@@ -36,13 +36,22 @@
     .ToArray();
     var showAccountTypeEditor = !Model.Steps.Any(step =>
         string.Equals(step.Code, "choose_account_types", StringComparison.OrdinalIgnoreCase) && step.IsComplete);
+    var hasCompletedTeamOrganizationDetails = Model.Steps.Any(step =>
+        string.Equals(step.Code, "add_team_or_organization", StringComparison.OrdinalIgnoreCase) && step.IsComplete);
+    var pageKicker = hasCompletedTeamOrganizationDetails ? "Dashboard" : "Setup";
+    var pageHeading = hasCompletedTeamOrganizationDetails
+        ? $"{Model.FirstName}, manage your TryOutSpot activity."
+        : $"{Model.FirstName}, finish the pieces that matter.";
+    var pageIntro = hasCompletedTeamOrganizationDetails
+        ? "Keep team details, listings, favorites, and account settings ready for everyday work."
+        : "TryOutSpot keeps signup light. These items help tailor the next screens for players, parents, coaches, and organization staff.";
 }
 
 <section class="account-page">
     <div class="account-heading">
-        <p class="account-kicker">Setup</p>
-        <h1>@Model.FirstName, finish the pieces that matter.</h1>
-        <p>TryOutSpot keeps signup light. These items help tailor the next screens for players, parents, coaches, and organization staff.</p>
+        <p class="account-kicker">@pageKicker</p>
+        <h1>@pageHeading</h1>
+        <p>@pageIntro</p>
         <p class="required-note"><span class="required-marker">*</span> Required item</p>
     </div>
 
