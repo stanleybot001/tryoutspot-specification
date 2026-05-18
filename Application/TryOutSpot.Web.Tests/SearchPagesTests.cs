@@ -29,7 +29,7 @@ public sealed class SearchPagesTests
         var response = await client.GetAsync("/account/search/team-items?type=all");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
         Assert.Contains("Free Player/Parent search is limited to tryouts", html);
         Assert.Contains("Free parent visible tryout", html);
         Assert.DoesNotContain("Premium only tournament", html);
@@ -52,7 +52,7 @@ public sealed class SearchPagesTests
         var response = await client.GetAsync("/account/search/team-items?type=all");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
         Assert.Contains("Free parent visible tryout", html);
         Assert.Contains("Premium only tournament", html);
     }
@@ -101,10 +101,21 @@ public sealed class SearchPagesTests
         var response = await client.GetAsync("/account/search/players?listingType=pickup_player");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
         Assert.Contains("Public searchable player", html);
         Assert.Contains("Coach-only searchable player", html);
         Assert.DoesNotContain("Hidden profile player", html);
+        Assert.Contains("Birthday:", html);
+        Assert.Contains("Apr 5, 2011", html);
+        Assert.Contains("Public Academy", html);
+        Assert.Contains("Searchable Club", html);
+        Assert.Contains("Grad year:", html);
+        Assert.Contains("5'8\" / 145 lb", html);
+        Assert.Contains("Throws:", html);
+        Assert.Contains("Bats:", html);
+        Assert.DoesNotContain("Sport not set", html);
+        Assert.DoesNotContain("Not linked", html);
+        Assert.DoesNotContain("Not set", html);
     }
 
     [Fact]
@@ -311,10 +322,17 @@ public sealed class SearchPagesTests
             Id = Guid.NewGuid(),
             FirstName = firstName,
             LastName = lastName,
-            DateOfBirth = now.AddYears(-15).Date,
+            DateOfBirth = new DateTime(2011, 4, 5, 0, 0, 0, DateTimeKind.Utc),
             City = "McPherson",
             State = "KS",
             ZipCode = "67460",
+            SchoolName = $"{firstName} Academy",
+            CurrentTeamName = $"{lastName} Club",
+            GraduationYear = 2029,
+            Height = "5'8\"",
+            Weight = "145 lb",
+            ThrowsHand = "Right",
+            BatsHand = "Left",
             ContactVisibility = contactVisibility,
             IsSearchable = isSearchable,
             CreatedAt = now,
