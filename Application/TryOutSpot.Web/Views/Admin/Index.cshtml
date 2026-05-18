@@ -1,0 +1,87 @@
+@model AdminDashboardPageModel
+
+@{
+    ViewData["Title"] = "Admin Center";
+}
+
+<section class="account-page admin-page">
+    <div class="account-heading">
+        <p class="account-kicker">Platform admin</p>
+        <h1>Admin center</h1>
+        <p>Review reported listings, inspect users, and scan both sides of the TryOutSpot marketplace.</p>
+    </div>
+
+    @await Html.PartialAsync("_AdminNav")
+
+    <section class="account-summary-strip admin-summary-grid">
+        <div>
+            <span>Pending reports</span>
+            <strong>@Model.PendingReportCount</strong>
+        </div>
+        <div>
+            <span>In review</span>
+            <strong>@Model.InReviewReportCount</strong>
+        </div>
+        <div>
+            <span>Active users</span>
+            <strong>@Model.ActiveUserCount</strong>
+        </div>
+        <div>
+            <span>Player listings</span>
+            <strong>@Model.ActivePlayerListingCount</strong>
+        </div>
+        <div>
+            <span>Team opportunities</span>
+            <strong>@Model.ActiveTeamOpportunityCount</strong>
+        </div>
+    </section>
+
+    <section class="form-section">
+        <div class="opportunity-row-head">
+            <div>
+                <h2>Recent reports</h2>
+                <p class="section-help">Newest reported listings are shown first, with pending items prioritized.</p>
+            </div>
+            <a class="btn btn-outline-primary btn-sm" href="/admin/reports">Open report queue</a>
+        </div>
+
+        @if (Model.RecentReports.Count == 0)
+        {
+            <p class="section-help">No reports have been submitted yet.</p>
+        }
+        else
+        {
+            <div class="plan-list">
+                @foreach (var report in Model.RecentReports)
+                {
+                    <article class="plan-row plan-row-stack admin-list-row">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@report.TargetTitle</strong>
+                                <span>@FormatTargetType(report.TargetType) reported by @report.ReporterName</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                <span>@report.Status</span>
+                                <span>@report.CreatedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</span>
+                            </div>
+                        </div>
+                        <p class="section-help small mb-1">@report.Reason</p>
+                        <div class="form-actions mt-2">
+                            <a class="btn btn-outline-primary btn-sm" href="/admin/reports/@report.ReportId">Review</a>
+                            <a class="btn btn-outline-secondary btn-sm" href="/admin/users/@report.ReporterUserId">Reporter profile</a>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</section>
+
+@functions {
+    private static string FormatTargetType(string targetType)
+    {
+        return string.Equals(targetType, "PlayerListing", StringComparison.OrdinalIgnoreCase)
+            ? "Player listing"
+            : "Team opportunity";
+    }
+}

@@ -1,0 +1,151 @@
+@model AdminListingListPageModel<AdminTeamOpportunityListItem>
+
+@{
+    ViewData["Title"] = "Admin Team Opportunities";
+}
+
+<section class="account-page admin-page">
+    <div class="account-heading">
+        <p class="account-kicker">Listings</p>
+        <h1>Team opportunities</h1>
+        <p>View all team-side opportunity listings, including unpublished and inactive records.</p>
+    </div>
+
+    @await Html.PartialAsync("_AdminNav")
+
+    <section class="form-section">
+        <form method="get" class="admin-filter-form">
+            <div class="form-field">
+                <label class="form-label" for="opportunity-search">Search</label>
+                <input id="opportunity-search" class="form-control" name="q" value="@Model.Search" />
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="published-state">Published</label>
+                <select id="published-state" class="form-select" name="isPublished">
+                    <option value="">All</option>
+                    <option value="true" selected="@(Model.IsPublished == true)">Published</option>
+                    <option value="false" selected="@(Model.IsPublished == false)">Unpublished</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="active-state">Active</label>
+                <select id="active-state" class="form-select" name="isActive">
+                    <option value="">All</option>
+                    <option value="true" selected="@(Model.IsActive == true)">Active</option>
+                    <option value="false" selected="@(Model.IsActive == false)">Inactive</option>
+                </select>
+            </div>
+            <div class="form-actions admin-filter-actions">
+                <button type="submit" class="btn btn-primary">Filter</button>
+                <a class="btn btn-outline-secondary" href="/admin/team-opportunities">Reset</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="form-section">
+        <div class="opportunity-row-head">
+            <h2>Opportunities</h2>
+            <span class="section-help">@Model.TotalCount total</span>
+        </div>
+
+        @if (Model.Listings.Count == 0)
+        {
+            <p class="section-help">No team opportunities match these filters.</p>
+        }
+        else
+        {
+            <div class="plan-list">
+                @foreach (var opportunity in Model.Listings)
+                {
+                    <article class="plan-row plan-row-stack admin-list-row">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@opportunity.Title</strong>
+                                <span>@opportunity.TeamName - @opportunity.Type - @opportunity.SportName</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                <span>@(opportunity.IsPublished ? "Published" : "Unpublished")</span>
+                                <span>@(opportunity.IsActive ? "Active" : "Inactive")</span>
+                                <span>@opportunity.OpenReportCount open reports</span>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mt-2 small text-muted">
+                            <span><strong class="text-body">Organization:</strong> @(opportunity.OrganizationName ?? "Independent team")</span>
+                            <span><strong class="text-body">Location:</strong> @FormatLocation(opportunity.City, opportunity.State, opportunity.ZipCode)</span>
+                            <span><strong class="text-body">Updated:</strong> @opportunity.UpdatedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(opportunity.Description))
+                        {
+                            <p class="section-help small mb-1">@opportunity.Description</p>
+                        }
+                        <div class="form-actions mt-2">
+                            @if (opportunity.IsPublished)
+                            {
+                                <a class="btn btn-outline-secondary btn-sm" href="/opportunities/@opportunity.OpportunityId" target="_blank" rel="noopener">Public page</a>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        @if (Model.TotalPages > 1)
+        {
+            <div class="form-actions mt-3">
+                @if (Model.Page > 1)
+                {
+                    <a class="btn btn-outline-secondary" href="@BuildPageUrl(Model.Page - 1)">Previous</a>
+                }
+                <span class="section-help">Page @Model.Page of @Model.TotalPages</span>
+                @if (Model.Page < Model.TotalPages)
+                {
+                    <a class="btn btn-outline-secondary" href="@BuildPageUrl(Model.Page + 1)">Next</a>
+                }
+            </div>
+        }
+    </section>
+</section>
+
+@functions {
+    private string BuildPageUrl(int page)
+    {
+        var values = new List<string> { $"page={page}", $"pageSize={Model.PageSize}" };
+        if (!string.IsNullOrWhiteSpace(Model.Search))
+        {
+            values.Add($"q={Uri.EscapeDataString(Model.Search)}");
+        }
+
+        if (Model.IsPublished.HasValue)
+        {
+            values.Add($"isPublished={Model.IsPublished.Value.ToString().ToLowerInvariant()}");
+        }
+
+        if (Model.IsActive.HasValue)
+        {
+            values.Add($"isActive={Model.IsActive.Value.ToString().ToLowerInvariant()}");
+        }
+
+        return "/admin/team-opportunities?" + string.Join("&", values);
+    }
+
+    private static string FormatLocation(string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim().ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        return parts.Count == 0 ? "Not set" : string.Join(", ", parts);
+    }
+}

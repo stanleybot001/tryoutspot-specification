@@ -1,0 +1,215 @@
+@model AdminUserDetailPageModel
+
+@{
+    ViewData["Title"] = "Admin User Profile";
+}
+
+<section class="account-page admin-page">
+    <div class="account-heading">
+        <p class="account-kicker">User profile</p>
+        <h1>@Model.User.FirstName @Model.User.LastName</h1>
+        <p>@Model.User.Email</p>
+    </div>
+
+    @await Html.PartialAsync("_AdminNav")
+
+    <section class="account-summary-strip admin-summary-grid">
+        <div>
+            <span>Account status</span>
+            <strong>@(Model.User.IsActive ? "Active" : "Inactive")</strong>
+        </div>
+        <div>
+            <span>Email</span>
+            <strong>@(Model.User.EmailConfirmed ? "Verified" : "Not verified")</strong>
+        </div>
+        <div>
+            <span>Phone</span>
+            <strong>@(Model.User.PhoneNumberConfirmed ? "Verified" : "Not verified")</strong>
+            <small>@(string.IsNullOrWhiteSpace(Model.PhoneNumber) ? "No phone" : Model.PhoneNumber)</small>
+        </div>
+        <div>
+            <span>Location</span>
+            <strong>@FormatLocation(Model.City, Model.State, Model.ZipCode)</strong>
+        </div>
+    </section>
+
+    <section class="form-section">
+        <h2>Account types</h2>
+        <div class="feature-code-list">
+            @foreach (var accountType in Model.User.AccountTypes)
+            {
+                <span>@accountType</span>
+            }
+        </div>
+        <div class="form-actions mt-3">
+            <a class="btn btn-outline-secondary btn-sm" href="/admin/users">Back to users</a>
+        </div>
+    </section>
+
+    <section class="form-section">
+        <h2>Player profiles</h2>
+        @if (Model.PlayerProfiles.Count == 0)
+        {
+            <p class="section-help">No linked player profiles.</p>
+        }
+        else
+        {
+            <div class="plan-list">
+                @foreach (var player in Model.PlayerProfiles)
+                {
+                    <article class="plan-row plan-row-stack admin-list-row">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@player.DisplayName</strong>
+                                <span>@player.Relationship - @(player.CanManage ? "Can manage" : "View only")</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                <span>@(player.IsActive ? "Active" : "Inactive")</span>
+                                <span>@(player.IsSearchable ? "Searchable" : "Hidden")</span>
+                            </div>
+                        </div>
+                        <div class="feature-code-list mt-2">
+                            @foreach (var sport in player.Sports)
+                            {
+                                <span>@sport</span>
+                            }
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mt-2 small text-muted">
+                            <span><strong class="text-body">DOB:</strong> @player.DateOfBirth.ToLocalTime().ToString("MMM d, yyyy")</span>
+                            <span><strong class="text-body">Location:</strong> @FormatLocation(player.City, player.State, player.ZipCode)</span>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="form-section">
+        <h2>Player listings</h2>
+        @if (Model.PlayerListings.Count == 0)
+        {
+            <p class="section-help">No player-side listings.</p>
+        }
+        else
+        {
+            <div class="plan-list">
+                @foreach (var listing in Model.PlayerListings)
+                {
+                    <article class="plan-row plan-row-stack admin-list-row">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@listing.Title</strong>
+                                <span>@listing.ListingType - @(listing.SportName ?? "No sport")</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                <span>@(listing.IsPublished ? "Published" : "Unpublished")</span>
+                                <span>@(listing.IsActive ? "Active" : "Inactive")</span>
+                                <span>@listing.OpenReportCount open reports</span>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mt-2 small text-muted">
+                            <span><strong class="text-body">Player:</strong> @(listing.PlayerName ?? "Not linked")</span>
+                            <span><strong class="text-body">Location:</strong> @FormatLocation(listing.City, listing.State, listing.ZipCode)</span>
+                            <span><strong class="text-body">Updated:</strong> @listing.UpdatedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</span>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="form-section">
+        <h2>Teams</h2>
+        @if (Model.Teams.Count == 0)
+        {
+            <p class="section-help">No linked team profiles.</p>
+        }
+        else
+        {
+            <div class="plan-list">
+                @foreach (var team in Model.Teams)
+                {
+                    <article class="plan-row plan-row-stack admin-list-row">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@team.TeamName</strong>
+                                <span>@team.Role - @(team.OrganizationName ?? "Independent team")</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                <span>@(team.IsActive ? "Active" : "Inactive")</span>
+                                <span>@(team.IsSearchable ? "Searchable" : "Hidden")</span>
+                                <span>@team.GeographicScope</span>
+                            </div>
+                        </div>
+                        <div class="feature-code-list mt-2">
+                            @foreach (var sport in team.Sports)
+                            {
+                                <span>@sport</span>
+                            }
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mt-2 small text-muted">
+                            <span><strong class="text-body">Level:</strong> @(team.TeamLevel ?? "Not set")</span>
+                            <span><strong class="text-body">Location:</strong> @FormatLocation(team.City, team.State, team.ZipCode)</span>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="form-section">
+        <h2>Team opportunities</h2>
+        @if (Model.TeamOpportunities.Count == 0)
+        {
+            <p class="section-help">No team opportunity listings.</p>
+        }
+        else
+        {
+            <div class="plan-list">
+                @foreach (var opportunity in Model.TeamOpportunities)
+                {
+                    <article class="plan-row plan-row-stack admin-list-row">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@opportunity.Title</strong>
+                                <span>@opportunity.TeamName - @opportunity.Type - @opportunity.SportName</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                <span>@(opportunity.IsPublished ? "Published" : "Unpublished")</span>
+                                <span>@(opportunity.IsActive ? "Active" : "Inactive")</span>
+                                <span>@opportunity.OpenReportCount open reports</span>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mt-2 small text-muted">
+                            <span><strong class="text-body">Location:</strong> @FormatLocation(opportunity.City, opportunity.State, opportunity.ZipCode)</span>
+                            <span><strong class="text-body">Updated:</strong> @opportunity.UpdatedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</span>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</section>
+
+@functions {
+    private static string FormatLocation(string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim().ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        return parts.Count == 0 ? "Not set" : string.Join(", ", parts);
+    }
+}

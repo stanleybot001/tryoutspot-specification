@@ -1,0 +1,229 @@
+@model AdminReportDetailPageModel
+
+@{
+    ViewData["Title"] = "Review Report";
+}
+
+<section class="account-page admin-page">
+    <div class="account-heading">
+        <p class="account-kicker">Moderation</p>
+        <h1>Review reported listing</h1>
+        <p>@Model.Report.TargetTitle</p>
+    </div>
+
+    @await Html.PartialAsync("_AdminNav")
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    <section class="account-summary-strip admin-summary-grid">
+        <div>
+            <span>Status</span>
+            <strong>@Model.Report.Status</strong>
+        </div>
+        <div>
+            <span>Type</span>
+            <strong>@FormatTargetType(Model.Report.TargetType)</strong>
+        </div>
+        <div>
+            <span>Reported</span>
+            <strong>@Model.Report.CreatedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</strong>
+        </div>
+        <div>
+            <span>Reporter</span>
+            <strong>@Model.Reporter.DisplayName</strong>
+            <small>@Model.Reporter.Email</small>
+        </div>
+    </section>
+
+    <div class="admin-detail-layout">
+        <section class="form-section">
+            <h2>Report</h2>
+            <div class="team-summary-grid admin-detail-grid">
+                <div>
+                    <span>Reason</span>
+                    <strong>@Model.Report.Reason</strong>
+                </div>
+                <div>
+                    <span>Reviewed by</span>
+                    <strong>@(Model.ReviewedBy?.DisplayName ?? "Not reviewed")</strong>
+                </div>
+                <div>
+                    <span>Reviewed at</span>
+                    <strong>@(Model.Report.ReviewedAtUtc?.ToLocalTime().ToString("MMM d, yyyy h:mm tt") ?? "Not reviewed")</strong>
+                </div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(Model.Report.Details))
+            {
+                <p class="section-help mt-3">@Model.Report.Details</p>
+            }
+        </section>
+
+        <section class="form-section">
+            <h2>Review action</h2>
+            <form asp-action="ReviewReport" asp-controller="Admin" asp-route-reportId="@Model.Report.ReportId" method="post" class="stacked-form">
+                <div class="form-field">
+                    <label class="form-label" for="review-status">Status</label>
+                    <select id="review-status" class="form-select" name="Status">
+                        @foreach (var status in Model.StatusOptions)
+                        {
+                            <option value="@status" selected="@string.Equals(Model.Report.Status, status, StringComparison.OrdinalIgnoreCase)">@status</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label class="form-label" for="admin-notes">Admin notes</label>
+                    <textarea id="admin-notes" class="form-control" name="AdminNotes" rows="5">@Model.AdminNotes</textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save review</button>
+                    <a class="btn btn-outline-secondary" href="/admin/reports">Back to reports</a>
+                </div>
+            </form>
+        </section>
+    </div>
+
+    @if (Model.PlayerListing is not null)
+    {
+        <section class="form-section">
+            <div class="opportunity-row-head">
+                <h2>Player listing</h2>
+                <div class="team-metric-inline">
+                    <span>@(Model.PlayerListing.IsPublished ? "Published" : "Unpublished")</span>
+                    <span>@(Model.PlayerListing.IsActive ? "Active" : "Inactive")</span>
+                    <span>@Model.PlayerListing.OpenReportCount open reports</span>
+                </div>
+            </div>
+            <div class="team-summary-grid">
+                <div>
+                    <span>Owner</span>
+                    <strong>@Model.PlayerListing.OwnerName</strong>
+                    <small>@Model.PlayerListing.OwnerEmail</small>
+                </div>
+                <div>
+                    <span>Listing type</span>
+                    <strong>@Model.PlayerListing.ListingType</strong>
+                </div>
+                <div>
+                    <span>Sport</span>
+                    <strong>@(Model.PlayerListing.SportName ?? "Not set")</strong>
+                </div>
+                <div>
+                    <span>Player</span>
+                    <strong>@(Model.PlayerListing.PlayerName ?? "Not linked")</strong>
+                </div>
+                <div>
+                    <span>Location</span>
+                    <strong>@FormatLocation(Model.PlayerListing.City, Model.PlayerListing.State, Model.PlayerListing.ZipCode)</strong>
+                </div>
+                <div>
+                    <span>Updated</span>
+                    <strong>@Model.PlayerListing.UpdatedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</strong>
+                </div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(Model.PlayerListing.Description))
+            {
+                <p class="section-help mt-3">@Model.PlayerListing.Description</p>
+            }
+            <div class="form-actions mt-3">
+                <a class="btn btn-outline-primary btn-sm" href="/admin/users/@Model.PlayerListing.OwnerUserId">Owner profile</a>
+                @if (Model.PlayerListing.IsPublished && Model.PlayerListing.IsSearchable)
+                {
+                    <a class="btn btn-outline-secondary btn-sm" href="/player-listings/@Model.PlayerListing.ListingId" target="_blank" rel="noopener">Public page</a>
+                }
+            </div>
+        </section>
+    }
+
+    @if (Model.TeamOpportunity is not null)
+    {
+        <section class="form-section">
+            <div class="opportunity-row-head">
+                <h2>Team opportunity</h2>
+                <div class="team-metric-inline">
+                    <span>@(Model.TeamOpportunity.IsPublished ? "Published" : "Unpublished")</span>
+                    <span>@(Model.TeamOpportunity.IsActive ? "Active" : "Inactive")</span>
+                    <span>@Model.TeamOpportunity.OpenReportCount open reports</span>
+                </div>
+            </div>
+            <div class="team-summary-grid">
+                <div>
+                    <span>Team</span>
+                    <strong>@Model.TeamOpportunity.TeamName</strong>
+                    <small>@Model.TeamOpportunity.OrganizationName</small>
+                </div>
+                <div>
+                    <span>Type</span>
+                    <strong>@Model.TeamOpportunity.Type</strong>
+                </div>
+                <div>
+                    <span>Sport</span>
+                    <strong>@Model.TeamOpportunity.SportName</strong>
+                </div>
+                <div>
+                    <span>Location</span>
+                    <strong>@FormatLocation(Model.TeamOpportunity.City, Model.TeamOpportunity.State, Model.TeamOpportunity.ZipCode)</strong>
+                </div>
+                <div>
+                    <span>Updated</span>
+                    <strong>@Model.TeamOpportunity.UpdatedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</strong>
+                </div>
+                <div>
+                    <span>Total reports</span>
+                    <strong>@Model.TeamOpportunity.TotalReportCount</strong>
+                </div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(Model.TeamOpportunity.Description))
+            {
+                <p class="section-help mt-3">@Model.TeamOpportunity.Description</p>
+            }
+            @if (Model.TeamOpportunity.TeamRepresentatives.Count > 0)
+            {
+                <div class="feature-code-list mt-3">
+                    @foreach (var representative in Model.TeamOpportunity.TeamRepresentatives)
+                    {
+                        <a href="/admin/users/@representative.UserId">@representative.DisplayName (@representative.Email)</a>
+                    }
+                </div>
+            }
+            <div class="form-actions mt-3">
+                @if (Model.TeamOpportunity.IsPublished)
+                {
+                    <a class="btn btn-outline-secondary btn-sm" href="/opportunities/@Model.TeamOpportunity.OpportunityId" target="_blank" rel="noopener">Public page</a>
+                }
+            </div>
+        </section>
+    }
+</section>
+
+@functions {
+    private static string FormatTargetType(string targetType)
+    {
+        return string.Equals(targetType, "PlayerListing", StringComparison.OrdinalIgnoreCase)
+            ? "Player listing"
+            : "Team opportunity";
+    }
+
+    private static string FormatLocation(string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim().ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        return parts.Count == 0 ? "Not set" : string.Join(", ", parts);
+    }
+}

@@ -1,0 +1,137 @@
+@model AdminReportListPageModel
+
+@{
+    ViewData["Title"] = "Reported Listings";
+}
+
+<section class="account-page admin-page">
+    <div class="account-heading">
+        <p class="account-kicker">Moderation</p>
+        <h1>Reported listings</h1>
+        <p>Review reports from parents, players, and team representatives across both listing types.</p>
+    </div>
+
+    @await Html.PartialAsync("_AdminNav")
+
+    <section class="form-section">
+        <form method="get" class="admin-filter-form">
+            <div class="form-field">
+                <label class="form-label" for="report-search">Search</label>
+                <input id="report-search" class="form-control" name="q" value="@Model.Search" />
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="report-status">Status</label>
+                <select id="report-status" class="form-select" name="status">
+                    <option value="">All statuses</option>
+                    @foreach (var status in Model.StatusOptions)
+                    {
+                        <option value="@status" selected="@string.Equals(Model.Status, status, StringComparison.OrdinalIgnoreCase)">@status</option>
+                    }
+                </select>
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="report-target-type">Listing type</label>
+                <select id="report-target-type" class="form-select" name="targetType">
+                    <option value="">All listing types</option>
+                    @foreach (var targetType in Model.TargetTypeOptions)
+                    {
+                        <option value="@targetType" selected="@string.Equals(Model.TargetType, targetType, StringComparison.OrdinalIgnoreCase)">@FormatTargetType(targetType)</option>
+                    }
+                </select>
+            </div>
+            <div class="form-actions admin-filter-actions">
+                <button type="submit" class="btn btn-primary">Filter</button>
+                <a class="btn btn-outline-secondary" href="/admin/reports">Reset</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="form-section">
+        <div class="opportunity-row-head">
+            <h2>Reports</h2>
+            <span class="section-help">@Model.TotalCount total</span>
+        </div>
+
+        @if (Model.Reports.Count == 0)
+        {
+            <p class="section-help">No reports match these filters.</p>
+        }
+        else
+        {
+            <div class="plan-list">
+                @foreach (var report in Model.Reports)
+                {
+                    <article class="plan-row plan-row-stack admin-list-row">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@report.TargetTitle</strong>
+                                <span>@FormatTargetType(report.TargetType) - @report.ReporterName (@report.ReporterEmail)</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                <span>@report.Status</span>
+                                <span>@report.CreatedAtUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</span>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mt-2 small text-muted">
+                            <span><strong class="text-body">Reason:</strong> @report.Reason</span>
+                            <span><strong class="text-body">Reviewed:</strong> @(report.ReviewedAtUtc?.ToLocalTime().ToString("MMM d, yyyy") ?? "No")</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(report.Details))
+                        {
+                            <p class="section-help small mb-1">@report.Details</p>
+                        }
+                        <div class="form-actions mt-2">
+                            <a class="btn btn-outline-primary btn-sm" href="/admin/reports/@report.ReportId">Review report</a>
+                            <a class="btn btn-outline-secondary btn-sm" href="/admin/users/@report.ReporterUserId">Reporter profile</a>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        @if (Model.TotalPages > 1)
+        {
+            <div class="form-actions mt-3">
+                @if (Model.Page > 1)
+                {
+                    <a class="btn btn-outline-secondary" href="@BuildPageUrl(Model.Page - 1)">Previous</a>
+                }
+                <span class="section-help">Page @Model.Page of @Model.TotalPages</span>
+                @if (Model.Page < Model.TotalPages)
+                {
+                    <a class="btn btn-outline-secondary" href="@BuildPageUrl(Model.Page + 1)">Next</a>
+                }
+            </div>
+        }
+    </section>
+</section>
+
+@functions {
+    private string BuildPageUrl(int page)
+    {
+        var values = new List<string> { $"page={page}", $"pageSize={Model.PageSize}" };
+        if (!string.IsNullOrWhiteSpace(Model.Search))
+        {
+            values.Add($"q={Uri.EscapeDataString(Model.Search)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(Model.Status))
+        {
+            values.Add($"status={Uri.EscapeDataString(Model.Status)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(Model.TargetType))
+        {
+            values.Add($"targetType={Uri.EscapeDataString(Model.TargetType)}");
+        }
+
+        return "/admin/reports?" + string.Join("&", values);
+    }
+
+    private static string FormatTargetType(string targetType)
+    {
+        return string.Equals(targetType, "PlayerListing", StringComparison.OrdinalIgnoreCase)
+            ? "Player listing"
+            : "Team opportunity";
+    }
+}

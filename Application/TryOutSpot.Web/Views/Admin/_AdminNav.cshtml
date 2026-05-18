@@ -1,0 +1,11 @@
+@{
+    var action = ViewContext.RouteData.Values["action"]?.ToString() ?? string.Empty;
+}
+
+<nav class="admin-subnav" aria-label="Admin navigation">
+    <a class="@(string.Equals(action, "Index", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin">Overview</a>
+    <a class="@(string.Equals(action, "Reports", StringComparison.OrdinalIgnoreCase) || string.Equals(action, "ReportDetail", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin/reports">Reports</a>
+    <a class="@(string.Equals(action, "Users", StringComparison.OrdinalIgnoreCase) || string.Equals(action, "UserDetail", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin/users">Users</a>
+    <a class="@(string.Equals(action, "PlayerListings", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin/player-listings">Player listings</a>
+    <a class="@(string.Equals(action, "TeamOpportunities", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin/team-opportunities">Team opportunities</a>
+</nav>

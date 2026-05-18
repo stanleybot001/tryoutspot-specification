@@ -1,0 +1,329 @@
+using System.Net;
+using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using TryOutSpot.Web.Data;
+using TryOutSpot.Web.Data.Entities;
+using TryOutSpot.Web.Identity;
+using TryOutSpot.Web.Listings;
+using TryOutSpot.Web.Services;
+
+namespace TryOutSpot.Web.Tests;
+
+public sealed class AdminCenterPageTests
+{
+    [Fact]
+    public async Task BootstrapAdminSeeder_CreatesConfiguredPlatformAdmin()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var email = $"seeded-admin-{Guid.NewGuid():N}@example.com";
+        const string password = "SeededAdmin2026!";
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["BootstrapAdmin:Email"] = email,
+                ["BootstrapAdmin:Password"] = password,
+                ["BootstrapAdmin:FirstName"] = "Seeded",
+                ["BootstrapAdmin:LastName"] = "Admin"
+            })
+            .Build();
+        var logger = factory.Services.GetRequiredService<ILoggerFactory>().CreateLogger("BootstrapAdminSeederTests");
+
+        await BootstrapAdminSeeder.SeedAsync(factory.Services, configuration, logger);
+
+        using var scope = factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+        var user = await userManager.FindByEmailAsync(email);
+
+        Assert.NotNull(user);
+        Assert.Equal("Seeded", user.FirstName);
+        Assert.Equal("Admin", user.LastName);
+        Assert.True(user.EmailConfirmed);
+        Assert.True(user.IsActive);
+        Assert.True(await roleManager.RoleExistsAsync(TryOutSpotRoles.PlatformAdmin));
+        Assert.True(await userManager.IsInRoleAsync(user, TryOutSpotRoles.PlatformAdmin));
+        Assert.True(await userManager.CheckPasswordAsync(user, password));
+    }
+
+    [Fact]
+    public async Task PlatformAdmin_CanUseAdminCenterPagesAndReviewReport()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var owner = await factory.CreateUserAsync("admin-ui-owner@example.com", [TryOutSpotRoles.Parent]);
+        var teamOwner = await factory.CreateUserAsync("admin-ui-team-owner@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var reporter = await factory.CreateUserAsync("admin-ui-reporter@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var admin = await factory.CreateUserAsync("admin-ui-admin@example.com", [TryOutSpotRoles.PlatformAdmin]);
+        var sportId = GetActiveSportId(factory);
+        var playerId = SeedPlayerProfile(factory, owner.Id, sportId);
+        var playerListingId = SeedPlayerListing(factory, owner.Id, sportId, playerId, "Admin UI reported pickup listing");
+        var (_, opportunityId) = SeedTeamOpportunity(factory, teamOwner.Id, sportId, "Admin UI Aces", "Admin UI reported tryout");
+        var reportId = SeedListingReport(factory, reporter.Id, playerListingId: playerListingId);
+        SeedListingReport(factory, reporter.Id, opportunityId: opportunityId);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        await LoginWebUserAsync(client, admin.Email!);
+
+        await AssertPageContainsAsync(client, "/admin", "Admin center");
+        await AssertPageContainsAsync(client, "/admin/reports", "Admin UI reported pickup listing");
+        await AssertPageContainsAsync(client, $"/admin/reports/{reportId}", "Review action");
+        await AssertPageContainsAsync(client, "/admin/users", owner.Email!);
+        await AssertPageContainsAsync(client, $"/admin/users/{owner.Id}", "Player profiles");
+        await AssertPageContainsAsync(client, "/admin/player-listings", "Admin UI reported pickup listing");
+        await AssertPageContainsAsync(client, "/admin/team-opportunities", "Admin UI reported tryout");
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, $"/admin/reports/{reportId}");
+        var response = await client.PostAsync(
+            $"/admin/reports/{reportId}/review",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("Status", TryOutSpotListingReportStatuses.ActionTaken),
+                new("AdminNotes", "Reviewed from the admin center page.")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal($"/admin/reports/{reportId}", response.Headers.Location?.ToString());
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var report = await dbContext.ListingReports.SingleAsync(currentReport => currentReport.Id == reportId);
+        Assert.Equal(TryOutSpotListingReportStatuses.ActionTaken, report.Status);
+        Assert.Equal("Reviewed from the admin center page.", report.AdminNotes);
+        Assert.Equal(admin.Id, report.ReviewedByUserId);
+        Assert.NotNull(report.ReviewedAt);
+    }
+
+    private static async Task AssertPageContainsAsync(HttpClient client, string path, string expectedText)
+    {
+        var response = await client.GetAsync(path);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains(expectedText, html);
+    }
+
+    private static async Task LoginWebUserAsync(HttpClient client, string email)
+    {
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/login");
+        var loginResponse = await client.PostAsync(
+            "/account/login",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("Email", email),
+                new("Password", "Tryout2026"),
+                new("RememberMe", "true")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, loginResponse.StatusCode);
+    }
+
+    private static async Task<string> GetAntiForgeryTokenAsync(HttpClient client, string path)
+    {
+        var response = await client.GetAsync(path);
+        response.EnsureSuccessStatusCode();
+        var html = await response.Content.ReadAsStringAsync();
+        var match = Regex.Match(
+            html,
+            "name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"",
+            RegexOptions.CultureInvariant);
+
+        return match.Success
+            ? match.Groups[1].Value
+            : throw new InvalidOperationException($"No anti-forgery token was found on {path}.");
+    }
+
+    private static Guid GetActiveSportId(TryOutSpotWebApplicationFactory factory)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return dbContext.Sports
+            .Where(sport => sport.IsActive && sport.Name == "Softball")
+            .Select(sport => sport.Id)
+            .Single();
+    }
+
+    private static Guid SeedPlayerProfile(TryOutSpotWebApplicationFactory factory, Guid userId, Guid sportId)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+        var player = new Player
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Riley",
+            LastName = "Morgan",
+            DateOfBirth = DateTime.UtcNow.AddYears(-13),
+            City = "Oklahoma City",
+            State = "OK",
+            ZipCode = "73102",
+            ContactVisibility = "Public",
+            IsSearchable = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        };
+
+        dbContext.Players.Add(player);
+        dbContext.PlayerSports.Add(new PlayerSport
+        {
+            Id = Guid.NewGuid(),
+            PlayerId = player.Id,
+            SportId = sportId,
+            PrimaryPosition = "Pitcher",
+            IsActive = true,
+            CreatedAt = now
+        });
+        dbContext.UserPlayerRelationships.Add(new UserPlayerRelationship
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            PlayerId = player.Id,
+            Relationship = "ParentGuardian",
+            CanManage = true,
+            CreatedAt = now
+        });
+        dbContext.SaveChanges();
+        return player.Id;
+    }
+
+    private static Guid SeedPlayerListing(
+        TryOutSpotWebApplicationFactory factory,
+        Guid userId,
+        Guid sportId,
+        Guid playerId,
+        string title)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+        var listing = new PlayerListing
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            PlayerId = playerId,
+            SportId = sportId,
+            ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
+            Title = title,
+            Description = "Seeded listing for admin center page tests.",
+            City = "Oklahoma City",
+            State = "OK",
+            ZipCode = "73102",
+            IsPublished = true,
+            IsSearchable = true,
+            PublishedAt = now,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        };
+
+        dbContext.PlayerListings.Add(listing);
+        dbContext.SaveChanges();
+        return listing.Id;
+    }
+
+    private static (Guid TeamId, Guid OpportunityId) SeedTeamOpportunity(
+        TryOutSpotWebApplicationFactory factory,
+        Guid userId,
+        Guid sportId,
+        string teamName,
+        string opportunityTitle)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+        var team = new Team
+        {
+            Id = Guid.NewGuid(),
+            Name = teamName,
+            TeamLevel = "14U",
+            GeographicScope = "Regional",
+            Description = "Seeded team for admin center page tests.",
+            City = "Wichita",
+            State = "KS",
+            ZipCode = "67202",
+            IsSearchable = true,
+            IsContactInfoVisible = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        };
+        var opportunity = new Opportunity
+        {
+            Id = Guid.NewGuid(),
+            TeamId = team.Id,
+            SportId = sportId,
+            Type = "tryout",
+            Title = opportunityTitle,
+            Description = "Seeded opportunity for admin center page tests.",
+            City = "Wichita",
+            State = "KS",
+            ZipCode = "67202",
+            IsPublished = true,
+            PublishedAt = now,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        };
+
+        dbContext.Teams.Add(team);
+        dbContext.TeamSports.Add(new TeamSport
+        {
+            Id = Guid.NewGuid(),
+            TeamId = team.Id,
+            SportId = sportId,
+            CompetitionLevel = "A",
+            AgeGroup = "14U",
+            TravelLevel = "Regional",
+            IsActive = true,
+            CreatedAt = now
+        });
+        dbContext.UserTeamRoles.Add(new UserTeamRole
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            TeamId = team.Id,
+            Role = "Owner",
+            StartDate = now,
+            IsActive = true,
+            CreatedAt = now
+        });
+        dbContext.Opportunities.Add(opportunity);
+        dbContext.SaveChanges();
+        return (team.Id, opportunity.Id);
+    }
+
+    private static Guid SeedListingReport(
+        TryOutSpotWebApplicationFactory factory,
+        Guid reporterUserId,
+        Guid? playerListingId = null,
+        Guid? opportunityId = null)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+        var report = new ListingReport
+        {
+            Id = Guid.NewGuid(),
+            ReporterUserId = reporterUserId,
+            PlayerListingId = playerListingId,
+            OpportunityId = opportunityId,
+            Reason = "Inappropriate content",
+            Details = "Seeded report for the admin center page tests.",
+            Status = TryOutSpotListingReportStatuses.Pending,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        dbContext.ListingReports.Add(report);
+        dbContext.SaveChanges();
+        return report.Id;
+    }
+}

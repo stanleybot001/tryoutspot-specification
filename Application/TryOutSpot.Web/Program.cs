@@ -351,6 +351,12 @@ builder.Services.AddScoped<IAuthorizationHandler, AnyFeatureAccessAuthorizationH
 var app = builder.Build();
 
 var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("TryOutSpot.Startup");
+await BootstrapAdminSeeder.SeedAsync(app.Services, app.Configuration, startupLogger);
+if (args.Contains("--seed-admin", StringComparer.OrdinalIgnoreCase))
+{
+    return;
+}
+
 var r2Options = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<R2StorageOptions>>().Value;
 startupLogger.LogInformation(
     "R2 configuration loaded. Endpoint={Endpoint} Bucket={BucketName} AccountIdConfigured={HasAccountId} AccessKeyConfigured={HasAccessKey} SecretConfigured={HasSecret}",

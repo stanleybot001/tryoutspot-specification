@@ -1,0 +1,132 @@
+@model AdminUserListPageModel
+
+@{
+    ViewData["Title"] = "Admin Users";
+}
+
+<section class="account-page admin-page">
+    <div class="account-heading">
+        <p class="account-kicker">Platform admin</p>
+        <h1>Users</h1>
+        <p>Search accounts and open their player profiles, player listings, teams, and opportunity listings.</p>
+    </div>
+
+    @await Html.PartialAsync("_AdminNav")
+
+    <section class="form-section">
+        <form method="get" class="admin-filter-form">
+            <div class="form-field">
+                <label class="form-label" for="user-search">Search</label>
+                <input id="user-search" class="form-control" name="q" value="@Model.Search" />
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="account-type">Account type</label>
+                <select id="account-type" class="form-select" name="accountType">
+                    <option value="">All account types</option>
+                    @foreach (var accountType in Model.AccountTypeOptions)
+                    {
+                        <option value="@accountType" selected="@string.Equals(Model.AccountType, accountType, StringComparison.OrdinalIgnoreCase)">@accountType</option>
+                    }
+                </select>
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="active-state">Status</label>
+                <select id="active-state" class="form-select" name="isActive">
+                    <option value="">All users</option>
+                    <option value="true" selected="@(Model.IsActive == true)">Active</option>
+                    <option value="false" selected="@(Model.IsActive == false)">Inactive</option>
+                </select>
+            </div>
+            <div class="form-actions admin-filter-actions">
+                <button type="submit" class="btn btn-primary">Filter</button>
+                <a class="btn btn-outline-secondary" href="/admin/users">Reset</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="form-section">
+        <div class="opportunity-row-head">
+            <h2>User accounts</h2>
+            <span class="section-help">@Model.TotalCount total</span>
+        </div>
+
+        @if (Model.Users.Count == 0)
+        {
+            <p class="section-help">No users match these filters.</p>
+        }
+        else
+        {
+            <div class="plan-list">
+                @foreach (var user in Model.Users)
+                {
+                    <article class="plan-row plan-row-stack admin-list-row">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@user.FirstName @user.LastName</strong>
+                                <span>@user.Email</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                <span>@(user.IsActive ? "Active" : "Inactive")</span>
+                                <span>@(user.EmailConfirmed ? "Email verified" : "Email unverified")</span>
+                                <span>@(user.PhoneNumberConfirmed ? "Phone verified" : "Phone unverified")</span>
+                            </div>
+                        </div>
+                        <div class="feature-code-list mt-2">
+                            @foreach (var accountType in user.AccountTypes)
+                            {
+                                <span>@accountType</span>
+                            }
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mt-2 small text-muted">
+                            <span><strong class="text-body">Players:</strong> @user.PlayerProfileCount</span>
+                            <span><strong class="text-body">Player listings:</strong> @user.PlayerListingCount</span>
+                            <span><strong class="text-body">Teams:</strong> @user.TeamCount</span>
+                            <span><strong class="text-body">Created:</strong> @user.CreatedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</span>
+                        </div>
+                        <div class="form-actions mt-2">
+                            <a class="btn btn-outline-primary btn-sm" href="/admin/users/@user.UserId">View profile</a>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        @if (Model.TotalPages > 1)
+        {
+            <div class="form-actions mt-3">
+                @if (Model.Page > 1)
+                {
+                    <a class="btn btn-outline-secondary" href="@BuildPageUrl(Model.Page - 1)">Previous</a>
+                }
+                <span class="section-help">Page @Model.Page of @Model.TotalPages</span>
+                @if (Model.Page < Model.TotalPages)
+                {
+                    <a class="btn btn-outline-secondary" href="@BuildPageUrl(Model.Page + 1)">Next</a>
+                }
+            </div>
+        }
+    </section>
+</section>
+
+@functions {
+    private string BuildPageUrl(int page)
+    {
+        var values = new List<string> { $"page={page}", $"pageSize={Model.PageSize}" };
+        if (!string.IsNullOrWhiteSpace(Model.Search))
+        {
+            values.Add($"q={Uri.EscapeDataString(Model.Search)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(Model.AccountType))
+        {
+            values.Add($"accountType={Uri.EscapeDataString(Model.AccountType)}");
+        }
+
+        if (Model.IsActive.HasValue)
+        {
+            values.Add($"isActive={Model.IsActive.Value.ToString().ToLowerInvariant()}");
+        }
+
+        return "/admin/users?" + string.Join("&", values);
+    }
+}

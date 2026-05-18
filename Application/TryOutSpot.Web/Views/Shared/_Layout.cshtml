@@ -54,9 +54,16 @@
                                     || User.IsInRole(TryOutSpotRoles.TeamManager)
                                     || User.IsInRole(TryOutSpotRoles.AcademyDirector)
                                     || User.IsInRole(TryOutSpotRoles.OrganizationAdmin);
+                                var showAdminCenter = User.IsInRole(TryOutSpotRoles.PlatformAdmin);
                                 <li class="nav-item">
                                     <a class="nav-link text-dark" asp-area="" asp-controller="Account" asp-action="Onboarding">Dashboard</a>
                                 </li>
+                                @if (showAdminCenter)
+                                {
+                                    <li class="nav-item">
+                                        <a class="nav-link text-dark" asp-area="" asp-controller="Admin" asp-action="Index">Admin</a>
+                                    </li>
+                                }
                                 @if (showTeamItemSearch)
                                 {
                                     <li class="nav-item">
@@ -101,6 +108,10 @@
                                         </span>
                                     </button>
                                     <div class="dropdown-menu dropdown-menu-end account-menu" aria-labelledby="accountMenuButton">
+                                        @if (User.IsInRole(TryOutSpotRoles.PlatformAdmin))
+                                        {
+                                            <a class="dropdown-item" asp-area="" asp-controller="Admin" asp-action="Index">Admin Center</a>
+                                        }
                                         <a class="dropdown-item" asp-area="" asp-controller="Account" asp-action="Settings">Account Settings</a>
                                         <form asp-action="Logout" asp-controller="Account" method="post" class="nav-signout-form">
                                             <button type="submit" class="dropdown-item">Sign out</button>
