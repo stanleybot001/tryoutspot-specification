@@ -617,6 +617,63 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task AddAndEditPlayerProfilePages_GroupInputsBySection()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("onboarding-player-profile-sections@example.com", [TryOutSpotRoles.Parent]);
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var createResponse = await client.GetAsync("/account/onboarding/add-player-profile?createNew=true");
+
+        Assert.Equal(HttpStatusCode.OK, createResponse.StatusCode);
+        var createHtml = await createResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Add player profile", createHtml);
+        AssertPlayerProfileSections(createHtml);
+
+        var playerId = Guid.NewGuid();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var now = DateTime.UtcNow;
+
+            dbContext.Players.Add(new Player
+            {
+                Id = playerId,
+                FirstName = "Alex",
+                LastName = "Rivera",
+                DateOfBirth = new DateTime(2011, 3, 14, 0, 0, 0, DateTimeKind.Utc),
+                ContactVisibility = "VerifiedCoachesOnly",
+                IsSearchable = true,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+            dbContext.UserPlayerRelationships.Add(new UserPlayerRelationship
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                PlayerId = playerId,
+                Relationship = "Parent",
+                CanManage = true,
+                CreatedAt = now
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var editResponse = await client.GetAsync($"/account/onboarding/player-profiles/{playerId}/edit");
+
+        Assert.Equal(HttpStatusCode.OK, editResponse.StatusCode);
+        var editHtml = await editResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Edit player profile", editHtml);
+        AssertPlayerProfileSections(editHtml);
+    }
+
+    [Fact]
     public async Task AddPlayerProfilePage_AndPost_CreateLinkedPlayerProfile()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -1171,6 +1228,20 @@ public sealed class AccountPageTests
             .Where(subscription => subscription.UserId == user.Id)
             .ToArrayAsync();
         Assert.Empty(subscriptions);
+    }
+
+    private static void AssertPlayerProfileSections(string html)
+    {
+        Assert.Contains("<legend>Personal information</legend>", html);
+        Assert.Contains("<legend>Contact, location, and visibility</legend>", html);
+        Assert.Contains("<legend>School and team</legend>", html);
+        Assert.Contains("<legend>Baseball and softball details</legend>", html);
+        Assert.Contains("<legend>Sport metrics</legend>", html);
+        Assert.Contains("<legend>Media and highlights</legend>", html);
+        Assert.Contains("<legend>Social pages</legend>", html);
+        Assert.Contains("<legend>Recruiting profiles</legend>", html);
+        Assert.Contains("<legend>Sports and positions</legend>", html);
+        Assert.Contains("<legend>Profile permissions</legend>", html);
     }
 
     private static async Task<string> GetAntiForgeryTokenAsync(HttpClient client, string path)

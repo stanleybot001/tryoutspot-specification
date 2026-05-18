@@ -199,6 +199,55 @@ body.splash-page {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.form-fieldset {
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  background: #f8fafc;
+  display: grid;
+  gap: 0.9rem;
+  margin: 0;
+  min-width: 0;
+  padding: 1rem;
+}
+
+.form-fieldset legend {
+  color: #0f172a;
+  float: none;
+  font-size: 1.05rem;
+  font-weight: 750;
+  margin-bottom: 0;
+  padding: 0 0.35rem;
+  width: auto;
+}
+
+.form-fieldset .section-help {
+  margin: 0;
+}
+
+.form-fieldset .sms-consent-option {
+  background: #fff;
+  margin-top: 0;
+}
+
+.sport-detail-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.sport-detail-panel {
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  background: #fff;
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.9rem;
+}
+
+.sport-detail-panel .sport-select-option {
+  background: #f8fafc;
+  margin: 0;
+}
+
 .registration-settings-grid {
   margin-top: 0.85rem;
 }
