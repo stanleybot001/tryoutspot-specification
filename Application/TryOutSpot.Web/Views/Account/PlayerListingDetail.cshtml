@@ -135,6 +135,48 @@
         }
     </section>
 
+    <section class="form-section listing-report-box">
+        <h2>Report listing</h2>
+        @if (!Model.ViewerIsAuthenticated)
+        {
+            <p class="section-help">
+                <a href="/account/login?returnUrl=@Uri.EscapeDataString($"/player-listings/{Model.ListingId}")">Sign in</a>
+                to report a listing for admin review.
+            </p>
+        }
+        else if (Model.ViewerOwnsListing)
+        {
+            <p class="section-help">You cannot report your own listing.</p>
+        }
+        else if (Model.ViewerHasOpenReport)
+        {
+            <p class="section-help">This listing is already in review from your report.</p>
+        }
+        else
+        {
+            <form asp-action="ReportPlayerListing" asp-controller="Account" asp-route-listingId="@Model.ListingId" method="post" asp-antiforgery="true" class="stacked-form">
+                <div class="form-field">
+                    <label class="form-label" for="player-report-reason">Reason <span class="required-marker">*</span></label>
+                    <select id="player-report-reason" class="form-select" name="Reason" required>
+                        <option value="">Select a reason</option>
+                        <option value="Inappropriate content">Inappropriate content</option>
+                        <option value="Misleading listing">Misleading listing</option>
+                        <option value="Spam or scam">Spam or scam</option>
+                        <option value="Safety concern">Safety concern</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label class="form-label" for="player-report-details">Details</label>
+                    <textarea id="player-report-details" class="form-control" name="Details" rows="3" maxlength="2000"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-outline-danger">Submit report</button>
+                </div>
+            </form>
+        }
+    </section>
+
     @if (!string.IsNullOrWhiteSpace(Model.PlayerName))
     {
         <section class="form-section">

@@ -1002,6 +1002,15 @@ body.splash-page {
   margin: 0;
 }
 
+.listing-report-box {
+  border-color: #f2c5a5;
+  background: #fffaf6;
+}
+
+.listing-report-box h2 {
+  color: #7c2d12;
+}
+
 .listing-hero-avatar {
   width: 72px;
   height: 72px;

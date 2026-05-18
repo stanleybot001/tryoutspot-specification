@@ -1286,6 +1286,12 @@ public sealed class PlayerListingDetailPageModel
     public bool ViewerIsAuthenticated { get; set; }
 
     public bool IsFavorited { get; set; }
+
+    public bool ViewerCanReport { get; set; }
+
+    public bool ViewerOwnsListing { get; set; }
+
+    public bool ViewerHasOpenReport { get; set; }
 }
 
 public sealed class TeamOpportunityDetailPageModel
@@ -1387,6 +1393,12 @@ public sealed class TeamOpportunityDetailPageModel
     public TeamOpportunityRegistrationInputPageModel RegistrationForm { get; set; } = new();
 
     public bool IsFavorited { get; set; }
+
+    public bool ViewerCanReport { get; set; }
+
+    public bool ViewerManagesTeam { get; set; }
+
+    public bool ViewerHasOpenReport { get; set; }
 }
 
 public sealed class SearchTeamItemsPageModel

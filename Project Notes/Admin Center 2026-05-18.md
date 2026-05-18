@@ -10,6 +10,8 @@ Implemented an MVC admin center at `/admin` for platform administrators.
 
 ## Screens
 
+- Public player listing pages include a server-rendered report form for signed-in users who do not own the listing.
+- Public team opportunity pages include a server-rendered report form for signed-in users who do not manage the team.
 - `/admin` shows moderation and platform totals.
 - `/admin/reports` lists reported player listings and team opportunities with filters.
 - `/admin/reports/{reportId}` shows report details, reporter profile context, listing context, and a review form.
