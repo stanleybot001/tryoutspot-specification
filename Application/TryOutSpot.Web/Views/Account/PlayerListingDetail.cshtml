@@ -3,7 +3,10 @@
 @{
     ViewData["Title"] = Model.Title;
     var profileSize = FormatSize(Model.Height, Model.Weight);
-    var hasVisibleProfileFacts = !string.IsNullOrWhiteSpace(Model.SchoolName)
+    var playerLocation = FormatLocation(Model.PlayerCity, Model.PlayerState, Model.PlayerZipCode);
+    var hasVisibleProfileFacts = Model.PlayerDateOfBirth.HasValue
+        || !string.IsNullOrWhiteSpace(playerLocation)
+        || !string.IsNullOrWhiteSpace(Model.SchoolName)
         || !string.IsNullOrWhiteSpace(Model.CurrentTeamName)
         || Model.GraduationYear.HasValue
         || !string.IsNullOrWhiteSpace(profileSize)
@@ -138,6 +141,14 @@
             @if (hasVisibleProfileFacts)
             {
                 <div class="team-summary-grid opportunity-summary-grid mt-2">
+                    @if (Model.PlayerDateOfBirth.HasValue)
+                    {
+                        <div><span>Birthday</span><strong>@FormatBirthDate(Model.PlayerDateOfBirth)</strong></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(playerLocation))
+                    {
+                        <div><span>Player location</span><strong>@playerLocation</strong></div>
+                    }
                     @if (!string.IsNullOrWhiteSpace(Model.SchoolName))
                     {
                         <div><span>School</span><strong>@Model.SchoolName</strong></div>
@@ -271,6 +282,11 @@
     private static string FormatDate(DateTime? value)
     {
         return value?.ToLocalTime().ToString("MMM d, yyyy") ?? string.Empty;
+    }
+
+    private static string FormatBirthDate(DateTime? value)
+    {
+        return value?.Date.ToString("MMM d, yyyy") ?? string.Empty;
     }
 
     private static string FormatLocation(string? city, string? state, string? zipCode)

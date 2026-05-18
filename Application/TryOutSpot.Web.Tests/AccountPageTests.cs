@@ -745,6 +745,10 @@ public sealed class AccountPageTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+        Assert.Contains("Birthday", html);
+        Assert.Contains("Apr 5, 2011", html);
+        Assert.Contains("Player location", html);
+        Assert.Contains("Wichita, KS, 67202", html);
         Assert.Contains("Wichita Central High", html);
         Assert.Contains("Aces 16U", html);
         Assert.Contains("2027", html);
@@ -1169,7 +1173,7 @@ public sealed class AccountPageTests
             Id = playerId,
             FirstName = "Alex",
             LastName = "Rivera",
-            DateOfBirth = now.AddYears(-17).Date,
+            DateOfBirth = new DateTime(2011, 4, 5, 0, 0, 0, DateTimeKind.Utc),
             City = "Wichita",
             State = "KS",
             ZipCode = "67202",

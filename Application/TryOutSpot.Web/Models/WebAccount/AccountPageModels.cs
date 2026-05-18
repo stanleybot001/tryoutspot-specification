@@ -1198,6 +1198,14 @@ public sealed class PlayerListingDetailPageModel
 
     public string? ProfileImageUrl { get; set; }
 
+    public DateTime? PlayerDateOfBirth { get; set; }
+
+    public string? PlayerCity { get; set; }
+
+    public string? PlayerState { get; set; }
+
+    public string? PlayerZipCode { get; set; }
+
     public string? SchoolName { get; set; }
 
     public string? CurrentTeamName { get; set; }
