@@ -48,12 +48,26 @@ public sealed record DashboardRecentActivityResponse(
     DateTime Since,
     DateTime? PreviousViewedAt,
     IReadOnlyCollection<string> EffectiveActivityTypes,
-    IReadOnlyCollection<DashboardActivitySectionResponse> Sections);
+    int Page,
+    int PageSize,
+    int TotalCount,
+    int TotalPages,
+    IReadOnlyCollection<DashboardActivitySectionResponse> Sections)
+{
+    public bool HasPreviousPage => Page > 1;
+
+    public bool HasNextPage => Page < TotalPages;
+
+    public int FirstItemNumber => TotalCount == 0 ? 0 : ((Page - 1) * PageSize) + 1;
+
+    public int LastItemNumber => Math.Min(Page * PageSize, TotalCount);
+}
 
 public sealed record DashboardActivitySectionResponse(
     string Code,
     string Title,
     string EmptyMessage,
+    int TotalCount,
     IReadOnlyCollection<DashboardActivityItemResponse> Items);
 
 public sealed record DashboardActivityItemResponse(

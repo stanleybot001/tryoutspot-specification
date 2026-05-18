@@ -50,7 +50,8 @@ public sealed class AccountController(
     private const int ProfessionalTeamPublishingWindowMonths = 12;
     private const int EnterpriseTeamPublishingLimit = 50;
     private const int EnterpriseTeamPublishingWindowMonths = 12;
-    private const int DashboardRecentActivityPreviewLimit = 8;
+    private const int DefaultDashboardRecentActivityPageSize = 8;
+    private const int MaxDashboardRecentActivityPageSize = 25;
     private const int DashboardFavoritePreviewLimit = 12;
     private const int DefaultFavoritePageSize = 25;
     private const int FavoriteListLimit = 100;
@@ -769,7 +770,10 @@ public sealed class AccountController(
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
     [HttpGet("onboarding")]
-    public async Task<IActionResult> Onboarding(CancellationToken cancellationToken)
+    public async Task<IActionResult> Onboarding(
+        [FromQuery] int activityPage = 1,
+        [FromQuery] int activityPageSize = DefaultDashboardRecentActivityPageSize,
+        CancellationToken cancellationToken = default)
     {
         var user = await GetCurrentWebUserAsync();
         if (user is null)
@@ -777,7 +781,26 @@ public sealed class AccountController(
             return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Onboarding)) });
         }
 
-        return View(await BuildOnboardingPageModelAsync(user, cancellationToken));
+        return View(await BuildOnboardingPageModelAsync(
+            user,
+            NormalizeDashboardActivityPage(activityPage),
+            NormalizeDashboardActivityPageSize(activityPageSize),
+            cancellationToken));
+    }
+
+    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [HttpPost("onboarding/recent-activity/reset")]
+    public async Task<IActionResult> ResetDashboardActivityWindow(CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Onboarding)) });
+        }
+
+        await dashboardActivityService.MarkViewedAsync(user.Id, cancellationToken);
+        TempData["StatusMessage"] = "What's new will start from this moment the next time new items are added.";
+        return RedirectToAction(nameof(Onboarding));
     }
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
@@ -5484,6 +5507,21 @@ public sealed class AccountController(
         return Math.Clamp(pageSize, 1, MaxSearchPageSize);
     }
 
+    private static int NormalizeDashboardActivityPage(int page)
+    {
+        return Math.Max(1, page);
+    }
+
+    private static int NormalizeDashboardActivityPageSize(int pageSize)
+    {
+        if (pageSize <= 0)
+        {
+            return DefaultDashboardRecentActivityPageSize;
+        }
+
+        return Math.Clamp(pageSize, 1, MaxDashboardRecentActivityPageSize);
+    }
+
     private static int? CalculateAge(DateTime? dateOfBirth)
     {
         if (!dateOfBirth.HasValue)
@@ -5546,6 +5584,8 @@ public sealed class AccountController(
 
     private async Task<OnboardingPageModel> BuildOnboardingPageModelAsync(
         User user,
+        int activityPage,
+        int activityPageSize,
         CancellationToken cancellationToken)
     {
         var roles = await GetCanonicalPublicRolesAsync(user);
@@ -5566,8 +5606,8 @@ public sealed class AccountController(
         var favoriteCount = favoritePlayerListings.Count + favoriteOpportunities.Count;
         var recentActivity = await dashboardActivityService.GetRecentActivityAsync(
             user.Id,
-            markAsViewed: true,
-            DashboardRecentActivityPreviewLimit,
+            activityPage,
+            activityPageSize,
             cancellationToken);
 
         var hasLinkedPlayers = hasPlayerOrParentRole

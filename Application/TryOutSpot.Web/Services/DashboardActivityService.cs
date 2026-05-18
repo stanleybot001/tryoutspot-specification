@@ -137,19 +137,19 @@ public sealed class DashboardActivityService(
 
     public async Task<DashboardRecentActivityResponse> GetRecentActivityAsync(
         Guid userId,
-        bool markAsViewed,
-        int takePerSection,
+        int page,
+        int pageSize,
         CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
-        var normalizedTake = Math.Clamp(takePerSection, 1, 50);
+        var normalizedPageSize = Math.Clamp(pageSize, 1, 50);
         var entitlements = await entitlementService.GetEntitlementsAsync(userId, cancellationToken);
         var preference = await GetPreferenceAsync(userId, cancellationToken);
         var effectiveActivityTypes = ResolveEffectiveActivityTypes(preference, entitlements).ToHashSet(StringComparer.Ordinal);
         var previousViewedAt = preference?.LastViewedAt;
         var since = previousViewedAt ?? now.AddDays(-DefaultFirstVisitLookbackDays);
 
-        var sections = new List<DashboardActivitySectionResponse>();
+        var sectionSources = new List<DashboardActivitySectionSource>();
         if (ContainsAny(
             effectiveActivityTypes,
             DashboardActivityTypeCodes.Tryouts,
@@ -158,17 +158,22 @@ public sealed class DashboardActivityService(
             DashboardActivityTypeCodes.RosterOpenings,
             DashboardActivityTypeCodes.CampsAndClinics))
         {
-            var opportunityItems = await GetOpportunityActivityItemsAsync(
+            var opportunityCount = await CountOpportunityActivityItemsAsync(
                 effectiveActivityTypes,
                 since,
                 now,
-                normalizedTake,
                 cancellationToken);
-            sections.Add(new DashboardActivitySectionResponse(
+            sectionSources.Add(new DashboardActivitySectionSource(
                 "player_opportunities",
                 "New opportunities",
                 "No new opportunities match your dashboard settings yet.",
-                opportunityItems));
+                opportunityCount,
+                (take, token) => GetOpportunityActivityItemsAsync(
+                    effectiveActivityTypes,
+                    since,
+                    now,
+                    take,
+                    token)));
         }
 
         if (ContainsAny(
@@ -176,75 +181,112 @@ public sealed class DashboardActivityService(
             DashboardActivityTypeCodes.PickupOpportunities,
             DashboardActivityTypeCodes.ForSaleItems))
         {
-            var parentListingItems = await GetPlayerListingActivityItemsAsync(
+            var parentListingCount = await CountPlayerListingActivityItemsAsync(
                 userId,
                 effectiveActivityTypes,
                 includeTeamRelevantListings: false,
                 since,
                 now,
-                normalizedTake,
                 cancellationToken);
-            sections.Add(new DashboardActivitySectionResponse(
+            sectionSources.Add(new DashboardActivitySectionSource(
                 "player_parent_listings",
                 "New community listings",
                 "No new pickup or equipment listings match your dashboard settings yet.",
-                parentListingItems));
+                parentListingCount,
+                (take, token) => GetPlayerListingActivityItemsAsync(
+                    userId,
+                    effectiveActivityTypes,
+                    includeTeamRelevantListings: false,
+                    since,
+                    now,
+                    take,
+                    token)));
         }
 
         if (effectiveActivityTypes.Contains(DashboardActivityTypeCodes.TeamNewPlayers))
         {
-            var playerItems = await GetNewPlayerActivityItemsAsync(
+            var playerCount = await CountNewPlayerActivityItemsAsync(
                 userId,
                 since,
-                normalizedTake,
                 cancellationToken);
-            sections.Add(new DashboardActivitySectionResponse(
+            sectionSources.Add(new DashboardActivitySectionSource(
                 "team_new_players",
                 "New player profiles",
-                "No new searchable players have been added since your last dashboard visit.",
-                playerItems));
+                "No new searchable players have been added in this window.",
+                playerCount,
+                (take, token) => GetNewPlayerActivityItemsAsync(
+                    userId,
+                    since,
+                    take,
+                    token)));
         }
 
         if (effectiveActivityTypes.Contains(DashboardActivityTypeCodes.TeamNewListings))
         {
-            var teamListingItems = await GetPlayerListingActivityItemsAsync(
+            var teamListingCount = await CountPlayerListingActivityItemsAsync(
                 userId,
                 effectiveActivityTypes,
                 includeTeamRelevantListings: true,
                 since,
                 now,
-                normalizedTake,
                 cancellationToken);
-            sections.Add(new DashboardActivitySectionResponse(
+            sectionSources.Add(new DashboardActivitySectionSource(
                 "team_new_listings",
                 "New player listings",
-                "No new player listings have been added since your last dashboard visit.",
-                teamListingItems));
+                "No new player listings have been added in this window.",
+                teamListingCount,
+                (take, token) => GetPlayerListingActivityItemsAsync(
+                    userId,
+                    effectiveActivityTypes,
+                    includeTeamRelevantListings: true,
+                    since,
+                    now,
+                    take,
+                    token)));
         }
 
-        if (markAsViewed)
+        var totalCount = sectionSources.Sum(section => section.TotalCount);
+        var totalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)normalizedPageSize));
+        var normalizedPage = Math.Clamp(page, 1, totalPages);
+        var skip = (normalizedPage - 1) * normalizedPageSize;
+        var takePerSection = skip + normalizedPageSize;
+        var loadedItems = new List<DashboardActivityPagedItem>();
+        foreach (var source in sectionSources.Where(source => source.TotalCount > 0))
         {
-            preference ??= new UserDashboardPreference
-            {
-                Id = Guid.NewGuid(),
-                UserId = userId,
-                CreatedAt = now
-            };
-            if (dbContext.Entry(preference).State == EntityState.Detached)
-            {
-                dbContext.UserDashboardPreferences.Add(preference);
-            }
-
-            preference.LastViewedAt = now;
-            preference.UpdatedAt = now;
-            await dbContext.SaveChangesAsync(cancellationToken);
+            var sourceItems = await source.LoadItemsAsync(takePerSection, cancellationToken);
+            loadedItems.AddRange(sourceItems.Select(item => new DashboardActivityPagedItem(source.Code, item)));
         }
+
+        var pagedItems = loadedItems
+            .OrderByDescending(item => item.Item.ActivityAt)
+            .ThenBy(item => item.Item.Title, StringComparer.OrdinalIgnoreCase)
+            .Skip(skip)
+            .Take(normalizedPageSize)
+            .ToArray();
+        var pagedItemsBySection = pagedItems
+            .GroupBy(item => item.SectionCode, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(item => item.Item).ToArray() as IReadOnlyCollection<DashboardActivityItemResponse>,
+                StringComparer.Ordinal);
+        var sections = sectionSources
+            .Select(source => new DashboardActivitySectionResponse(
+                source.Code,
+                source.Title,
+                source.EmptyMessage,
+                source.TotalCount,
+                pagedItemsBySection.TryGetValue(source.Code, out var items) ? items : []))
+            .ToArray();
 
         return new DashboardRecentActivityResponse(
             now,
             since,
             previousViewedAt,
             effectiveActivityTypes.OrderBy(type => type, StringComparer.Ordinal).ToArray(),
+            normalizedPage,
+            normalizedPageSize,
+            totalCount,
+            totalPages,
             sections);
     }
 
@@ -278,33 +320,7 @@ public sealed class DashboardActivityService(
         int take,
         CancellationToken cancellationToken)
     {
-        var includeTryouts = effectiveActivityTypes.Contains(DashboardActivityTypeCodes.Tryouts);
-        var includeTournaments = effectiveActivityTypes.Contains(DashboardActivityTypeCodes.Tournaments);
-        var includePickup = effectiveActivityTypes.Contains(DashboardActivityTypeCodes.PickupOpportunities);
-        var includeRosterOpenings = effectiveActivityTypes.Contains(DashboardActivityTypeCodes.RosterOpenings);
-        var includeCampsAndClinics = effectiveActivityTypes.Contains(DashboardActivityTypeCodes.CampsAndClinics);
-
-        var opportunities = await dbContext.Opportunities
-            .AsNoTracking()
-            .Where(opportunity => opportunity.IsActive)
-            .Where(opportunity => opportunity.IsPublished)
-            .Where(opportunity =>
-                (opportunity.ListingEndDate ?? opportunity.ExpiresAt) == null
-                || (opportunity.ListingEndDate ?? opportunity.ExpiresAt) > now)
-            .Where(opportunity => opportunity.ListingStartDate == null || opportunity.ListingStartDate <= now)
-            .Where(opportunity => opportunity.Team.IsActive)
-            .Where(opportunity => opportunity.Team.IsSearchable)
-            .Where(opportunity =>
-                (opportunity.PublishedAt ?? opportunity.CreatedAt) >= since
-                || opportunity.UpdatedAt >= since)
-            .Where(opportunity =>
-                (includeTryouts && opportunity.Type.ToLower().Contains("tryout"))
-                || (includeTournaments && opportunity.Type.ToLower().Contains("tournament"))
-                || (includePickup && opportunity.Type.ToLower().Contains("pickup"))
-                || (includeRosterOpenings && (opportunity.Type.ToLower().Contains("roster") || opportunity.Type.ToLower().Contains("opening")))
-                || (includeCampsAndClinics && (opportunity.Type.ToLower().Contains("camp")
-                    || opportunity.Type.ToLower().Contains("clinic")
-                    || opportunity.Type.ToLower().Contains("workout"))))
+        var opportunities = await BuildOpportunityActivityQuery(effectiveActivityTypes, since, now)
             .Include(opportunity => opportunity.Sport)
             .Include(opportunity => opportunity.Team)
                 .ThenInclude(team => team.Organization)
@@ -343,6 +359,16 @@ public sealed class DashboardActivityService(
             .ToArray();
     }
 
+    private async Task<int> CountOpportunityActivityItemsAsync(
+        IReadOnlySet<string> effectiveActivityTypes,
+        DateTime since,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        return await BuildOpportunityActivityQuery(effectiveActivityTypes, since, now)
+            .CountAsync(cancellationToken);
+    }
+
     private async Task<IReadOnlyCollection<DashboardActivityItemResponse>> GetPlayerListingActivityItemsAsync(
         Guid userId,
         IReadOnlySet<string> effectiveActivityTypes,
@@ -352,33 +378,12 @@ public sealed class DashboardActivityService(
         int take,
         CancellationToken cancellationToken)
     {
-        var includePickup = effectiveActivityTypes.Contains(DashboardActivityTypeCodes.PickupOpportunities);
-        var includeForSale = effectiveActivityTypes.Contains(DashboardActivityTypeCodes.ForSaleItems);
-
-        var listings = await dbContext.PlayerListings
-            .AsNoTracking()
-            .Where(listing => listing.UserId != userId)
-            .Where(listing => listing.IsActive)
-            .Where(listing => listing.IsPublished)
-            .Where(listing => listing.IsSearchable)
-            .Where(listing => listing.ExpiresAt == null || listing.ExpiresAt > now)
-            .Where(listing =>
-                (listing.PublishedAt ?? listing.CreatedAt) >= since
-                || listing.UpdatedAt >= since)
-            .Where(listing =>
-                listing.Player == null
-                || (listing.Player.IsActive
-                    && listing.Player.IsSearchable
-                    && (listing.Player.ContactVisibility == PublicVisibility
-                        || (includeTeamRelevantListings && listing.Player.ContactVisibility == CoachOnlyVisibility))))
-            .Where(listing =>
-                (includePickup && listing.ListingType == TryOutSpotPlayerListingTypes.PickupPlayer)
-                || (includeForSale && listing.ListingType == TryOutSpotPlayerListingTypes.UsedEquipment)
-                || (includeTeamRelevantListings
-                    && (listing.ListingType == TryOutSpotPlayerListingTypes.LookingForTeam
-                        || listing.ListingType == TryOutSpotPlayerListingTypes.PickupPlayer
-                        || listing.ListingType == TryOutSpotPlayerListingTypes.TrainingPartner
-                        || listing.ListingType == TryOutSpotPlayerListingTypes.PrivateLessons)))
+        var listings = await BuildPlayerListingActivityQuery(
+                userId,
+                effectiveActivityTypes,
+                includeTeamRelevantListings,
+                since,
+                now)
             .Include(listing => listing.Player)
             .Include(listing => listing.Sport)
             .OrderByDescending(listing => listing.PublishedAt ?? listing.UpdatedAt)
@@ -412,19 +417,30 @@ public sealed class DashboardActivityService(
             .ToArray();
     }
 
+    private async Task<int> CountPlayerListingActivityItemsAsync(
+        Guid userId,
+        IReadOnlySet<string> effectiveActivityTypes,
+        bool includeTeamRelevantListings,
+        DateTime since,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        return await BuildPlayerListingActivityQuery(
+                userId,
+                effectiveActivityTypes,
+                includeTeamRelevantListings,
+                since,
+                now)
+            .CountAsync(cancellationToken);
+    }
+
     private async Task<IReadOnlyCollection<DashboardActivityItemResponse>> GetNewPlayerActivityItemsAsync(
         Guid userId,
         DateTime since,
         int take,
         CancellationToken cancellationToken)
     {
-        var players = await dbContext.Players
-            .AsNoTracking()
-            .Where(player => player.IsActive)
-            .Where(player => player.IsSearchable)
-            .Where(player => player.ContactVisibility == PublicVisibility || player.ContactVisibility == CoachOnlyVisibility)
-            .Where(player => player.CreatedAt >= since || player.UpdatedAt >= since)
-            .Where(player => !player.UserPlayerRelationships.Any(relationship => relationship.UserId == userId))
+        var players = await BuildNewPlayerActivityQuery(userId, since)
             .Include(player => player.PlayerSports)
                 .ThenInclude(playerSport => playerSport.Sport)
             .OrderByDescending(player => player.CreatedAt)
@@ -458,6 +474,96 @@ public sealed class DashboardActivityService(
                     MaxDate(null, player.UpdatedAt, player.CreatedAt));
             })
             .ToArray();
+    }
+
+    private async Task<int> CountNewPlayerActivityItemsAsync(
+        Guid userId,
+        DateTime since,
+        CancellationToken cancellationToken)
+    {
+        return await BuildNewPlayerActivityQuery(userId, since)
+            .CountAsync(cancellationToken);
+    }
+
+    private IQueryable<Opportunity> BuildOpportunityActivityQuery(
+        IReadOnlySet<string> effectiveActivityTypes,
+        DateTime since,
+        DateTime now)
+    {
+        var includeTryouts = effectiveActivityTypes.Contains(DashboardActivityTypeCodes.Tryouts);
+        var includeTournaments = effectiveActivityTypes.Contains(DashboardActivityTypeCodes.Tournaments);
+        var includePickup = effectiveActivityTypes.Contains(DashboardActivityTypeCodes.PickupOpportunities);
+        var includeRosterOpenings = effectiveActivityTypes.Contains(DashboardActivityTypeCodes.RosterOpenings);
+        var includeCampsAndClinics = effectiveActivityTypes.Contains(DashboardActivityTypeCodes.CampsAndClinics);
+
+        return dbContext.Opportunities
+            .AsNoTracking()
+            .Where(opportunity => opportunity.IsActive)
+            .Where(opportunity => opportunity.IsPublished)
+            .Where(opportunity =>
+                (opportunity.ListingEndDate ?? opportunity.ExpiresAt) == null
+                || (opportunity.ListingEndDate ?? opportunity.ExpiresAt) > now)
+            .Where(opportunity => opportunity.ListingStartDate == null || opportunity.ListingStartDate <= now)
+            .Where(opportunity => opportunity.Team.IsActive)
+            .Where(opportunity => opportunity.Team.IsSearchable)
+            .Where(opportunity =>
+                (opportunity.PublishedAt ?? opportunity.CreatedAt) >= since
+                || opportunity.UpdatedAt >= since)
+            .Where(opportunity =>
+                (includeTryouts && opportunity.Type.ToLower().Contains("tryout"))
+                || (includeTournaments && opportunity.Type.ToLower().Contains("tournament"))
+                || (includePickup && opportunity.Type.ToLower().Contains("pickup"))
+                || (includeRosterOpenings && (opportunity.Type.ToLower().Contains("roster") || opportunity.Type.ToLower().Contains("opening")))
+                || (includeCampsAndClinics && (opportunity.Type.ToLower().Contains("camp")
+                    || opportunity.Type.ToLower().Contains("clinic")
+                    || opportunity.Type.ToLower().Contains("workout"))));
+    }
+
+    private IQueryable<PlayerListing> BuildPlayerListingActivityQuery(
+        Guid userId,
+        IReadOnlySet<string> effectiveActivityTypes,
+        bool includeTeamRelevantListings,
+        DateTime since,
+        DateTime now)
+    {
+        var includePickup = effectiveActivityTypes.Contains(DashboardActivityTypeCodes.PickupOpportunities);
+        var includeForSale = effectiveActivityTypes.Contains(DashboardActivityTypeCodes.ForSaleItems);
+
+        return dbContext.PlayerListings
+            .AsNoTracking()
+            .Where(listing => listing.UserId != userId)
+            .Where(listing => listing.IsActive)
+            .Where(listing => listing.IsPublished)
+            .Where(listing => listing.IsSearchable)
+            .Where(listing => listing.ExpiresAt == null || listing.ExpiresAt > now)
+            .Where(listing =>
+                (listing.PublishedAt ?? listing.CreatedAt) >= since
+                || listing.UpdatedAt >= since)
+            .Where(listing =>
+                listing.Player == null
+                || (listing.Player.IsActive
+                    && listing.Player.IsSearchable
+                    && (listing.Player.ContactVisibility == PublicVisibility
+                        || (includeTeamRelevantListings && listing.Player.ContactVisibility == CoachOnlyVisibility))))
+            .Where(listing =>
+                (includePickup && listing.ListingType == TryOutSpotPlayerListingTypes.PickupPlayer)
+                || (includeForSale && listing.ListingType == TryOutSpotPlayerListingTypes.UsedEquipment)
+                || (includeTeamRelevantListings
+                    && (listing.ListingType == TryOutSpotPlayerListingTypes.LookingForTeam
+                        || listing.ListingType == TryOutSpotPlayerListingTypes.PickupPlayer
+                        || listing.ListingType == TryOutSpotPlayerListingTypes.TrainingPartner
+                        || listing.ListingType == TryOutSpotPlayerListingTypes.PrivateLessons)));
+    }
+
+    private IQueryable<Player> BuildNewPlayerActivityQuery(Guid userId, DateTime since)
+    {
+        return dbContext.Players
+            .AsNoTracking()
+            .Where(player => player.IsActive)
+            .Where(player => player.IsSearchable)
+            .Where(player => player.ContactVisibility == PublicVisibility || player.ContactVisibility == CoachOnlyVisibility)
+            .Where(player => player.CreatedAt >= since || player.UpdatedAt >= since)
+            .Where(player => !player.UserPlayerRelationships.Any(relationship => relationship.UserId == userId));
     }
 
     private DashboardActivityPreferencesResponse BuildPreferencesResponse(
@@ -709,4 +815,15 @@ public sealed class DashboardActivityService(
         bool IsAvailable,
         string? UnavailableReason,
         bool IsSelected);
+
+    private sealed record DashboardActivitySectionSource(
+        string Code,
+        string Title,
+        string EmptyMessage,
+        int TotalCount,
+        Func<int, CancellationToken, Task<IReadOnlyCollection<DashboardActivityItemResponse>>> LoadItemsAsync);
+
+    private sealed record DashboardActivityPagedItem(
+        string SectionCode,
+        DashboardActivityItemResponse Item);
 }

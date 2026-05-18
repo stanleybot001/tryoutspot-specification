@@ -280,6 +280,10 @@ public sealed class AccountPageTests
 
         var html = await onboardingResponse.Content.ReadAsStringAsync();
         Assert.Contains("Dashboard menu", html);
+        Assert.Contains("What's new", html);
+        Assert.True(
+            html.IndexOf("Dashboard menu", StringComparison.Ordinal) < html.IndexOf("What's new", StringComparison.Ordinal),
+            "Dashboard menu should render before the What's new feed.");
         Assert.Contains("Player dashboard", html);
         Assert.DoesNotContain("Setup checklist", html);
         Assert.DoesNotContain("Available features", html);
@@ -366,6 +370,65 @@ public sealed class AccountPageTests
         Assert.Contains("Taylor, manage your TryOutSpot activity.", html);
         Assert.Contains("Keep team details, listings, favorites, and account settings ready for everyday work.", html);
         Assert.DoesNotContain("Taylor, finish the pieces that matter.", html);
+    }
+
+    [Fact]
+    public async Task Onboarding_PaginatesRecentActivityAndOnlyResetsWindowOnRequest()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("onboarding-activity-window@example.com", [TryOutSpotRoles.Parent]);
+        SeedDashboardTryouts(factory, 10);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var response = await client.GetAsync("/account/onboarding");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Showing 1-8 of 10", html);
+        Assert.Contains("Page 1 of 2", html);
+        Assert.Contains("activityPage=2", html);
+        Assert.Contains("Start fresh from now", html);
+        Assert.True(
+            html.IndexOf("Dashboard menu", StringComparison.Ordinal) < html.IndexOf("What's new", StringComparison.Ordinal),
+            "Dashboard menu should render before the What's new feed.");
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var preference = await dbContext.UserDashboardPreferences
+                .SingleOrDefaultAsync(currentPreference => currentPreference.UserId == user.Id);
+            Assert.True(preference is null || preference.LastViewedAt is null);
+        }
+
+        var secondPageResponse = await client.GetAsync("/account/onboarding?activityPage=2");
+        Assert.Equal(HttpStatusCode.OK, secondPageResponse.StatusCode);
+        var secondPageHtml = await secondPageResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Showing 9-10 of 10", secondPageHtml);
+        Assert.Contains("Dashboard tryout 09", secondPageHtml);
+        Assert.Contains("Dashboard tryout 10", secondPageHtml);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/onboarding");
+        var resetResponse = await client.PostAsync(
+            "/account/onboarding/recent-activity/reset",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken)
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, resetResponse.StatusCode);
+        Assert.Equal("/account/onboarding", resetResponse.Headers.Location?.ToString());
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var preference = await dbContext.UserDashboardPreferences
+                .SingleAsync(currentPreference => currentPreference.UserId == user.Id);
+            Assert.NotNull(preference.LastViewedAt);
+        }
     }
 
     [Fact]
@@ -1641,6 +1704,57 @@ public sealed class AccountPageTests
         return match.Success
             ? match.Groups[1].Value
             : throw new InvalidOperationException($"No anti-forgery token was found on {path}.");
+    }
+
+    private static void SeedDashboardTryouts(TryOutSpotWebApplicationFactory factory, int count)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var sportId = dbContext.Sports
+            .Where(sport => sport.IsActive && sport.Name == "Softball")
+            .Select(sport => sport.Id)
+            .Single();
+        var now = DateTime.UtcNow.AddMinutes(-1);
+        var teamId = Guid.NewGuid();
+        dbContext.Teams.Add(new Team
+        {
+            Id = teamId,
+            Name = "Dashboard Window Team",
+            TeamLevel = "14U",
+            GeographicScope = "Regional",
+            City = "McPherson",
+            State = "KS",
+            ZipCode = "67460",
+            IsSearchable = true,
+            IsContactInfoVisible = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        });
+
+        for (var index = 1; index <= count; index++)
+        {
+            var activityAt = now.AddMinutes(-index);
+            dbContext.Opportunities.Add(new Opportunity
+            {
+                Id = Guid.NewGuid(),
+                TeamId = teamId,
+                SportId = sportId,
+                Type = "tryout",
+                Title = $"Dashboard tryout {index:00}",
+                RegistrationFee = 0m,
+                EventDate = now.AddDays(index),
+                City = "McPherson",
+                State = "KS",
+                IsPublished = true,
+                PublishedAt = activityAt,
+                CreatedAt = activityAt,
+                UpdatedAt = activityAt,
+                IsActive = true
+            });
+        }
+
+        dbContext.SaveChanges();
     }
 
     private static Guid SeedPlayerListingDetail(

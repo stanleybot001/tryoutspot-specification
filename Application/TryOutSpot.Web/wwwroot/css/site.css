@@ -684,6 +684,19 @@ body.splash-page {
   margin-bottom: 0;
 }
 
+.recent-activity-toolbar,
+.recent-activity-pager {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.recent-activity-pager {
+  margin-top: 1rem;
+}
+
 .recent-activity-section {
   margin-bottom: 1.25rem;
 }
@@ -1529,6 +1542,11 @@ body.splash-page {
 
   .section-heading-row {
     flex-direction: column;
+  }
+
+  .recent-activity-toolbar,
+  .recent-activity-pager {
+    justify-content: flex-start;
   }
 
   .team-row-head,

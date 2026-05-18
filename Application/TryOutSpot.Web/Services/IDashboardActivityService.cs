@@ -15,8 +15,8 @@ public interface IDashboardActivityService
 
     Task<DashboardRecentActivityResponse> GetRecentActivityAsync(
         Guid userId,
-        bool markAsViewed,
-        int takePerSection,
+        int page,
+        int pageSize,
         CancellationToken cancellationToken);
 
     Task<DashboardActivityViewedResponse> MarkViewedAsync(

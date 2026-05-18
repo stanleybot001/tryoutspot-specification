@@ -24,7 +24,8 @@ public sealed class DashboardApiController(IDashboardActivityService dashboardAc
     [ProducesResponseType<DashboardRecentActivityResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<DashboardRecentActivityResponse>> RecentActivity(
-        [FromQuery] int takePerSection = 12,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 12,
         CancellationToken cancellationToken = default)
     {
         if (!TryGetCurrentUserId(out var userId))
@@ -34,8 +35,8 @@ public sealed class DashboardApiController(IDashboardActivityService dashboardAc
 
         return Ok(await dashboardActivityService.GetRecentActivityAsync(
             userId,
-            markAsViewed: false,
-            takePerSection,
+            page,
+            pageSize,
             cancellationToken));
     }
 
