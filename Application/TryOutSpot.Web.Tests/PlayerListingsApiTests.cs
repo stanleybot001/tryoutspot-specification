@@ -140,6 +140,35 @@ public sealed class PlayerListingsApiTests
     }
 
     [Fact]
+    public async Task Search_HonorsLinkedPlayerProfileSearchAndContactVisibility()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var owner = await factory.CreateUserAsync("listing-profile-visibility-owner@example.com", [TryOutSpotRoles.Parent]);
+        var teamUser = await factory.CreateUserAsync("listing-profile-visibility-team@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        SeedPlayerProfileVisibilityListings(factory, owner.Id);
+
+        var publicClient = factory.CreateClient();
+        var publicResponse = await publicClient.GetAsync("/api/player-listings/search?listingType=pickup_player");
+
+        Assert.Equal(HttpStatusCode.OK, publicResponse.StatusCode);
+        var publicListings = await publicResponse.Content.ReadFromJsonAsync<PlayerListingListResponse>();
+        Assert.NotNull(publicListings);
+        Assert.Contains(publicListings.Listings, listing => listing.Title == "Public profile listing");
+        Assert.DoesNotContain(publicListings.Listings, listing => listing.Title == "Coach-only profile listing");
+        Assert.DoesNotContain(publicListings.Listings, listing => listing.Title == "Search-disabled profile listing");
+
+        var teamClient = await CreateAuthorizedClientAsync(factory, teamUser.Email!);
+        var teamResponse = await teamClient.GetAsync("/api/player-listings/search?listingType=pickup_player");
+
+        Assert.Equal(HttpStatusCode.OK, teamResponse.StatusCode);
+        var teamListings = await teamResponse.Content.ReadFromJsonAsync<PlayerListingListResponse>();
+        Assert.NotNull(teamListings);
+        Assert.Contains(teamListings.Listings, listing => listing.Title == "Public profile listing");
+        Assert.Contains(teamListings.Listings, listing => listing.Title == "Coach-only profile listing");
+        Assert.DoesNotContain(teamListings.Listings, listing => listing.Title == "Search-disabled profile listing");
+    }
+
+    [Fact]
     public async Task Search_ByOriginZipAndRadius_FiltersAndIncludesDistance()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -238,6 +267,81 @@ public sealed class PlayerListingsApiTests
             .Where(sport => sport.IsActive && sport.Name == sportName)
             .Select(sport => sport.Id)
             .Single();
+    }
+
+    private static void SeedPlayerProfileVisibilityListings(
+        TryOutSpotWebApplicationFactory factory,
+        Guid ownerId)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+        var sportId = dbContext.Sports
+            .Where(sport => sport.IsActive && sport.Name == "Softball")
+            .Select(sport => sport.Id)
+            .Single();
+        var publicPlayer = CreatePlayer("Public", "Profile", true, "Public", now);
+        var coachOnlyPlayer = CreatePlayer("Coach", "Profile", true, "VerifiedCoachesOnly", now);
+        var searchDisabledPlayer = CreatePlayer("Hidden", "Profile", false, "Public", now);
+
+        dbContext.Players.AddRange(publicPlayer, coachOnlyPlayer, searchDisabledPlayer);
+        dbContext.PlayerListings.AddRange(
+            CreatePlayerListing(ownerId, publicPlayer.Id, sportId, "Public profile listing", now),
+            CreatePlayerListing(ownerId, coachOnlyPlayer.Id, sportId, "Coach-only profile listing", now),
+            CreatePlayerListing(ownerId, searchDisabledPlayer.Id, sportId, "Search-disabled profile listing", now));
+        dbContext.SaveChanges();
+    }
+
+    private static Player CreatePlayer(
+        string firstName,
+        string lastName,
+        bool isSearchable,
+        string contactVisibility,
+        DateTime now)
+    {
+        return new Player
+        {
+            Id = Guid.NewGuid(),
+            FirstName = firstName,
+            LastName = lastName,
+            DateOfBirth = now.AddYears(-15).Date,
+            City = "McPherson",
+            State = "KS",
+            ZipCode = "67460",
+            ContactVisibility = contactVisibility,
+            IsSearchable = isSearchable,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        };
+    }
+
+    private static PlayerListing CreatePlayerListing(
+        Guid ownerId,
+        Guid playerId,
+        Guid sportId,
+        string title,
+        DateTime now)
+    {
+        return new PlayerListing
+        {
+            Id = Guid.NewGuid(),
+            UserId = ownerId,
+            PlayerId = playerId,
+            SportId = sportId,
+            ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
+            Title = title,
+            Description = "Player profile visibility test listing.",
+            City = "McPherson",
+            State = "KS",
+            ZipCode = "67460",
+            IsPublished = true,
+            IsSearchable = true,
+            PublishedAt = now,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        };
     }
 
     private static async Task<HttpClient> CreateAuthorizedClientAsync(

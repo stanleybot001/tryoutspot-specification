@@ -4481,6 +4481,7 @@ public sealed class AccountController(
         var hasTeamAccess = roles.Any(TryOutSpotRoles.IsTeamBundleRole)
             || featureCodes.Contains(TryOutSpotFeatureCodes.BasicPlayerSearch, StringComparer.Ordinal)
             || featureCodes.Contains(TryOutSpotFeatureCodes.AdvancedPlayerSearch, StringComparer.Ordinal);
+        var canViewCoachOnlyPlayerProfiles = roles.Any(TryOutSpotRoles.IsTeamBundleRole);
         var hasAdvancedPlayerSearch = featureCodes.Contains(
             TryOutSpotFeatureCodes.AdvancedPlayerSearch,
             StringComparer.Ordinal);
@@ -4558,7 +4559,8 @@ public sealed class AccountController(
             model.State,
             model.MinPrice,
             model.MaxPrice,
-            zipRadius?.ZipCodes);
+            zipRadius?.ZipCodes,
+            canViewCoachOnlyPlayerProfiles);
 
         model.TotalCount = await query.CountAsync(cancellationToken);
         model.TotalPages = Math.Max(1, (int)Math.Ceiling(model.TotalCount / (double)model.PageSize));
@@ -4588,6 +4590,7 @@ public sealed class AccountController(
                 normalizedSearch,
                 model,
                 normalizedListingType,
+                canViewCoachOnlyPlayerProfiles,
                 zipRadius,
                 maxRadiusMiles,
                 cancellationToken);
@@ -4844,15 +4847,25 @@ public sealed class AccountController(
         string? state,
         decimal? minPrice,
         decimal? maxPrice,
-        IReadOnlyCollection<string>? zipCodes)
+        IReadOnlyCollection<string>? zipCodes,
+        bool canViewCoachOnlyPlayerProfiles)
     {
         var now = DateTime.UtcNow;
+        var publicVisibility = PlayerContactVisibilityOptions[0];
+        var coachOnlyVisibility = PlayerContactVisibilityOptions[1];
         var query = dbContext.PlayerListings
             .AsNoTracking()
             .Where(listing => listing.IsActive)
             .Where(listing => listing.IsPublished)
             .Where(listing => listing.IsSearchable)
-            .Where(listing => listing.ExpiresAt == null || listing.ExpiresAt > now);
+            .Where(listing => listing.ExpiresAt == null || listing.ExpiresAt > now)
+            .Where(listing =>
+                listing.Player == null
+                || (listing.Player.IsActive
+                    && listing.Player.IsSearchable
+                    && (listing.Player.ContactVisibility == publicVisibility
+                        || (canViewCoachOnlyPlayerProfiles
+                            && listing.Player.ContactVisibility == coachOnlyVisibility))));
 
         if (!string.IsNullOrWhiteSpace(normalizedListingType))
         {
@@ -5205,6 +5218,7 @@ public sealed class AccountController(
         string? normalizedSearch,
         SearchPlayersPageModel model,
         string? normalizedListingType,
+        bool canViewCoachOnlyPlayerProfiles,
         ZipRadiusSearchResult currentRadius,
         int maxRadiusMiles,
         CancellationToken cancellationToken)
@@ -5242,7 +5256,8 @@ public sealed class AccountController(
                 model.State,
                 model.MinPrice,
                 model.MaxPrice,
-                additionalZipCodes);
+                additionalZipCodes,
+                canViewCoachOnlyPlayerProfiles);
             var rows = await BuildOrderedPlayerSearchRows(
                     query,
                     normalizedSearch,

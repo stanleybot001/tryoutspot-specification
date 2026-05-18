@@ -85,6 +85,29 @@ public sealed class SearchPagesTests
     }
 
     [Fact]
+    public async Task SearchPlayers_TeamUser_HonorsLinkedPlayerSearchAndContactVisibility()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var owner = await factory.CreateUserAsync("player-visibility-listing-owner@example.com", [TryOutSpotRoles.Parent]);
+        var teamUser = await factory.CreateUserAsync("team-player-visibility-search@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        SeedPlayerVisibilitySearchListings(factory, owner.Id);
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, teamUser.Email!);
+
+        var response = await client.GetAsync("/account/search/players?listingType=pickup_player");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Public searchable player", html);
+        Assert.Contains("Coach-only searchable player", html);
+        Assert.DoesNotContain("Hidden profile player", html);
+    }
+
+    [Fact]
     public async Task SearchTeamItems_WithSmallRadius_SuggestsFartherRadiusMatches()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -178,6 +201,29 @@ public sealed class SearchPagesTests
         dbContext.SaveChanges();
     }
 
+    private static void SeedPlayerVisibilitySearchListings(
+        TryOutSpotWebApplicationFactory factory,
+        Guid ownerId)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+        var sportId = dbContext.Sports
+            .Where(sport => sport.IsActive && sport.Name == "Softball")
+            .Select(sport => sport.Id)
+            .Single();
+        var publicPlayer = CreatePlayer("Public", "Searchable", true, "Public", now);
+        var coachOnlyPlayer = CreatePlayer("Coach", "Only", true, "VerifiedCoachesOnly", now);
+        var hiddenPlayer = CreatePlayer("Hidden", "Profile", false, "Public", now);
+
+        dbContext.Players.AddRange(publicPlayer, coachOnlyPlayer, hiddenPlayer);
+        dbContext.PlayerListings.AddRange(
+            CreatePlayerListing(ownerId, publicPlayer.Id, sportId, "Public searchable player", now),
+            CreatePlayerListing(ownerId, coachOnlyPlayer.Id, sportId, "Coach-only searchable player", now),
+            CreatePlayerListing(ownerId, hiddenPlayer.Id, sportId, "Hidden profile player", now));
+        dbContext.SaveChanges();
+    }
+
     private static void SeedZipCodeGeographies(TryOutSpotWebApplicationFactory factory)
     {
         using var scope = factory.Services.CreateScope();
@@ -247,6 +293,58 @@ public sealed class SearchPagesTests
             IsContactInfoVisible = true,
             IsElite = false,
             IsVerified = false,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        };
+    }
+
+    private static Player CreatePlayer(
+        string firstName,
+        string lastName,
+        bool isSearchable,
+        string contactVisibility,
+        DateTime now)
+    {
+        return new Player
+        {
+            Id = Guid.NewGuid(),
+            FirstName = firstName,
+            LastName = lastName,
+            DateOfBirth = now.AddYears(-15).Date,
+            City = "McPherson",
+            State = "KS",
+            ZipCode = "67460",
+            ContactVisibility = contactVisibility,
+            IsSearchable = isSearchable,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        };
+    }
+
+    private static PlayerListing CreatePlayerListing(
+        Guid ownerId,
+        Guid playerId,
+        Guid sportId,
+        string title,
+        DateTime now)
+    {
+        return new PlayerListing
+        {
+            Id = Guid.NewGuid(),
+            UserId = ownerId,
+            PlayerId = playerId,
+            SportId = sportId,
+            ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
+            Title = title,
+            Description = "Visibility test player listing.",
+            City = "McPherson",
+            State = "KS",
+            ZipCode = "67460",
+            IsPublished = true,
+            IsSearchable = true,
+            PublishedAt = now,
             CreatedAt = now,
             UpdatedAt = now,
             IsActive = true

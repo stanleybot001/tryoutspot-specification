@@ -91,7 +91,8 @@ public sealed class PlayerListingsApiController(
         }
 
         var hasAdvancedPlayerSearch = await HasAdvancedPlayerSearchAsync(cancellationToken);
-        var isConstrainedTeamSearch = IsSignedInTeamRepresentative() && !hasAdvancedPlayerSearch;
+        var canViewCoachOnlyPlayerProfiles = IsSignedInTeamRepresentative();
+        var isConstrainedTeamSearch = canViewCoachOnlyPlayerProfiles && !hasAdvancedPlayerSearch;
 
         var normalizedSkillLevel = NormalizeOptional(skillLevel);
         if (isConstrainedTeamSearch && !string.IsNullOrWhiteSpace(normalizedSkillLevel))
@@ -158,13 +159,22 @@ public sealed class PlayerListingsApiController(
         page = Math.Max(page, 1);
         pageSize = Math.Clamp(pageSize, 1, 100);
         var now = DateTime.UtcNow;
+        var publicVisibility = "Public";
+        var coachOnlyVisibility = "VerifiedCoachesOnly";
 
         var query = dbContext.PlayerListings
             .AsNoTracking()
             .Where(listing => listing.IsActive)
             .Where(listing => listing.IsPublished)
             .Where(listing => listing.IsSearchable)
-            .Where(listing => listing.ExpiresAt == null || listing.ExpiresAt > now);
+            .Where(listing => listing.ExpiresAt == null || listing.ExpiresAt > now)
+            .Where(listing =>
+                listing.Player == null
+                || (listing.Player.IsActive
+                    && listing.Player.IsSearchable
+                    && (listing.Player.ContactVisibility == publicVisibility
+                        || (canViewCoachOnlyPlayerProfiles
+                            && listing.Player.ContactVisibility == coachOnlyVisibility))));
 
         if (normalizedListingType is not null)
         {
