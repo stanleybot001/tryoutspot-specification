@@ -1212,7 +1212,7 @@ public sealed class PlayerListingDetailPageModel
 
     public string? BatsHand { get; set; }
 
-    public bool IsContactPublic { get; set; }
+    public bool CanViewContactDetails { get; set; }
 
     public string? ContactEmail { get; set; }
 

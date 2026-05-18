@@ -13,6 +13,7 @@ using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
+using TryOutSpot.Web.Listings;
 using TryOutSpot.Web.Models.Billing;
 using TryOutSpot.Web.Security;
 using TryOutSpot.Web.Services;
@@ -733,6 +734,88 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task PlayerListingDetail_FreeProfile_ShowsBasicFieldsAndHidesEnhancedFields()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var owner = await factory.CreateUserAsync("listing-detail-free-owner@example.com", [TryOutSpotRoles.Parent]);
+        var listingId = SeedPlayerListingDetail(factory, owner.Id, "Public");
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/player-listings/{listingId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+        Assert.Contains("Wichita Central High", html);
+        Assert.Contains("Aces 16U", html);
+        Assert.Contains("2027", html);
+        Assert.Contains("5'9\" / 185 lb", html);
+        Assert.Contains("Right", html);
+        Assert.Contains("Left", html);
+        Assert.Contains("Softball", html);
+        Assert.DoesNotContain("Not set", html);
+        Assert.DoesNotContain("Social pages", html);
+        Assert.DoesNotContain("Profile videos", html);
+        Assert.DoesNotContain("Recruiting profiles", html);
+        Assert.DoesNotContain("Level: Advanced", html);
+        Assert.DoesNotContain("Primary position: Pitcher", html);
+        Assert.DoesNotContain("SportsRecruits", html);
+    }
+
+    [Fact]
+    public async Task PlayerListingDetail_PremiumProfile_ShowsEnhancedProfileDetails()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var owner = await factory.CreateUserAsync("listing-detail-premium-owner@example.com", [TryOutSpotRoles.Parent]);
+        await AddSubscriptionAsync(factory, owner.Id, TryOutSpotPlanCodes.PremiumPlayer, "active");
+        var listingId = SeedPlayerListingDetail(factory, owner.Id, "Public");
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/player-listings/{listingId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+        Assert.Contains("Wichita Central High", html);
+        Assert.Contains("Social pages", html);
+        Assert.Contains("Profile videos", html);
+        Assert.Contains("Recruiting profiles", html);
+        Assert.Contains("Level: Advanced", html);
+        Assert.Contains("Primary position: Pitcher", html);
+        Assert.Contains("Secondary positions: Shortstop", html);
+        Assert.Contains("SportsRecruits", html);
+        Assert.Contains("https://youtube.com/watch?v=alex-highlight", html);
+    }
+
+    [Fact]
+    public async Task PlayerListingDetail_CoachOnlyContact_ShowsOnlyForTeamRepresentatives()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var owner = await factory.CreateUserAsync("listing-detail-contact-owner@example.com", [TryOutSpotRoles.Parent]);
+        var teamUser = await factory.CreateUserAsync("listing-detail-contact-team@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var listingId = SeedPlayerListingDetail(factory, owner.Id, "VerifiedCoachesOnly");
+
+        var publicResponse = await factory.CreateClient().GetAsync($"/player-listings/{listingId}");
+
+        Assert.Equal(HttpStatusCode.OK, publicResponse.StatusCode);
+        var publicHtml = WebUtility.HtmlDecode(await publicResponse.Content.ReadAsStringAsync());
+        Assert.Contains("Contact details are limited to approved coach access", publicHtml);
+        Assert.DoesNotContain("player-contact@example.com", publicHtml);
+
+        var teamClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(teamClient, teamUser.Email!);
+
+        var teamResponse = await teamClient.GetAsync($"/player-listings/{listingId}");
+
+        Assert.Equal(HttpStatusCode.OK, teamResponse.StatusCode);
+        var teamHtml = WebUtility.HtmlDecode(await teamResponse.Content.ReadAsStringAsync());
+        Assert.Contains("player-contact@example.com", teamHtml);
+        Assert.DoesNotContain("Contact details are limited to approved coach access", teamHtml);
+        Assert.DoesNotContain("<span>Phone</span>", teamHtml);
+    }
+
+    [Fact]
     public async Task AddTeamOrOrganizationPage_AndPost_CreateLinkedTeamAndOrganizationRecords()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -1067,6 +1150,95 @@ public sealed class AccountPageTests
         return match.Success
             ? match.Groups[1].Value
             : throw new InvalidOperationException($"No anti-forgery token was found on {path}.");
+    }
+
+    private static Guid SeedPlayerListingDetail(
+        TryOutSpotWebApplicationFactory factory,
+        Guid ownerId,
+        string contactVisibility)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var sport = dbContext.Sports.Single(currentSport => currentSport.Name == "Softball");
+        var now = DateTime.UtcNow;
+        var playerId = Guid.NewGuid();
+        var listingId = Guid.NewGuid();
+
+        dbContext.Players.Add(new Player
+        {
+            Id = playerId,
+            FirstName = "Alex",
+            LastName = "Rivera",
+            DateOfBirth = now.AddYears(-17).Date,
+            City = "Wichita",
+            State = "KS",
+            ZipCode = "67202",
+            SchoolName = "Wichita Central High",
+            CurrentTeamName = "Aces 16U",
+            GraduationYear = 2027,
+            Height = "5'9\"",
+            Weight = "185 lb",
+            ThrowsHand = "Right",
+            BatsHand = "Left",
+            ContactEmail = "player-contact@example.com",
+            ContactPhone = null,
+            ContactVisibility = contactVisibility,
+            SocialMediaLinks = JsonSerializer.Serialize(new Dictionary<string, string>
+            {
+                ["facebook"] = "https://facebook.com/alex.rivera",
+                ["highlight_video_1"] = "https://youtube.com/watch?v=alex-highlight"
+            }),
+            RecruitingProfileLinks = JsonSerializer.Serialize(new Dictionary<string, string>
+            {
+                ["sportsrecruits"] = "https://sportsrecruits.com/athlete/alex-rivera"
+            }),
+            IsSearchable = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        });
+        dbContext.PlayerSports.Add(new PlayerSport
+        {
+            Id = Guid.NewGuid(),
+            PlayerId = playerId,
+            SportId = sport.Id,
+            SkillLevel = "Advanced",
+            PrimaryPosition = "Pitcher",
+            SecondaryPositions = "Shortstop",
+            IsActive = true,
+            CreatedAt = now
+        });
+        dbContext.UserPlayerRelationships.Add(new UserPlayerRelationship
+        {
+            Id = Guid.NewGuid(),
+            UserId = ownerId,
+            PlayerId = playerId,
+            Relationship = "Parent",
+            CanManage = true,
+            CreatedAt = now
+        });
+        dbContext.PlayerListings.Add(new PlayerListing
+        {
+            Id = listingId,
+            UserId = ownerId,
+            PlayerId = playerId,
+            SportId = sport.Id,
+            ListingType = TryOutSpotPlayerListingTypes.LookingForTeam,
+            Title = "Looking for a 2027 fall team",
+            Description = "Available for fall 2026 softball opportunities.",
+            City = "Wichita",
+            State = "KS",
+            ZipCode = "67202",
+            IsPublished = true,
+            IsSearchable = true,
+            PublishedAt = now,
+            ExpiresAt = now.AddDays(30),
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        });
+        dbContext.SaveChanges();
+        return listingId;
     }
 
     private static async Task LoginWebUserAsync(HttpClient client, string email)

@@ -2,6 +2,16 @@
 
 @{
     ViewData["Title"] = Model.Title;
+    var profileSize = FormatSize(Model.Height, Model.Weight);
+    var hasVisibleProfileFacts = !string.IsNullOrWhiteSpace(Model.SchoolName)
+        || !string.IsNullOrWhiteSpace(Model.CurrentTeamName)
+        || Model.GraduationYear.HasValue
+        || !string.IsNullOrWhiteSpace(profileSize)
+        || !string.IsNullOrWhiteSpace(Model.ThrowsHand)
+        || !string.IsNullOrWhiteSpace(Model.BatsHand);
+    var hasVisibleContactDetails = Model.CanViewContactDetails
+        && (!string.IsNullOrWhiteSpace(Model.ContactEmail)
+            || !string.IsNullOrWhiteSpace(Model.ContactPhone));
 }
 
 <section class="account-page">
@@ -125,14 +135,35 @@
                 <img class="listing-profile-image" src="@Model.ProfileImageUrl" alt="@Model.PlayerName profile photo" onerror="this.style.display='none'" />
             }
 
-            <div class="team-summary-grid opportunity-summary-grid mt-2">
-                <div><span>School</span><strong>@(string.IsNullOrWhiteSpace(Model.SchoolName) ? "Not set" : Model.SchoolName)</strong></div>
-                <div><span>Current team</span><strong>@(string.IsNullOrWhiteSpace(Model.CurrentTeamName) ? "Not set" : Model.CurrentTeamName)</strong></div>
-                <div><span>Graduation year</span><strong>@(Model.GraduationYear.HasValue ? Model.GraduationYear.Value.ToString() : "Not set")</strong></div>
-                <div><span>Height / weight</span><strong>@FormatSize(Model.Height, Model.Weight)</strong></div>
-                <div><span>Throws</span><strong>@(string.IsNullOrWhiteSpace(Model.ThrowsHand) ? "Not set" : Model.ThrowsHand)</strong></div>
-                <div><span>Bats</span><strong>@(string.IsNullOrWhiteSpace(Model.BatsHand) ? "Not set" : Model.BatsHand)</strong></div>
-            </div>
+            @if (hasVisibleProfileFacts)
+            {
+                <div class="team-summary-grid opportunity-summary-grid mt-2">
+                    @if (!string.IsNullOrWhiteSpace(Model.SchoolName))
+                    {
+                        <div><span>School</span><strong>@Model.SchoolName</strong></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.CurrentTeamName))
+                    {
+                        <div><span>Current team</span><strong>@Model.CurrentTeamName</strong></div>
+                    }
+                    @if (Model.GraduationYear.HasValue)
+                    {
+                        <div><span>Graduation year</span><strong>@Model.GraduationYear.Value</strong></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(profileSize))
+                    {
+                        <div><span>Height / weight</span><strong>@profileSize</strong></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.ThrowsHand))
+                    {
+                        <div><span>Throws</span><strong>@Model.ThrowsHand</strong></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.BatsHand))
+                    {
+                        <div><span>Bats</span><strong>@Model.BatsHand</strong></div>
+                    }
+                </div>
+            }
 
             @if (Model.SocialLinks.Count > 0)
             {
@@ -162,17 +193,26 @@
                 </div>
             }
 
-            <h3 class="mt-3">Contact</h3>
-            @if (Model.IsContactPublic)
+            @if (hasVisibleContactDetails || !Model.CanViewContactDetails)
             {
-                <div class="team-summary-grid">
-                    <div><span>Email</span><strong>@(string.IsNullOrWhiteSpace(Model.ContactEmail) ? "Not provided" : Model.ContactEmail)</strong></div>
-                    <div><span>Phone</span><strong>@(string.IsNullOrWhiteSpace(Model.ContactPhone) ? "Not provided" : Model.ContactPhone)</strong></div>
-                </div>
-            }
-            else
-            {
-                <p class="section-help">Contact details are limited to approved coach access for this player profile.</p>
+                <h3 class="mt-3">Contact</h3>
+                @if (hasVisibleContactDetails)
+                {
+                    <div class="team-summary-grid">
+                        @if (!string.IsNullOrWhiteSpace(Model.ContactEmail))
+                        {
+                            <div><span>Email</span><strong>@Model.ContactEmail</strong></div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(Model.ContactPhone))
+                        {
+                            <div><span>Phone</span><strong>@Model.ContactPhone</strong></div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="section-help">Contact details are limited to approved coach access for this player profile.</p>
+                }
             }
 
             @if (Model.Sports.Count > 0)
@@ -183,9 +223,18 @@
                     {
                         <div class="plan-row plan-row-stack">
                             <strong>@sport.SportName</strong>
-                            <span>Level: @(string.IsNullOrWhiteSpace(sport.SkillLevel) ? "Not set" : sport.SkillLevel)</span>
-                            <span>Primary position: @(string.IsNullOrWhiteSpace(sport.PrimaryPosition) ? "Not set" : sport.PrimaryPosition)</span>
-                            <span>Secondary positions: @(string.IsNullOrWhiteSpace(sport.SecondaryPositions) ? "Not set" : sport.SecondaryPositions)</span>
+                            @if (!string.IsNullOrWhiteSpace(sport.SkillLevel))
+                            {
+                                <span>Level: @sport.SkillLevel</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(sport.PrimaryPosition))
+                            {
+                                <span>Primary position: @sport.PrimaryPosition</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(sport.SecondaryPositions))
+                            {
+                                <span>Secondary positions: @sport.SecondaryPositions</span>
+                            }
                         </div>
                     }
                 </div>
@@ -242,14 +291,14 @@
             parts.Add(zipCode.Trim());
         }
 
-        return parts.Count == 0 ? "Not set" : string.Join(", ", parts);
+        return parts.Count == 0 ? string.Empty : string.Join(", ", parts);
     }
 
     private static string FormatSize(string? height, string? weight)
     {
         if (string.IsNullOrWhiteSpace(height) && string.IsNullOrWhiteSpace(weight))
         {
-            return "Not set";
+            return string.Empty;
         }
 
         if (string.IsNullOrWhiteSpace(height))

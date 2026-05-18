@@ -6572,6 +6572,16 @@ public sealed class AccountController(
             cancellationToken);
         var isContactPublic = player is not null
             && string.Equals(player.ContactVisibility, "Public", StringComparison.OrdinalIgnoreCase);
+        var isCoachOnlyContact = player is not null
+            && string.Equals(player.ContactVisibility, "VerifiedCoachesOnly", StringComparison.OrdinalIgnoreCase);
+        var canViewCoachOnlyContact = false;
+        if (currentUser is not null)
+        {
+            var viewerRoles = await GetCanonicalPublicRolesAsync(currentUser);
+            canViewCoachOnlyContact = viewerRoles.Any(TryOutSpotRoles.IsTeamBundleRole);
+        }
+
+        var canViewContactDetails = isContactPublic || (isCoachOnlyContact && canViewCoachOnlyContact);
         var sports = player?.PlayerSports
             .Where(playerSport => playerSport.IsActive)
             .OrderBy(playerSport => playerSport.Sport.Name)
@@ -6633,16 +6643,16 @@ public sealed class AccountController(
             ExpiresAt = listing.ExpiresAt,
             PlayerName = player is null ? null : $"{player.FirstName} {player.LastName}".Trim(),
             ProfileImageUrl = ResolvePlayerProfileImagePublicUrl(player?.Id, player?.ProfileImageUrl),
-            SchoolName = hasEnhancedProfileVisibility ? player?.SchoolName : null,
-            CurrentTeamName = hasEnhancedProfileVisibility ? player?.CurrentTeamName : null,
-            GraduationYear = hasEnhancedProfileVisibility ? player?.GraduationYear : null,
-            Height = hasEnhancedProfileVisibility ? player?.Height : null,
-            Weight = hasEnhancedProfileVisibility ? player?.Weight : null,
-            ThrowsHand = hasEnhancedProfileVisibility ? player?.ThrowsHand : null,
-            BatsHand = hasEnhancedProfileVisibility ? player?.BatsHand : null,
-            IsContactPublic = isContactPublic,
-            ContactEmail = isContactPublic ? player?.ContactEmail : null,
-            ContactPhone = isContactPublic ? player?.ContactPhone : null,
+            SchoolName = NormalizeOptional(player?.SchoolName),
+            CurrentTeamName = NormalizeOptional(player?.CurrentTeamName),
+            GraduationYear = player?.GraduationYear,
+            Height = NormalizeOptional(player?.Height),
+            Weight = NormalizeOptional(player?.Weight),
+            ThrowsHand = NormalizeOptional(player?.ThrowsHand),
+            BatsHand = NormalizeOptional(player?.BatsHand),
+            CanViewContactDetails = canViewContactDetails,
+            ContactEmail = canViewContactDetails ? NormalizeOptional(player?.ContactEmail) : null,
+            ContactPhone = canViewContactDetails ? NormalizeOptional(player?.ContactPhone) : null,
             Sports = sports,
             SocialLinks = socialLinks,
             ProfileVideoLinks = profileVideoLinks,
