@@ -843,6 +843,87 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task AddAndEditTeamProfilePages_GroupInputsBySection()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("team-profile-sections@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.TeamBasic, "trialing");
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var createResponse = await client.GetAsync("/account/onboarding/add-team-or-organization");
+
+        Assert.Equal(HttpStatusCode.OK, createResponse.StatusCode);
+        var createHtml = await createResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Add team or organization", createHtml);
+        AssertTeamProfileSections(createHtml);
+
+        Guid teamId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var sportId = await dbContext.Sports
+                .Where(sport => sport.IsActive && sport.Name == "Baseball")
+                .Select(sport => sport.Id)
+                .SingleAsync();
+            var now = DateTime.UtcNow;
+            teamId = Guid.NewGuid();
+
+            dbContext.Teams.Add(new Team
+            {
+                Id = teamId,
+                Name = "Profile Sections 12U",
+                TeamLevel = "12U",
+                Description = "Competitive local team focused on player development.",
+                GeographicScope = "Regional",
+                City = "McPherson",
+                State = "KS",
+                ZipCode = "67460",
+                PhoneNumber = "620-555-3434",
+                Email = "coach@example.com",
+                WebsiteUrl = "https://profile-sections.example.com",
+                IsSearchable = true,
+                IsContactInfoVisible = true,
+                IsElite = false,
+                IsVerified = false,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+            dbContext.UserTeamRoles.Add(new UserTeamRole
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                TeamId = teamId,
+                Role = TryOutSpotRoles.TeamRepresentative,
+                StartDate = now,
+                IsActive = true,
+                CreatedAt = now
+            });
+            dbContext.TeamSports.Add(new TeamSport
+            {
+                Id = Guid.NewGuid(),
+                TeamId = teamId,
+                SportId = sportId,
+                IsActive = true,
+                CreatedAt = now
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var editResponse = await client.GetAsync($"/account/onboarding/team-opportunities/{teamId}/edit-profile");
+
+        Assert.Equal(HttpStatusCode.OK, editResponse.StatusCode);
+        var editHtml = await editResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Edit team profile", editHtml);
+        AssertTeamProfileSections(editHtml);
+    }
+
+    [Fact]
     public async Task AddPlayerProfilePage_AndPost_CreateLinkedPlayerProfile()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -1434,6 +1515,19 @@ public sealed class AccountPageTests
         Assert.Contains("<legend>Description and instructions</legend>", html);
         Assert.Contains("<legend>Tryout registration settings</legend>", html);
         Assert.Contains("<legend>Visibility and publishing</legend>", html);
+    }
+
+    private static void AssertTeamProfileSections(string html)
+    {
+        Assert.Contains("<legend>Team setup</legend>", html);
+        Assert.Contains("<legend>Team story</legend>", html);
+        Assert.Contains("<legend>Coverage and location</legend>", html);
+        Assert.Contains("<legend>Contact information</legend>", html);
+        Assert.Contains("<legend>Logo and highlights</legend>", html);
+        Assert.Contains("<legend>Website and social pages</legend>", html);
+        Assert.Contains("<legend>GameChanger</legend>", html);
+        Assert.Contains("<legend>Sports</legend>", html);
+        Assert.Contains("<legend>Search visibility</legend>", html);
     }
 
     private static async Task<string> GetAntiForgeryTokenAsync(HttpClient client, string path)

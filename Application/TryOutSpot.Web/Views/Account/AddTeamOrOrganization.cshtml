@@ -31,67 +31,78 @@
             <input asp-for="ProfileImageUrl" type="hidden" />
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
-            @if (!Model.IsEditMode)
-            {
-                <div class="form-field">
-                    <label asp-for="CreateType" class="form-label">Create <span class="required-marker">*</span></label>
-                    <div class="form-actions">
-                        <label class="account-check">
-                            <input class="form-check-input" type="radio" name="CreateType" value="team" checked="@string.Equals(Model.CreateType, "team", StringComparison.OrdinalIgnoreCase)" />
-                            <span>Team only</span>
-                        </label>
-                        <label class="account-check">
-                            <input class="form-check-input" type="radio" name="CreateType" value="organization" checked="@string.Equals(Model.CreateType, "organization", StringComparison.OrdinalIgnoreCase)" />
-                            <span>Organization and team</span>
-                        </label>
-                    </div>
-                    <span asp-validation-for="CreateType" class="text-danger"></span>
-                </div>
-            }
-
-            <div class="form-grid two-column">
-                <div class="form-field">
-                    <label asp-for="TeamName" class="form-label">Team name <span class="required-marker">*</span></label>
-                    <input asp-for="TeamName" class="form-control" autocomplete="organization" />
-                    <span asp-validation-for="TeamName" class="text-danger"></span>
-                </div>
+            <fieldset class="form-fieldset">
+                <legend>Team setup</legend>
+                <p class="section-help">Set the team identity and account role first.</p>
                 @if (!Model.IsEditMode)
                 {
                     <div class="form-field">
-                        <label asp-for="OrganizationName" class="form-label">Organization name</label>
-                        <input asp-for="OrganizationName" class="form-control" autocomplete="organization" />
-                        <span asp-validation-for="OrganizationName" class="text-danger"></span>
+                        <label asp-for="CreateType" class="form-label">Create <span class="required-marker">*</span></label>
+                        <div class="form-actions">
+                            <label class="account-check">
+                                <input class="form-check-input" type="radio" name="CreateType" value="team" checked="@string.Equals(Model.CreateType, "team", StringComparison.OrdinalIgnoreCase)" />
+                                <span>Team only</span>
+                            </label>
+                            <label class="account-check">
+                                <input class="form-check-input" type="radio" name="CreateType" value="organization" checked="@string.Equals(Model.CreateType, "organization", StringComparison.OrdinalIgnoreCase)" />
+                                <span>Organization and team</span>
+                            </label>
+                        </div>
+                        <span asp-validation-for="CreateType" class="text-danger"></span>
                     </div>
                 }
-                <div class="form-field">
-                    <label asp-for="TeamRole" class="form-label">Account type <span class="required-marker">*</span></label>
-                    @if (Model.AvailableTeamRoleOptions.Count == 0)
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="TeamName" class="form-label">Team name <span class="required-marker">*</span></label>
+                        <input asp-for="TeamName" class="form-control" autocomplete="organization" />
+                        <span asp-validation-for="TeamName" class="text-danger"></span>
+                    </div>
+                    @if (!Model.IsEditMode)
                     {
-                        <select asp-for="TeamRole" class="form-select" disabled>
-                            <option value="">No eligible role selected</option>
-                        </select>
+                        <div class="form-field">
+                            <label asp-for="OrganizationName" class="form-label">Organization name</label>
+                            <input asp-for="OrganizationName" class="form-control" autocomplete="organization" />
+                            <span asp-validation-for="OrganizationName" class="text-danger"></span>
+                        </div>
                     }
-                    else
-                    {
-                        <select asp-for="TeamRole" class="form-select">
-                            @foreach (var role in Model.AvailableTeamRoleOptions)
-                            {
-                                <option value="@role">@FormatTeamRoleLabel(role)</option>
-                            }
-                        </select>
-                    }
-                    @if (Model.AvailableTeamRoleOptions.Count == 0)
-                    {
-                        <p class="section-help">Add the Team representative account type first.</p>
-                    }
-                    <span asp-validation-for="TeamRole" class="text-danger"></span>
+                    <div class="form-field">
+                        <label asp-for="TeamRole" class="form-label">Account type <span class="required-marker">*</span></label>
+                        @if (Model.AvailableTeamRoleOptions.Count == 0)
+                        {
+                            <select asp-for="TeamRole" class="form-select" disabled>
+                                <option value="">No eligible role selected</option>
+                            </select>
+                        }
+                        else
+                        {
+                            <select asp-for="TeamRole" class="form-select">
+                                @foreach (var role in Model.AvailableTeamRoleOptions)
+                                {
+                                    <option value="@role">@FormatTeamRoleLabel(role)</option>
+                                }
+                            </select>
+                        }
+                        @if (Model.AvailableTeamRoleOptions.Count == 0)
+                        {
+                            <p class="section-help">Add the Team representative account type first.</p>
+                        }
+                        <span asp-validation-for="TeamRole" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="TeamLevel" class="form-label">Team level</label>
+                        <input asp-for="TeamLevel" class="form-control" placeholder="Example: 14U, Varsity, Showcase" />
+                        <span asp-validation-for="TeamLevel" class="text-danger"></span>
+                    </div>
                 </div>
+                @if (!Model.IsEditMode)
+                {
+                    <p class="section-help">Organization name is required only when creating an organization and team together.</p>
+                }
+            </fieldset>
+
+            <fieldset class="form-fieldset">
+                <legend>Team story</legend>
                 <div class="form-field">
-                    <label asp-for="TeamLevel" class="form-label">Team level</label>
-                    <input asp-for="TeamLevel" class="form-control" placeholder="Example: 14U, Varsity, Showcase" />
-                    <span asp-validation-for="TeamLevel" class="text-danger"></span>
-                </div>
-                <div class="form-field form-field-full">
                     <label asp-for="TeamDescription" class="form-label">Team description</label>
                     <textarea asp-for="TeamDescription"
                               class="form-control"
@@ -99,82 +110,98 @@
                               placeholder="Share your team story, coaching philosophy, practice location, and what families can expect."></textarea>
                     <span asp-validation-for="TeamDescription" class="text-danger"></span>
                 </div>
-                <div class="form-field">
-                    <label asp-for="GeographicScope" class="form-label">Coverage <span class="required-marker">*</span></label>
-                    <select asp-for="GeographicScope" class="form-select">
-                        @foreach (var option in Model.AvailableGeographicScopeOptions)
+            </fieldset>
+
+            <fieldset class="form-fieldset">
+                <legend>Coverage and location</legend>
+                <p class="section-help">Set the team reach and home location used across search and listings.</p>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="GeographicScope" class="form-label">Coverage <span class="required-marker">*</span></label>
+                        <select asp-for="GeographicScope" class="form-select">
+                            @foreach (var option in Model.AvailableGeographicScopeOptions)
+                            {
+                                <option value="@option">@option</option>
+                            }
+                        </select>
+                        <span asp-validation-for="GeographicScope" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="City" class="form-label">City</label>
+                        <input asp-for="City" class="form-control" autocomplete="address-level2" />
+                        <span asp-validation-for="City" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="State" class="form-label">State</label>
+                        <input asp-for="State" class="form-control" autocomplete="address-level1" maxlength="2" />
+                        <span asp-validation-for="State" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="ZipCode" class="form-label">ZIP code</label>
+                        <input asp-for="ZipCode" class="form-control" autocomplete="postal-code" />
+                        <span asp-validation-for="ZipCode" class="text-danger"></span>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="form-fieldset">
+                <legend>Contact information</legend>
+                <p class="section-help">Use the public contact details families and players should use for team questions.</p>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="ContactEmail" class="form-label">Contact email</label>
+                        <input asp-for="ContactEmail" class="form-control" autocomplete="email" />
+                        <span asp-validation-for="ContactEmail" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="ContactPhone" class="form-label">Contact phone</label>
+                        <input asp-for="ContactPhone" class="form-control" autocomplete="tel" />
+                        <span asp-validation-for="ContactPhone" class="text-danger"></span>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="form-fieldset">
+                <legend>Logo and highlights</legend>
+                <p class="section-help">Add the team logo and optional highlight videos used on public pages.</p>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="ProfileImageUpload" class="form-label">Team logo upload</label>
+                        <input asp-for="ProfileImageUpload" class="form-control" type="file" accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml" />
+                        <span asp-validation-for="ProfileImageUpload" class="text-danger"></span>
+                        @if (!string.IsNullOrWhiteSpace(Model.CurrentProfileImageUrl))
                         {
-                            <option value="@option">@option</option>
+                            <div class="mt-2">
+                                <img class="listing-profile-image" src="@Model.CurrentProfileImageUrl" alt="Current team logo" loading="lazy" />
+                            </div>
+                            <label class="account-check mt-2">
+                                <input asp-for="RemoveProfileImage" class="form-check-input" />
+                                <span>Remove current team logo</span>
+                            </label>
                         }
-                    </select>
-                    <span asp-validation-for="GeographicScope" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="HighlightVideoUrl1" class="form-label">Highlight video link 1</label>
+                        <input asp-for="HighlightVideoUrl1" class="form-control" placeholder="https://..." />
+                        <span asp-validation-for="HighlightVideoUrl1" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="HighlightVideoUrl2" class="form-label">Highlight video link 2</label>
+                        <input asp-for="HighlightVideoUrl2" class="form-control" placeholder="https://..." />
+                        <span asp-validation-for="HighlightVideoUrl2" class="text-danger"></span>
+                    </div>
                 </div>
-                <div class="form-field">
-                    <label asp-for="ContactEmail" class="form-label">Contact email</label>
-                    <input asp-for="ContactEmail" class="form-control" autocomplete="email" />
-                    <span asp-validation-for="ContactEmail" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="ContactPhone" class="form-label">Contact phone</label>
-                    <input asp-for="ContactPhone" class="form-control" autocomplete="tel" />
-                    <span asp-validation-for="ContactPhone" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="ProfileImageUpload" class="form-label">Team logo upload</label>
-                    <input asp-for="ProfileImageUpload" class="form-control" type="file" accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml" />
-                    <span asp-validation-for="ProfileImageUpload" class="text-danger"></span>
-                    @if (!string.IsNullOrWhiteSpace(Model.CurrentProfileImageUrl))
-                    {
-                        <div class="mt-2">
-                            <img class="listing-profile-image" src="@Model.CurrentProfileImageUrl" alt="Current team logo" loading="lazy" />
-                        </div>
-                        <label class="account-check mt-2">
-                            <input asp-for="RemoveProfileImage" class="form-check-input" />
-                            <span>Remove current team logo</span>
-                        </label>
-                    }
-                </div>
-                <div class="form-field">
-                    <label asp-for="HighlightVideoUrl1" class="form-label">Highlight video link 1</label>
-                    <input asp-for="HighlightVideoUrl1" class="form-control" placeholder="https://..." />
-                    <span asp-validation-for="HighlightVideoUrl1" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="HighlightVideoUrl2" class="form-label">Highlight video link 2</label>
-                    <input asp-for="HighlightVideoUrl2" class="form-control" placeholder="https://..." />
-                    <span asp-validation-for="HighlightVideoUrl2" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="WebsiteUrl" class="form-label">Website URL</label>
-                    <input asp-for="WebsiteUrl" class="form-control" placeholder="https://example.com" />
-                    <span asp-validation-for="WebsiteUrl" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="City" class="form-label">City</label>
-                    <input asp-for="City" class="form-control" autocomplete="address-level2" />
-                    <span asp-validation-for="City" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="State" class="form-label">State</label>
-                    <input asp-for="State" class="form-control" autocomplete="address-level1" maxlength="2" />
-                    <span asp-validation-for="State" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="ZipCode" class="form-label">ZIP code</label>
-                    <input asp-for="ZipCode" class="form-control" autocomplete="postal-code" />
-                    <span asp-validation-for="ZipCode" class="text-danger"></span>
-                </div>
-            </div>
+            </fieldset>
 
-            <label class="sms-consent-option" for="IsSearchable">
-                <input asp-for="IsSearchable" class="form-check-input" />
-                <span>Allow this team or organization to appear in search results.</span>
-            </label>
-
-            <div>
-                <label class="form-label">Social pages</label>
+            <fieldset class="form-fieldset">
+                <legend>Website and social pages</legend>
                 <p class="section-help">For X, Instagram, and TikTok, enter username with or without @@.</p>
                 <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="WebsiteUrl" class="form-label">Website URL</label>
+                        <input asp-for="WebsiteUrl" class="form-control" placeholder="https://example.com" />
+                        <span asp-validation-for="WebsiteUrl" class="text-danger"></span>
+                    </div>
                     <div class="form-field">
                         <label asp-for="FacebookPageUrl" class="form-label">Facebook page</label>
                         <input asp-for="FacebookPageUrl" class="form-control" placeholder="https://facebook.com/yourpage" />
@@ -201,10 +228,10 @@
                         <span asp-validation-for="TikTokUrl" class="text-danger"></span>
                     </div>
                 </div>
-            </div>
+            </fieldset>
 
-            <div>
-                <label class="form-label">GameChanger</label>
+            <fieldset class="form-fieldset">
+                <legend>GameChanger</legend>
                 <p class="section-help">Optional references used when your team also runs on GameChanger.</p>
                 <div class="form-grid two-column">
                     <div class="form-field">
@@ -218,10 +245,10 @@
                         <span asp-validation-for="GameChangerTeamName" class="text-danger"></span>
                     </div>
                 </div>
-            </div>
+            </fieldset>
 
-            <div>
-                <label class="form-label">Sports</label>
+            <fieldset class="form-fieldset">
+                <legend>Sports</legend>
                 @if (Model.AvailableSports.Count == 0)
                 {
                     <p class="section-help">Sports options will appear here after the catalog is available.</p>
@@ -242,12 +269,15 @@
                     </div>
                 }
                 <span asp-validation-for="SelectedSportIds" class="text-danger"></span>
-            </div>
+            </fieldset>
 
-            @if (!Model.IsEditMode)
-            {
-                <p class="section-help">Organization name is required only when creating an organization and team together.</p>
-            }
+            <fieldset class="form-fieldset">
+                <legend>Search visibility</legend>
+                <label class="sms-consent-option" for="IsSearchable">
+                    <input asp-for="IsSearchable" class="form-check-input" />
+                    <span>Allow this team or organization to appear in search results.</span>
+                </label>
+            </fieldset>
 
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">@(Model.IsEditMode ? "Save profile updates" : "Save team setup")</button>
