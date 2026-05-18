@@ -674,6 +674,175 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task AddAndEditPlayerListingPages_GroupInputsBySection()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("player-listing-sections@example.com", [TryOutSpotRoles.Parent]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.PremiumPlayer, "active");
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var createResponse = await client.GetAsync("/account/onboarding/player-listings/new");
+
+        Assert.Equal(HttpStatusCode.OK, createResponse.StatusCode);
+        var createHtml = await createResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Create a new listing", createHtml);
+        AssertPlayerListingSections(createHtml);
+
+        Guid listingId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var sportId = await dbContext.Sports
+                .Where(sport => sport.IsActive && sport.Name == "Softball")
+                .Select(sport => sport.Id)
+                .SingleAsync();
+            var now = DateTime.UtcNow;
+            listingId = Guid.NewGuid();
+
+            dbContext.PlayerListings.Add(new PlayerListing
+            {
+                Id = listingId,
+                UserId = user.Id,
+                SportId = sportId,
+                ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
+                Title = "Available for pickup tournaments",
+                Description = "Ready for weekend pickup opportunities.",
+                City = "McPherson",
+                State = "KS",
+                ZipCode = "67460",
+                IsSearchable = true,
+                IsPublished = true,
+                PublishedAt = now,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var editResponse = await client.GetAsync($"/account/onboarding/player-listings/{listingId}/edit");
+
+        Assert.Equal(HttpStatusCode.OK, editResponse.StatusCode);
+        var editHtml = await editResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Edit listing", editHtml);
+        AssertPlayerListingSections(editHtml);
+    }
+
+    [Fact]
+    public async Task AddAndEditTeamOpportunityPages_GroupInputsBySection()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("team-opportunity-sections@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.TeamBasic, "active");
+
+        Guid teamId;
+        Guid opportunityId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var sportId = await dbContext.Sports
+                .Where(sport => sport.IsActive && sport.Name == "Baseball")
+                .Select(sport => sport.Id)
+                .SingleAsync();
+            var now = DateTime.UtcNow;
+            teamId = Guid.NewGuid();
+            opportunityId = Guid.NewGuid();
+
+            dbContext.Teams.Add(new Team
+            {
+                Id = teamId,
+                Name = "Sections Baseball 14U",
+                TeamLevel = "14U",
+                GeographicScope = "Regional",
+                City = "McPherson",
+                State = "KS",
+                ZipCode = "67460",
+                PhoneNumber = "620-555-1212",
+                Email = "coach@example.com",
+                WebsiteUrl = "https://sections.example.com",
+                IsSearchable = true,
+                IsContactInfoVisible = true,
+                IsElite = false,
+                IsVerified = false,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+            dbContext.UserTeamRoles.Add(new UserTeamRole
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                TeamId = teamId,
+                Role = TryOutSpotRoles.TeamRepresentative,
+                StartDate = now,
+                IsActive = true,
+                CreatedAt = now
+            });
+            dbContext.TeamSports.Add(new TeamSport
+            {
+                Id = Guid.NewGuid(),
+                TeamId = teamId,
+                SportId = sportId,
+                IsActive = true,
+                CreatedAt = now
+            });
+            dbContext.Opportunities.Add(new Opportunity
+            {
+                Id = opportunityId,
+                TeamId = teamId,
+                SportId = sportId,
+                Type = "tryout",
+                Title = "Fall tryout sections",
+                Description = "Bring glove, cleats, and water.",
+                CompetitionLevel = "14U AA",
+                AgeGroup = "14U",
+                RegistrationRequired = true,
+                RegistrationFee = 25m,
+                EventDate = now.AddDays(14),
+                EventEndDate = now.AddDays(14),
+                ListingStartDate = now.Date,
+                ListingEndDate = now.AddDays(30).Date,
+                Location = "Main Complex",
+                City = "McPherson",
+                State = "KS",
+                ZipCode = "67460",
+                IsPublished = true,
+                PublishedAt = now,
+                ExpiresAt = now.AddDays(30),
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var createResponse = await client.GetAsync($"/account/onboarding/team-opportunities/{teamId}/new");
+
+        Assert.Equal(HttpStatusCode.OK, createResponse.StatusCode);
+        var createHtml = await createResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Create opportunity listing", createHtml);
+        AssertTeamOpportunitySections(createHtml);
+
+        var editResponse = await client.GetAsync($"/account/onboarding/team-opportunities/{teamId}/{opportunityId}/edit");
+
+        Assert.Equal(HttpStatusCode.OK, editResponse.StatusCode);
+        var editHtml = await editResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Edit opportunity listing", editHtml);
+        AssertTeamOpportunitySections(editHtml);
+    }
+
+    [Fact]
     public async Task AddPlayerProfilePage_AndPost_CreateLinkedPlayerProfile()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -1242,6 +1411,29 @@ public sealed class AccountPageTests
         Assert.Contains("<legend>Recruiting profiles</legend>", html);
         Assert.Contains("<legend>Sports and positions</legend>", html);
         Assert.Contains("<legend>Profile permissions</legend>", html);
+    }
+
+    private static void AssertPlayerListingSections(string html)
+    {
+        Assert.Contains("<legend>Listing basics</legend>", html);
+        Assert.Contains("<legend>Price and item details</legend>", html);
+        Assert.Contains("<legend>Location and expiration</legend>", html);
+        Assert.Contains("<legend>Description</legend>", html);
+        Assert.Contains("<legend>Listing flyer</legend>", html);
+        Assert.Contains("<legend>Profile links</legend>", html);
+        Assert.Contains("<legend>Visibility and publishing</legend>", html);
+    }
+
+    private static void AssertTeamOpportunitySections(string html)
+    {
+        Assert.Contains("<legend>Opportunity basics</legend>", html);
+        Assert.Contains("<legend>Schedule</legend>", html);
+        Assert.Contains("<legend>Location</legend>", html);
+        Assert.Contains("<legend>Contact and links</legend>", html);
+        Assert.Contains("<legend>PDF flyer</legend>", html);
+        Assert.Contains("<legend>Description and instructions</legend>", html);
+        Assert.Contains("<legend>Tryout registration settings</legend>", html);
+        Assert.Contains("<legend>Visibility and publishing</legend>", html);
     }
 
     private static async Task<string> GetAntiForgeryTokenAsync(HttpClient client, string path)

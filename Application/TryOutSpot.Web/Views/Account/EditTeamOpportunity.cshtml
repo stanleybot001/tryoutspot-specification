@@ -11,7 +11,7 @@
         ? "account-alert account-alert-error"
         : "account-alert";
     var isTryoutOpportunity = string.Equals(Model.Type?.Trim(), "tryout", StringComparison.OrdinalIgnoreCase);
-    var registrationSectionCssClass = isTryoutOpportunity ? "form-section" : "form-section d-none";
+    var registrationSectionCssClass = isTryoutOpportunity ? "form-fieldset" : "form-fieldset d-none";
 }
 
 <section class="account-page compact">
@@ -52,59 +52,62 @@
             @Html.AntiForgeryToken()
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
-            <div class="form-grid two-column">
-                <div class="form-field">
-                    <label asp-for="Type" class="form-label">Opportunity type <span class="required-marker">*</span></label>
-                    <select asp-for="Type" class="form-select">
-                        @foreach (var type in Model.AvailableOpportunityTypes)
-                        {
-                            <option value="@type">@FormatOpportunityType(type)</option>
-                        }
-                    </select>
-                    <span asp-validation-for="Type" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="SportId" class="form-label">Sport <span class="required-marker">*</span></label>
-                    @if (Model.AvailableSports.Count == 0)
-                    {
-                        <select asp-for="SportId" class="form-select" disabled>
-                            <option value="">No sports assigned to this team</option>
-                        </select>
-                        <p class="section-help">Add at least one sport to the team profile before creating listings.</p>
-                    }
-                    else
-                    {
-                        <select asp-for="SportId" class="form-select">
-                            @foreach (var sport in Model.AvailableSports)
+            <fieldset class="form-fieldset">
+                <legend>Opportunity basics</legend>
+                <p class="section-help">Start with the type of team item, the sport, and the headline players will see in search.</p>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="Type" class="form-label">Opportunity type <span class="required-marker">*</span></label>
+                        <select asp-for="Type" class="form-select">
+                            @foreach (var type in Model.AvailableOpportunityTypes)
                             {
-                                <option value="@sport.Id">@sport.Name</option>
+                                <option value="@type">@FormatOpportunityType(type)</option>
                             }
                         </select>
-                    }
-                    <span asp-validation-for="SportId" class="text-danger"></span>
+                        <span asp-validation-for="Type" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="SportId" class="form-label">Sport <span class="required-marker">*</span></label>
+                        @if (Model.AvailableSports.Count == 0)
+                        {
+                            <select asp-for="SportId" class="form-select" disabled>
+                                <option value="">No sports assigned to this team</option>
+                            </select>
+                            <p class="section-help">Add at least one sport to the team profile before creating listings.</p>
+                        }
+                        else
+                        {
+                            <select asp-for="SportId" class="form-select">
+                                @foreach (var sport in Model.AvailableSports)
+                                {
+                                    <option value="@sport.Id">@sport.Name</option>
+                                }
+                            </select>
+                        }
+                        <span asp-validation-for="SportId" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Title" class="form-label">Title <span class="required-marker">*</span></label>
+                        <input asp-for="Title" class="form-control" />
+                        <span asp-validation-for="Title" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="CompetitionLevel" class="form-label">Competition level</label>
+                        <input asp-for="CompetitionLevel" class="form-control" placeholder="Example: 12U B, Varsity, Club" />
+                        <span asp-validation-for="CompetitionLevel" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="AgeGroup" class="form-label">Age group</label>
+                        <input asp-for="AgeGroup" class="form-control" placeholder="Example: 14U, 16U, 18U" />
+                        <span asp-validation-for="AgeGroup" class="text-danger"></span>
+                    </div>
                 </div>
-                <div class="form-field">
-                    <label asp-for="Title" class="form-label">Title <span class="required-marker">*</span></label>
-                    <input asp-for="Title" class="form-control" />
-                    <span asp-validation-for="Title" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="CompetitionLevel" class="form-label">Competition level</label>
-                    <input asp-for="CompetitionLevel" class="form-control" placeholder="Example: 12U B, Varsity, Club" />
-                    <span asp-validation-for="CompetitionLevel" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="AgeGroup" class="form-label">Age group</label>
-                    <input asp-for="AgeGroup" class="form-control" placeholder="Example: 14U, 16U, 18U" />
-                    <span asp-validation-for="AgeGroup" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="Location" class="form-label">Location</label>
-                    <input asp-for="Location" class="form-control" placeholder="Facility or field name" />
-                    <span asp-validation-for="Location" class="text-danger"></span>
-                </div>
+            </fieldset>
 
-                <div class="form-grid two-column form-field-full date-pair-grid">
+            <fieldset class="form-fieldset">
+                <legend>Schedule</legend>
+                <p class="section-help">Separate the actual event dates from the dates this listing should be visible.</p>
+                <div class="form-grid two-column">
                     <div class="form-field">
                         <label asp-for="EventDate" class="form-label">Event start date</label>
                         <input asp-for="EventDate" class="form-control" />
@@ -115,9 +118,6 @@
                         <input asp-for="EventEndDate" class="form-control" />
                         <span asp-validation-for="EventEndDate" class="text-danger"></span>
                     </div>
-                </div>
-
-                <div class="form-grid two-column form-field-full date-pair-grid">
                     <div class="form-field">
                         <label asp-for="ListingStartDate" class="form-label">Listing start date</label>
                         <input asp-for="ListingStartDate" class="form-control" />
@@ -129,97 +129,122 @@
                         <span asp-validation-for="ListingEndDate" class="text-danger"></span>
                     </div>
                 </div>
-                <div class="form-field">
-                    <label asp-for="Address" class="form-label">Address</label>
-                    <input asp-for="Address" class="form-control" placeholder="Street address" />
-                    <span asp-validation-for="Address" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="City" class="form-label">City</label>
-                    <input asp-for="City" class="form-control" autocomplete="address-level2" />
-                    <span asp-validation-for="City" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="State" class="form-label">State</label>
-                    <input asp-for="State" class="form-control" autocomplete="address-level1" maxlength="2" />
-                    <span asp-validation-for="State" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="ZipCode" class="form-label">ZIP code</label>
-                    <input asp-for="ZipCode" class="form-control" autocomplete="postal-code" />
-                    <span asp-validation-for="ZipCode" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="ContactEmail" class="form-label">Contact email</label>
-                    <input asp-for="ContactEmail" class="form-control" autocomplete="email" />
-                    <span asp-validation-for="ContactEmail" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="ContactPhone" class="form-label">Contact phone</label>
-                    <input asp-for="ContactPhone" class="form-control" autocomplete="tel" />
-                    <span asp-validation-for="ContactPhone" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="WebsiteUrl" class="form-label">Website URL</label>
-                    <input asp-for="WebsiteUrl" class="form-control" placeholder="https://..." />
-                    <span asp-validation-for="WebsiteUrl" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="PdfUrl" class="form-label">External PDF link</label>
-                    <input asp-for="PdfUrl" class="form-control" placeholder="https://.../flyer.pdf" />
-                    <span asp-validation-for="PdfUrl" class="text-danger"></span>
-                </div>
-            </div>
+            </fieldset>
 
-            <div class="form-field">
-                <p class="form-label mb-2">Uploaded PDF flyer</p>
-                @if (Model.HasUploadedPdf && !string.IsNullOrWhiteSpace(Model.UploadedPdfUrl))
-                {
-                    <p class="section-help mb-2">
-                        Current upload:
-                        <a href="@Model.UploadedPdfUrl" target="_blank" rel="noopener">
-                            @(string.IsNullOrWhiteSpace(Model.UploadedPdfFileName) ? "Open PDF" : Model.UploadedPdfFileName)
-                        </a>
-                    </p>
-                    <label class="sms-consent-option" for="RemoveUploadedPdf">
-                        <input asp-for="RemoveUploadedPdf" class="form-check-input" />
-                        <span>Remove current uploaded PDF.</span>
-                    </label>
-                }
-
-                <label asp-for="PdfUpload" class="form-label">Upload PDF</label>
-                <input asp-for="PdfUpload" type="file" accept=".pdf,application/pdf" class="form-control" id="PdfUploadInput" />
-                <p class="section-help">Maximum file size: 10 MB. Upload a PDF only.</p>
-                <span asp-validation-for="PdfUpload" class="text-danger"></span>
-                <p class="text-danger d-none" id="PdfUploadClientError"></p>
-            </div>
-
-            <div class="form-field">
-                <label asp-for="Description" class="form-label">Description</label>
-                <textarea asp-for="Description" class="form-control" rows="4" placeholder="Describe what players should know before registering."></textarea>
-                <span asp-validation-for="Description" class="text-danger"></span>
-            </div>
-
-            <div class="form-grid">
-                <div class="form-field">
-                    <label asp-for="RequiredEquipment" class="form-label">Required equipment</label>
-                    <textarea asp-for="RequiredEquipment" class="form-control" rows="3" placeholder="Optional equipment checklist."></textarea>
-                    <span asp-validation-for="RequiredEquipment" class="text-danger"></span>
+            <fieldset class="form-fieldset">
+                <legend>Location</legend>
+                <p class="section-help">Add the field, facility, or city where players should expect this opportunity.</p>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="Location" class="form-label">Location</label>
+                        <input asp-for="Location" class="form-control" placeholder="Facility or field name" />
+                        <span asp-validation-for="Location" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Address" class="form-label">Address</label>
+                        <input asp-for="Address" class="form-control" placeholder="Street address" />
+                        <span asp-validation-for="Address" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="City" class="form-label">City</label>
+                        <input asp-for="City" class="form-control" autocomplete="address-level2" />
+                        <span asp-validation-for="City" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="State" class="form-label">State</label>
+                        <input asp-for="State" class="form-control" autocomplete="address-level1" maxlength="2" />
+                        <span asp-validation-for="State" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="ZipCode" class="form-label">ZIP code</label>
+                        <input asp-for="ZipCode" class="form-control" autocomplete="postal-code" />
+                        <span asp-validation-for="ZipCode" class="text-danger"></span>
+                    </div>
                 </div>
-                <div class="form-field">
-                    <label asp-for="WhatToBring" class="form-label">What to bring</label>
-                    <textarea asp-for="WhatToBring" class="form-control" rows="3" placeholder="Optional preparation notes."></textarea>
-                    <span asp-validation-for="WhatToBring" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="SpecialInstructions" class="form-label">Special instructions</label>
-                    <textarea asp-for="SpecialInstructions" class="form-control" rows="3" placeholder="Optional arrival, check-in, or waiver details."></textarea>
-                    <span asp-validation-for="SpecialInstructions" class="text-danger"></span>
-                </div>
-            </div>
+            </fieldset>
 
-            <section id="tryoutRegistrationSettings" class="@registrationSectionCssClass">
-                <h2>Tryout registration settings</h2>
+            <fieldset class="form-fieldset">
+                <legend>Contact and links</legend>
+                <p class="section-help">Put the main contact and any external landing page or flyer link together.</p>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="ContactEmail" class="form-label">Contact email</label>
+                        <input asp-for="ContactEmail" class="form-control" autocomplete="email" />
+                        <span asp-validation-for="ContactEmail" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="ContactPhone" class="form-label">Contact phone</label>
+                        <input asp-for="ContactPhone" class="form-control" autocomplete="tel" />
+                        <span asp-validation-for="ContactPhone" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="WebsiteUrl" class="form-label">Website URL</label>
+                        <input asp-for="WebsiteUrl" class="form-control" placeholder="https://..." />
+                        <span asp-validation-for="WebsiteUrl" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="PdfUrl" class="form-label">External PDF link</label>
+                        <input asp-for="PdfUrl" class="form-control" placeholder="https://.../flyer.pdf" />
+                        <span asp-validation-for="PdfUrl" class="text-danger"></span>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="form-fieldset">
+                <legend>PDF flyer</legend>
+                <p class="section-help">Upload a PDF flyer when the listing needs a downloadable handout.</p>
+                <div class="form-field">
+                    @if (Model.HasUploadedPdf && !string.IsNullOrWhiteSpace(Model.UploadedPdfUrl))
+                    {
+                        <p class="section-help mb-2">
+                            Current upload:
+                            <a href="@Model.UploadedPdfUrl" target="_blank" rel="noopener">
+                                @(string.IsNullOrWhiteSpace(Model.UploadedPdfFileName) ? "Open PDF" : Model.UploadedPdfFileName)
+                            </a>
+                        </p>
+                        <label class="sms-consent-option" for="RemoveUploadedPdf">
+                            <input asp-for="RemoveUploadedPdf" class="form-check-input" />
+                            <span>Remove current uploaded PDF.</span>
+                        </label>
+                    }
+
+                    <label asp-for="PdfUpload" class="form-label">Upload PDF</label>
+                    <input asp-for="PdfUpload" type="file" accept=".pdf,application/pdf" class="form-control" id="PdfUploadInput" />
+                    <p class="section-help">Maximum file size: 10 MB. Upload a PDF only.</p>
+                    <span asp-validation-for="PdfUpload" class="text-danger"></span>
+                    <p class="text-danger d-none" id="PdfUploadClientError"></p>
+                </div>
+            </fieldset>
+
+            <fieldset class="form-fieldset">
+                <legend>Description and instructions</legend>
+                <p class="section-help">Use this area for the player-facing details they need before registering or contacting you.</p>
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label asp-for="Description" class="form-label">Description</label>
+                        <textarea asp-for="Description" class="form-control" rows="4" placeholder="Describe what players should know before registering."></textarea>
+                        <span asp-validation-for="Description" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="RequiredEquipment" class="form-label">Required equipment</label>
+                        <textarea asp-for="RequiredEquipment" class="form-control" rows="3" placeholder="Optional equipment checklist."></textarea>
+                        <span asp-validation-for="RequiredEquipment" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="WhatToBring" class="form-label">What to bring</label>
+                        <textarea asp-for="WhatToBring" class="form-control" rows="3" placeholder="Optional preparation notes."></textarea>
+                        <span asp-validation-for="WhatToBring" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="SpecialInstructions" class="form-label">Special instructions</label>
+                        <textarea asp-for="SpecialInstructions" class="form-control" rows="3" placeholder="Optional arrival, check-in, or waiver details."></textarea>
+                        <span asp-validation-for="SpecialInstructions" class="text-danger"></span>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset id="tryoutRegistrationSettings" class="@registrationSectionCssClass">
+                <legend>Tryout registration settings</legend>
                 @if (!Model.CanConfigureTryoutRegistration)
                 {
                     <p class="section-help">
@@ -349,12 +374,15 @@
                     </label>
                     <span asp-validation-for="WaiverReturnByEmail" class="text-danger"></span>
                 </div>
-            </section>
+            </fieldset>
 
-            <label class="sms-consent-option" for="IsPublished">
-                <input asp-for="IsPublished" class="form-check-input" />
-                <span>Publish this opportunity now so it appears in discovery.</span>
-            </label>
+            <fieldset class="form-fieldset">
+                <legend>Visibility and publishing</legend>
+                <label class="sms-consent-option" for="IsPublished">
+                    <input asp-for="IsPublished" class="form-check-input" />
+                    <span>Publish this opportunity now so it appears in discovery.</span>
+                </label>
+            </fieldset>
 
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">@(Model.IsEditMode ? "Update listing" : "Create listing")</button>

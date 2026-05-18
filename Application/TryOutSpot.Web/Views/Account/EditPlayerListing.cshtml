@@ -27,124 +27,163 @@
             @Html.AntiForgeryToken()
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
-            <div class="form-grid two-column">
-                <div class="form-field">
-                    <label asp-for="ListingType" class="form-label">Listing type <span class="required-marker">*</span></label>
-                    <select asp-for="ListingType" class="form-select">
-                        @foreach (var listingType in Model.AvailableListingTypes)
-                        {
-                            <option value="@listingType.Code">@listingType.Label</option>
-                        }
-                    </select>
-                    <span asp-validation-for="ListingType" class="text-danger"></span>
+            <fieldset class="form-fieldset">
+                <legend>Listing basics</legend>
+                <p class="section-help">Choose the listing type, connect the right player or sport when needed, and give the listing a clear title.</p>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="ListingType" class="form-label">Listing type <span class="required-marker">*</span></label>
+                        <select asp-for="ListingType" class="form-select">
+                            @foreach (var listingType in Model.AvailableListingTypes)
+                            {
+                                <option value="@listingType.Code">@listingType.Label</option>
+                            }
+                        </select>
+                        <span asp-validation-for="ListingType" class="text-danger"></span>
+                    </div>
+
+                    <div class="form-field">
+                        <label asp-for="PlayerId" class="form-label">Player profile</label>
+                        <select asp-for="PlayerId" class="form-select">
+                            <option value="">No player selected</option>
+                            @foreach (var player in Model.AvailablePlayers)
+                            {
+                                <option value="@player.PlayerId">@player.DisplayName (@FormatLocation(player.City, player.State, player.ZipCode))</option>
+                            }
+                        </select>
+                        <span asp-validation-for="PlayerId" class="text-danger"></span>
+                    </div>
+
+                    <div class="form-field">
+                        <label asp-for="SportId" class="form-label">Sport</label>
+                        <select asp-for="SportId" class="form-select">
+                            <option value="">No sport selected</option>
+                            @foreach (var sport in Model.AvailableSports)
+                            {
+                                <option value="@sport.Id">@sport.Name</option>
+                            }
+                        </select>
+                        <span asp-validation-for="SportId" class="text-danger"></span>
+                    </div>
+
+                    <div class="form-field">
+                        <label asp-for="Title" class="form-label">Title <span class="required-marker">*</span></label>
+                        <input asp-for="Title" class="form-control" />
+                        <span asp-validation-for="Title" class="text-danger"></span>
+                    </div>
                 </div>
 
-                <div class="form-field">
-                    <label asp-for="PlayerId" class="form-label">Player profile</label>
-                    <select asp-for="PlayerId" class="form-select">
-                        <option value="">No player selected</option>
-                        @foreach (var player in Model.AvailablePlayers)
-                        {
-                            <option value="@player.PlayerId">@player.DisplayName (@FormatLocation(player.City, player.State, player.ZipCode))</option>
-                        }
-                    </select>
-                    <span asp-validation-for="PlayerId" class="text-danger"></span>
-                </div>
-
-                <div class="form-field">
-                    <label asp-for="SportId" class="form-label">Sport</label>
-                    <select asp-for="SportId" class="form-select">
-                        <option value="">No sport selected</option>
-                        @foreach (var sport in Model.AvailableSports)
-                        {
-                            <option value="@sport.Id">@sport.Name</option>
-                        }
-                    </select>
-                    <span asp-validation-for="SportId" class="text-danger"></span>
-                </div>
-
-                <div class="form-field">
-                    <label asp-for="Title" class="form-label">Title <span class="required-marker">*</span></label>
-                    <input asp-for="Title" class="form-control" />
-                    <span asp-validation-for="Title" class="text-danger"></span>
-                </div>
-
-                <div class="form-field">
-                    <label asp-for="AskingPrice" class="form-label">Asking price</label>
-                    <input asp-for="AskingPrice" class="form-control" inputmode="decimal" placeholder="Example: 125.00" />
-                    <span asp-validation-for="AskingPrice" class="text-danger"></span>
-                </div>
-
-                <div class="form-field">
-                    <label asp-for="Currency" class="form-label">Currency</label>
-                    <input asp-for="Currency" class="form-control" maxlength="3" placeholder="USD" />
-                    <span asp-validation-for="Currency" class="text-danger"></span>
-                </div>
-
-                <div class="form-field">
-                    <label asp-for="Condition" class="form-label">Condition</label>
-                    <input asp-for="Condition" class="form-control" placeholder="Example: Like new, Good, Fair" />
-                    <span asp-validation-for="Condition" class="text-danger"></span>
-                </div>
-
-                <div class="form-field">
-                    <label asp-for="ExpiresAt" class="form-label">Expires on</label>
-                    <input asp-for="ExpiresAt" class="form-control" />
-                    <span asp-validation-for="ExpiresAt" class="text-danger"></span>
-                </div>
-
-                <div class="form-field">
-                    <label asp-for="City" class="form-label">City</label>
-                    <input asp-for="City" class="form-control" autocomplete="address-level2" />
-                    <span asp-validation-for="City" class="text-danger"></span>
-                </div>
-
-                <div class="form-field">
-                    <label asp-for="State" class="form-label">State</label>
-                    <input asp-for="State" class="form-control" autocomplete="address-level1" maxlength="2" />
-                    <span asp-validation-for="State" class="text-danger"></span>
-                </div>
-
-                <div class="form-field">
-                    <label asp-for="ZipCode" class="form-label">ZIP code</label>
-                    <input asp-for="ZipCode" class="form-control" autocomplete="postal-code" />
-                    <span asp-validation-for="ZipCode" class="text-danger"></span>
-                </div>
-            </div>
-
-            <div class="form-field">
-                <label asp-for="Description" class="form-label">Description</label>
-                <textarea asp-for="Description" class="form-control" rows="4" placeholder="Share details that coaches or families should know before they reach out."></textarea>
-                <span asp-validation-for="Description" class="text-danger"></span>
-            </div>
-
-            <div class="form-field">
-                <p class="form-label mb-2">Listing flyer (PDF)</p>
-                @if (Model.HasUploadedPdf && !string.IsNullOrWhiteSpace(Model.UploadedPdfUrl))
+                @if (selectedType is not null)
                 {
-                    <p class="section-help mb-2">
-                        Current upload:
-                        <a href="@Model.UploadedPdfUrl" target="_blank" rel="noopener">
-                            @(string.IsNullOrWhiteSpace(Model.UploadedPdfFileName) ? "Open PDF" : Model.UploadedPdfFileName)
-                        </a>
+                    <p class="section-help">
+                        @selectedType.Description
+                        @if (selectedType.RequiresPlayerSelection || selectedType.RequiresSportSelection)
+                        {
+                            <span>
+                                Requirements:
+                                @(selectedType.RequiresPlayerSelection ? "player required" : "player optional")
+                                ,
+                                @(selectedType.RequiresSportSelection ? "sport required" : "sport optional")
+                                .
+                            </span>
+                        }
                     </p>
-                    <label class="sms-consent-option" for="RemoveUploadedPdf">
-                        <input asp-for="RemoveUploadedPdf" class="form-check-input" />
-                        <span>Remove current uploaded PDF.</span>
-                    </label>
                 }
-                <label asp-for="PdfUpload" class="form-label">Upload PDF</label>
-                <input asp-for="PdfUpload" type="file" accept=".pdf,application/pdf" class="form-control" id="PdfUploadInput" />
-                <p class="section-help">Maximum file size: 10 MB. Upload a PDF only.</p>
-                <span asp-validation-for="PdfUpload" class="text-danger"></span>
-                <p class="text-danger d-none" id="PdfUploadClientError"></p>
-            </div>
+            </fieldset>
+
+            <fieldset class="form-fieldset">
+                <legend>Price and item details</legend>
+                <p class="section-help">Use these fields when the listing involves gear, lessons, training, or another paid item.</p>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="AskingPrice" class="form-label">Asking price</label>
+                        <input asp-for="AskingPrice" class="form-control" inputmode="decimal" placeholder="Example: 125.00" />
+                        <span asp-validation-for="AskingPrice" class="text-danger"></span>
+                    </div>
+
+                    <div class="form-field">
+                        <label asp-for="Currency" class="form-label">Currency</label>
+                        <input asp-for="Currency" class="form-control" maxlength="3" placeholder="USD" />
+                        <span asp-validation-for="Currency" class="text-danger"></span>
+                    </div>
+
+                    <div class="form-field">
+                        <label asp-for="Condition" class="form-label">Condition</label>
+                        <input asp-for="Condition" class="form-control" placeholder="Example: Like new, Good, Fair" />
+                        <span asp-validation-for="Condition" class="text-danger"></span>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="form-fieldset">
+                <legend>Location and expiration</legend>
+                <p class="section-help">Tell families and teams where the listing is relevant and when it should come down.</p>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="City" class="form-label">City</label>
+                        <input asp-for="City" class="form-control" autocomplete="address-level2" />
+                        <span asp-validation-for="City" class="text-danger"></span>
+                    </div>
+
+                    <div class="form-field">
+                        <label asp-for="State" class="form-label">State</label>
+                        <input asp-for="State" class="form-control" autocomplete="address-level1" maxlength="2" />
+                        <span asp-validation-for="State" class="text-danger"></span>
+                    </div>
+
+                    <div class="form-field">
+                        <label asp-for="ZipCode" class="form-label">ZIP code</label>
+                        <input asp-for="ZipCode" class="form-control" autocomplete="postal-code" />
+                        <span asp-validation-for="ZipCode" class="text-danger"></span>
+                    </div>
+
+                    <div class="form-field">
+                        <label asp-for="ExpiresAt" class="form-label">Expires on</label>
+                        <input asp-for="ExpiresAt" class="form-control" />
+                        <span asp-validation-for="ExpiresAt" class="text-danger"></span>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="form-fieldset">
+                <legend>Description</legend>
+                <div class="form-field">
+                    <label asp-for="Description" class="form-label">Listing details</label>
+                    <textarea asp-for="Description" class="form-control" rows="4" placeholder="Share details that coaches or families should know before they reach out."></textarea>
+                    <span asp-validation-for="Description" class="text-danger"></span>
+                </div>
+            </fieldset>
+
+            <fieldset class="form-fieldset">
+                <legend>Listing flyer</legend>
+                <p class="section-help">Attach an optional PDF flyer for schedules, gear details, or longer notes.</p>
+                <div class="form-field">
+                    @if (Model.HasUploadedPdf && !string.IsNullOrWhiteSpace(Model.UploadedPdfUrl))
+                    {
+                        <p class="section-help mb-2">
+                            Current upload:
+                            <a href="@Model.UploadedPdfUrl" target="_blank" rel="noopener">
+                                @(string.IsNullOrWhiteSpace(Model.UploadedPdfFileName) ? "Open PDF" : Model.UploadedPdfFileName)
+                            </a>
+                        </p>
+                        <label class="sms-consent-option" for="RemoveUploadedPdf">
+                            <input asp-for="RemoveUploadedPdf" class="form-check-input" />
+                            <span>Remove current uploaded PDF.</span>
+                        </label>
+                    }
+                    <label asp-for="PdfUpload" class="form-label">Upload PDF</label>
+                    <input asp-for="PdfUpload" type="file" accept=".pdf,application/pdf" class="form-control" id="PdfUploadInput" />
+                    <p class="section-help">Maximum file size: 10 MB. Upload a PDF only.</p>
+                    <span asp-validation-for="PdfUpload" class="text-danger"></span>
+                    <p class="text-danger d-none" id="PdfUploadClientError"></p>
+                </div>
+            </fieldset>
 
             @if (Model.AvailableSocialDisplayOptions.Count > 0)
             {
-                <div class="form-field">
-                    <p class="form-label mb-2">Profile links to display on this listing</p>
-                    <p class="section-help mb-2">Select which social accounts and highlight videos should show on this listing page. Only links already saved on the player profile will appear.</p>
+                <fieldset class="form-fieldset">
+                    <legend>Profile links</legend>
+                    <p class="section-help">Select which social accounts and highlight videos should show on this listing page. Only links already saved on the player profile will appear.</p>
                     <div class="listing-visibility-options">
                         @foreach (var option in Model.AvailableSocialDisplayOptions)
                         {
@@ -160,35 +199,21 @@
                             </label>
                         }
                     </div>
-                </div>
+                </fieldset>
             }
 
-            @if (selectedType is not null)
-            {
-                <p class="section-help">
-                    @selectedType.Description
-                    @if (selectedType.RequiresPlayerSelection || selectedType.RequiresSportSelection)
-                    {
-                        <span>
-                            Requirements:
-                            @(selectedType.RequiresPlayerSelection ? "player required" : "player optional")
-                            ,
-                            @(selectedType.RequiresSportSelection ? "sport required" : "sport optional")
-                            .
-                        </span>
-                    }
-                </p>
-            }
+            <fieldset class="form-fieldset">
+                <legend>Visibility and publishing</legend>
+                <label class="sms-consent-option" for="IsSearchable">
+                    <input asp-for="IsSearchable" class="form-check-input" />
+                    <span>Allow this listing to appear in search results.</span>
+                </label>
 
-            <label class="sms-consent-option" for="IsSearchable">
-                <input asp-for="IsSearchable" class="form-check-input" />
-                <span>Allow this listing to appear in search results.</span>
-            </label>
-
-            <label class="sms-consent-option" for="IsPublished">
-                <input asp-for="IsPublished" class="form-check-input" />
-                <span>Publish this listing now.</span>
-            </label>
+                <label class="sms-consent-option" for="IsPublished">
+                    <input asp-for="IsPublished" class="form-check-input" />
+                    <span>Publish this listing now.</span>
+                </label>
+            </fieldset>
 
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">@(Model.IsEditMode ? "Update listing" : "Create listing")</button>
