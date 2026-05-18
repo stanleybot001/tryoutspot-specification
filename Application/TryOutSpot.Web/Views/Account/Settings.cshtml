@@ -284,6 +284,46 @@
             </form>
         </section>
 
+        @if (Model.DashboardActivityPreferences is { Options.Count: > 0 } dashboardActivityPreferences)
+        {
+            <section class="form-section settings-wide">
+                <h2>Dashboard activity</h2>
+                <p class="section-help">Choose which items appear after login. Subscription access still controls what can be shown.</p>
+                <form asp-action="UpdateDashboardActivityPreferences" asp-controller="Account" method="post" class="stacked-form">
+                    <div class="account-type-grid">
+                        @foreach (var option in dashboardActivityPreferences.Options)
+                        {
+                            <label class="account-type-option dashboard-preference-option @(option.IsAvailable ? null : "disabled-option")" for="dashboard-activity-@option.Code">
+                                <input class="form-check-input"
+                                       id="dashboard-activity-@option.Code"
+                                       name="activityTypes"
+                                       type="checkbox"
+                                       value="@option.Code"
+                                       checked="@option.IsSelected"
+                                       disabled="@(!option.IsAvailable)" />
+                                <span>
+                                    <strong>@option.Label</strong>
+                                    <small>@option.Description</small>
+                                    <small>@option.Audience</small>
+                                    @if (!option.IsAvailable && !string.IsNullOrWhiteSpace(option.UnavailableReason))
+                                    {
+                                        <small>@option.UnavailableReason</small>
+                                    }
+                                </span>
+                            </label>
+                        }
+                    </div>
+                    @if (dashboardActivityPreferences.LastViewedAt is not null)
+                    {
+                        <p class="section-help">Last dashboard visit: @FormatLocalDate(dashboardActivityPreferences.LastViewedAt.Value)</p>
+                    }
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Save dashboard activity</button>
+                    </div>
+                </form>
+            </section>
+        }
+
         <section class="form-section settings-wide">
             <h2>SMS consent</h2>
             <p class="section-help">SMS consent is optional and is not required to use TryOutSpot. It allows transactional messages such as verification codes, security notices, password reset notices, and tryout registration updates.</p>

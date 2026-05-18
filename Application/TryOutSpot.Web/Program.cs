@@ -310,6 +310,7 @@ else
 builder.Services.AddScoped<IAuthTokenService, AuthTokenService>();
 builder.Services.AddSingleton<IExternalLoginTicketService, ExternalLoginTicketService>();
 builder.Services.AddScoped<IEntitlementService, EntitlementService>();
+builder.Services.AddScoped<IDashboardActivityService, DashboardActivityService>();
 builder.Services.AddScoped<IZipRadiusSearchService, ZipRadiusSearchService>();
 builder.Services.AddScoped<IStripeBillingService, StripeBillingService>();
 builder.Services.AddScoped<IStripeSubscriptionSyncService, StripeSubscriptionSyncService>();

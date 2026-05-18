@@ -49,6 +49,8 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
 
     public virtual DbSet<UserAdFrequency> UserAdFrequencies { get; set; }
 
+    public virtual DbSet<UserDashboardPreference> UserDashboardPreferences { get; set; }
+
     public virtual DbSet<UserFavorite> UserFavorites { get; set; }
 
     public virtual DbSet<UserOauthProvider> UserOauthProviders { get; set; }
@@ -460,6 +462,20 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.Id).ValueGeneratedNever();
 
             entity.HasOne(d => d.User).WithOne(p => p.UserAdFrequency).HasForeignKey<UserAdFrequency>(d => d.UserId);
+        });
+
+        modelBuilder.Entity<UserDashboardPreference>(entity =>
+        {
+            entity.HasIndex(e => e.UserId, "IX_UserDashboardPreferences_UserId").IsUnique();
+
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.ActivityTypesJson).HasMaxLength(2000);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasOne(d => d.User).WithOne(p => p.UserDashboardPreference)
+                .HasForeignKey<UserDashboardPreference>(d => d.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<UserFavorite>(entity =>

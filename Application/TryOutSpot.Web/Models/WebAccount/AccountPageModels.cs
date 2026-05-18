@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Http;
 using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Models.Billing;
+using TryOutSpot.Web.Models.Dashboard;
 
 namespace TryOutSpot.Web.Models.WebAccount;
 
@@ -217,6 +218,8 @@ public sealed class OnboardingPageModel
     public IReadOnlyCollection<DashboardPlayerListingFavoritePageItem> FavoritePlayerListings { get; set; } = [];
 
     public IReadOnlyCollection<DashboardOpportunityFavoritePageItem> FavoriteOpportunities { get; set; } = [];
+
+    public DashboardRecentActivityResponse? RecentActivity { get; set; }
 }
 
 public sealed class FavoritesPageModel
@@ -1790,6 +1793,8 @@ public sealed class AccountSettingsPageModel
     public bool HasScheduledPaidCancellation { get; set; }
 
     public DateTime? ScheduledPaidCancellationAt { get; set; }
+
+    public DashboardActivityPreferencesResponse? DashboardActivityPreferences { get; set; }
 }
 
 public sealed class ProfileSettingsPageModel

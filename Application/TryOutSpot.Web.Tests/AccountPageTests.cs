@@ -14,6 +14,7 @@ using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
 using TryOutSpot.Web.Listings;
+using TryOutSpot.Web.Models.Dashboard;
 using TryOutSpot.Web.Models.Billing;
 using TryOutSpot.Web.Security;
 using TryOutSpot.Web.Services;
@@ -511,6 +512,8 @@ public sealed class AccountPageTests
         Assert.Contains("name=\"SmsConsent.SmsConsentAccepted\"", html);
         Assert.Contains("Membership access", html);
         Assert.Contains("Choose or change plan", html);
+        Assert.Contains("Dashboard activity", html);
+        Assert.Contains("name=\"activityTypes\"", html);
     }
 
     [Fact]
@@ -598,6 +601,39 @@ public sealed class AccountPageTests
         Assert.DoesNotContain(TryOutSpotRoles.Parent, roles);
         Assert.Contains(TryOutSpotRoles.Player, roles);
         Assert.Contains(TryOutSpotRoles.TeamRepresentative, roles);
+    }
+
+    [Fact]
+    public async Task SettingsPost_DashboardActivityPreferences_UpdateCurrentUser()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("settings-dashboard-activity@example.com", [TryOutSpotRoles.Parent]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.PremiumPlayer, "active");
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/settings");
+        var response = await client.PostAsync(
+            "/account/settings/dashboard-activity",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("activityTypes", DashboardActivityTypeCodes.Tryouts),
+                new("activityTypes", DashboardActivityTypeCodes.ForSaleItems)
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var preferences = await dbContext.UserDashboardPreferences.SingleAsync(preference => preference.UserId == user.Id);
+        Assert.NotNull(preferences.ActivityTypesJson);
+        Assert.Contains(DashboardActivityTypeCodes.Tryouts, preferences.ActivityTypesJson);
+        Assert.Contains(DashboardActivityTypeCodes.ForSaleItems, preferences.ActivityTypesJson);
+        Assert.DoesNotContain(DashboardActivityTypeCodes.Tournaments, preferences.ActivityTypesJson);
     }
 
     [Fact]

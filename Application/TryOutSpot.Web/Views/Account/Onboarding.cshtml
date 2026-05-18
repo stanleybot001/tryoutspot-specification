@@ -75,6 +75,63 @@
         </div>
     </section>
 
+    @if (Model.RecentActivity is not null)
+    {
+        var recentSections = Model.RecentActivity.Sections
+            .Where(section => section.Items.Count > 0)
+            .ToArray();
+        <section class="form-section recent-activity-section">
+            <div class="section-heading-row">
+                <div>
+                    <h2>What's new</h2>
+                    <p class="section-help">@FormatActivitySinceLabel(Model.RecentActivity.PreviousViewedAt, Model.RecentActivity.Since)</p>
+                </div>
+                <a class="btn btn-sm btn-outline-primary" href="/account/settings">Tune dashboard</a>
+            </div>
+            @if (recentSections.Length == 0)
+            {
+                <p class="section-help">No new items match your dashboard settings right now.</p>
+            }
+            else
+            {
+                <div class="recent-activity-layout">
+                    @foreach (var activitySection in recentSections)
+                    {
+                        <div class="recent-activity-group">
+                            <h3>@activitySection.Title</h3>
+                            <div class="recent-activity-list">
+                                @foreach (var activity in activitySection.Items)
+                                {
+                                    <article class="recent-activity-row">
+                                        <div class="recent-activity-main">
+                                            <span class="recent-activity-type">@activity.ActivityTypeLabel</span>
+                                            <strong>@activity.Title</strong>
+                                            @if (!string.IsNullOrWhiteSpace(activity.Subtitle))
+                                            {
+                                                <span>@activity.Subtitle</span>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(activity.Detail) || !string.IsNullOrWhiteSpace(activity.Location))
+                                            {
+                                                <span>@string.Join(" - ", new[] { activity.Detail, activity.Location }.Where(value => !string.IsNullOrWhiteSpace(value)))</span>
+                                            }
+                                        </div>
+                                        <div class="recent-activity-actions">
+                                            <span>@FormatActivityAt(activity.ActivityAt)</span>
+                                            @if (!string.IsNullOrWhiteSpace(activity.Url))
+                                            {
+                                                <a class="btn btn-sm btn-outline-primary" href="@activity.Url">Open</a>
+                                            }
+                                        </div>
+                                    </article>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+    }
+
     <div class="onboarding-layout">
         <section class="form-section dashboard-menu-section">
             <h2>Dashboard menu</h2>
@@ -373,5 +430,17 @@
             "Declined" => "registration-status-declined",
             _ => "registration-status-pending"
         };
+    }
+
+    private static string FormatActivitySinceLabel(DateTime? previousViewedAt, DateTime since)
+    {
+        return previousViewedAt.HasValue
+            ? $"New since your last dashboard visit on {previousViewedAt.Value.ToLocalTime():MMM d, yyyy h:mm tt}."
+            : $"New from the last {(DateTime.UtcNow.Date - since.Date).Days} days.";
+    }
+
+    private static string FormatActivityAt(DateTime value)
+    {
+        return value.ToLocalTime().ToString("MMM d, h:mm tt");
     }
 }

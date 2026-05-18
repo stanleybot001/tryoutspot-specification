@@ -14,6 +14,7 @@ using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
 using TryOutSpot.Web.Listings;
 using TryOutSpot.Web.Models.Billing;
+using TryOutSpot.Web.Models.Dashboard;
 using TryOutSpot.Web.Models.WebAccount;
 using TryOutSpot.Web.Security;
 using TryOutSpot.Web.Services;
@@ -30,6 +31,7 @@ public sealed class AccountController(
     IAccountEmailSender accountEmailSender,
     IAccountSmsSender accountSmsSender,
     IEntitlementService entitlementService,
+    IDashboardActivityService dashboardActivityService,
     IZipRadiusSearchService zipRadiusSearchService,
     IPdfStorageService pdfStorageService,
     IImageStorageService imageStorageService,
@@ -48,6 +50,7 @@ public sealed class AccountController(
     private const int ProfessionalTeamPublishingWindowMonths = 12;
     private const int EnterpriseTeamPublishingLimit = 50;
     private const int EnterpriseTeamPublishingWindowMonths = 12;
+    private const int DashboardRecentActivityPreviewLimit = 8;
     private const int DashboardFavoritePreviewLimit = 12;
     private const int DefaultFavoritePageSize = 25;
     private const int FavoriteListLimit = 100;
@@ -4252,6 +4255,27 @@ public sealed class AccountController(
     }
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [HttpPost("settings/dashboard-activity")]
+    public async Task<IActionResult> UpdateDashboardActivityPreferences(
+        [FromForm] List<string>? activityTypes,
+        CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Settings)) });
+        }
+
+        await dashboardActivityService.UpdatePreferencesAsync(
+            user.Id,
+            activityTypes ?? [],
+            cancellationToken);
+
+        TempData["StatusMessage"] = "Dashboard activity preferences updated.";
+        return RedirectToAction(nameof(Settings));
+    }
+
+    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
     [HttpPost("settings/sms-consent")]
     public async Task<IActionResult> UpdateSmsConsent(
         [Bind(Prefix = "SmsConsent")] SmsConsentSettingsPageModel model)
@@ -5540,6 +5564,11 @@ public sealed class AccountController(
             DashboardFavoritePreviewLimit,
             cancellationToken);
         var favoriteCount = favoritePlayerListings.Count + favoriteOpportunities.Count;
+        var recentActivity = await dashboardActivityService.GetRecentActivityAsync(
+            user.Id,
+            markAsViewed: true,
+            DashboardRecentActivityPreviewLimit,
+            cancellationToken);
 
         var hasLinkedPlayers = hasPlayerOrParentRole
             && await dbContext.UserPlayerRelationships
@@ -5681,6 +5710,7 @@ public sealed class AccountController(
             UpcomingTryoutRegistrations = upcomingTryoutRegistrations,
             FavoritePlayerListings = favoritePlayerListings,
             FavoriteOpportunities = favoriteOpportunities,
+            RecentActivity = recentActivity,
             Steps = steps
         };
     }
@@ -9395,6 +9425,7 @@ public sealed class AccountController(
                 || string.Equals(subscription.Status, "checkout_started", StringComparison.OrdinalIgnoreCase);
         });
         var hasLocalPassword = await userManager.HasPasswordAsync(user);
+        var dashboardActivityPreferences = await dashboardActivityService.GetPreferencesAsync(user.Id, cancellationToken);
 
         return new AccountSettingsPageModel
         {
@@ -9443,7 +9474,8 @@ public sealed class AccountController(
             MembershipSummaries = BuildMembershipSummaries(subscriptions),
             CanCancelPaidMembership = cancelablePaidMemberships.Length > 0 && stripeBillingOptions.IsConfigured,
             HasScheduledPaidCancellation = scheduledPaidCancellationAt is not null,
-            ScheduledPaidCancellationAt = scheduledPaidCancellationAt
+            ScheduledPaidCancellationAt = scheduledPaidCancellationAt,
+            DashboardActivityPreferences = dashboardActivityPreferences
         };
     }
 

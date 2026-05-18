@@ -69,6 +69,8 @@ public partial class User : IdentityUser<Guid>
 
     public virtual UserAdFrequency? UserAdFrequency { get; set; }
 
+    public virtual UserDashboardPreference? UserDashboardPreference { get; set; }
+
     public virtual ICollection<UserFavorite> UserFavorites { get; set; } = new List<UserFavorite>();
 
     public virtual ICollection<UserOauthProvider> UserOauthProviders { get; set; } = new List<UserOauthProvider>();

@@ -672,6 +672,92 @@ body.splash-page {
   text-align: right;
 }
 
+.section-heading-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.section-heading-row h2,
+.section-heading-row .section-help {
+  margin-bottom: 0;
+}
+
+.recent-activity-section {
+  margin-bottom: 1.25rem;
+}
+
+.recent-activity-layout {
+  display: grid;
+  gap: 1rem;
+}
+
+.recent-activity-group {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.recent-activity-group h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.recent-activity-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.recent-activity-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.9rem;
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  padding: 0.85rem 0.9rem;
+  background: #f8fafc;
+  align-items: start;
+}
+
+.recent-activity-main {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.recent-activity-main strong,
+.recent-activity-main span {
+  display: block;
+}
+
+.recent-activity-main span {
+  color: #64748b;
+}
+
+.recent-activity-type {
+  width: fit-content;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  padding: 0.12rem 0.5rem;
+  color: #1d4ed8;
+  background: #eff6ff;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.recent-activity-actions {
+  display: grid;
+  justify-items: end;
+  gap: 0.45rem;
+  color: #64748b;
+  min-width: 110px;
+}
+
+.dashboard-preference-option.disabled-option {
+  cursor: not-allowed;
+  background: #f8fafc;
+  color: #64748b;
+}
+
 .plan-row.plan-row-active {
   border-color: #60a5fa;
   background: #eff6ff;
@@ -1426,6 +1512,7 @@ body.splash-page {
   .onboarding-layout,
   .dashboard-menu-grid,
   .dashboard-menu-card,
+  .recent-activity-row,
   .step-row,
   .plan-row {
     grid-template-columns: 1fr;
@@ -1433,9 +1520,15 @@ body.splash-page {
 
   .step-status,
   .dashboard-menu-action,
+  .recent-activity-actions,
   .plan-price {
+    justify-items: start;
     justify-content: flex-start;
     text-align: left;
+  }
+
+  .section-heading-row {
+    flex-direction: column;
   }
 
   .team-row-head,
