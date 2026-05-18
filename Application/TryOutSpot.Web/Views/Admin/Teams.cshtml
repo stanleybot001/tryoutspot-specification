@@ -1,0 +1,185 @@
+@model AdminTeamListPageModel
+
+@{
+    ViewData["Title"] = "Admin Teams";
+    var returnUrl = $"{Context.Request.Path}{Context.Request.QueryString}";
+}
+
+<section class="account-page admin-page">
+    <div class="account-heading">
+        <p class="account-kicker">Teams</p>
+        <h1>Teams</h1>
+        <p>Search team profiles, review team-side ownership, and suspend or reactivate team visibility.</p>
+    </div>
+
+    @await Html.PartialAsync("_AdminNav")
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    <section class="form-section">
+        <form method="get" class="admin-filter-form">
+            <div class="form-field">
+                <label class="form-label" for="team-search">Search</label>
+                <input id="team-search" class="form-control" name="q" value="@Model.Search" />
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="active-state">Status</label>
+                <select id="active-state" class="form-select" name="isActive">
+                    <option value="">All teams</option>
+                    <option value="true" selected="@(Model.IsActive == true)">Active</option>
+                    <option value="false" selected="@(Model.IsActive == false)">Suspended</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="searchable-state">Visibility</label>
+                <select id="searchable-state" class="form-select" name="isSearchable">
+                    <option value="">All visibility</option>
+                    <option value="true" selected="@(Model.IsSearchable == true)">Searchable</option>
+                    <option value="false" selected="@(Model.IsSearchable == false)">Hidden</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="team-page-size">Rows</label>
+                <select id="team-page-size" class="form-select" name="pageSize">
+                    @foreach (var size in PageSizeOptions())
+                    {
+                        <option value="@size" selected="@(Model.PageSize == size)">@size</option>
+                    }
+                </select>
+            </div>
+            <div class="form-actions admin-filter-actions">
+                <button type="submit" class="btn btn-primary">Filter</button>
+                <a class="btn btn-outline-secondary" href="/admin/teams">Reset</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="form-section">
+        <div class="opportunity-row-head">
+            <h2>Teams</h2>
+            <span class="section-help">@Model.TotalCount total</span>
+        </div>
+
+        @if (Model.Teams.Count == 0)
+        {
+            <p class="section-help">No teams match these filters.</p>
+        }
+        else
+        {
+            <div class="plan-list">
+                @foreach (var team in Model.Teams)
+                {
+                    <article class="plan-row plan-row-stack admin-list-row">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@team.TeamName</strong>
+                                <span>@(team.OrganizationName ?? "Independent team") - @(team.TeamLevel ?? "No level") - @team.GeographicScope</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                <span>@(team.IsActive ? "Active" : "Suspended")</span>
+                                <span>@(team.IsSearchable ? "Searchable" : "Hidden")</span>
+                                <span>@team.OpenReportCount open reports</span>
+                            </div>
+                        </div>
+                        <div class="feature-code-list mt-2">
+                            @foreach (var sport in team.Sports)
+                            {
+                                <span>@sport</span>
+                            }
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mt-2 small text-muted">
+                            <span><strong class="text-body">Representatives:</strong> @team.RepresentativeCount</span>
+                            <span><strong class="text-body">Opportunities:</strong> @team.ActiveOpportunityCount active / @team.OpportunityCount total</span>
+                            <span><strong class="text-body">Location:</strong> @FormatLocation(team.City, team.State, team.ZipCode)</span>
+                            <span><strong class="text-body">Updated:</strong> @team.UpdatedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</span>
+                        </div>
+                        <div class="form-actions admin-row-actions mt-2">
+                            <a class="btn btn-outline-primary btn-sm" href="/admin/team-opportunities?q=@Uri.EscapeDataString(team.TeamName)">Opportunity listings</a>
+                            @if (team.IsActive)
+                            {
+                                <form asp-action="SuspendTeam" asp-controller="Admin" asp-route-teamId="@team.TeamId" method="post" class="inline-form">
+                                    <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                    <button type="submit" class="btn btn-outline-danger btn-sm">Suspend team</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <form asp-action="ReactivateTeam" asp-controller="Admin" asp-route-teamId="@team.TeamId" method="post" class="inline-form">
+                                    <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                    <button type="submit" class="btn btn-outline-success btn-sm">Reactivate team</button>
+                                </form>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        @if (Model.TotalPages > 1)
+        {
+            <div class="form-actions mt-3">
+                @if (Model.Page > 1)
+                {
+                    <a class="btn btn-outline-secondary" href="@BuildPageUrl(Model.Page - 1)">Previous</a>
+                }
+                <span class="section-help">Page @Model.Page of @Model.TotalPages</span>
+                @if (Model.Page < Model.TotalPages)
+                {
+                    <a class="btn btn-outline-secondary" href="@BuildPageUrl(Model.Page + 1)">Next</a>
+                }
+            </div>
+        }
+    </section>
+</section>
+
+@functions {
+    private static int[] PageSizeOptions()
+    {
+        return [10, 25, 50, 100];
+    }
+
+    private string BuildPageUrl(int page)
+    {
+        var values = new List<string> { $"page={page}", $"pageSize={Model.PageSize}" };
+        if (!string.IsNullOrWhiteSpace(Model.Search))
+        {
+            values.Add($"q={Uri.EscapeDataString(Model.Search)}");
+        }
+
+        if (Model.IsActive.HasValue)
+        {
+            values.Add($"isActive={Model.IsActive.Value.ToString().ToLowerInvariant()}");
+        }
+
+        if (Model.IsSearchable.HasValue)
+        {
+            values.Add($"isSearchable={Model.IsSearchable.Value.ToString().ToLowerInvariant()}");
+        }
+
+        return "/admin/teams?" + string.Join("&", values);
+    }
+
+    private static string FormatLocation(string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim().ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        return parts.Count == 0 ? "Not set" : string.Join(", ", parts);
+    }
+}

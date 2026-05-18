@@ -1626,7 +1626,7 @@ body.splash-page {
 
 .admin-filter-form {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(150px, 0.5fr)) auto;
+  grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(130px, 0.45fr)) auto;
   gap: 0.85rem;
   align-items: end;
 }
@@ -1647,6 +1647,15 @@ body.splash-page {
 .admin-list-row strong,
 .admin-list-row a {
   overflow-wrap: anywhere;
+}
+
+.admin-row-actions {
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.admin-row-actions form {
+  margin: 0;
 }
 
 .admin-detail-layout {

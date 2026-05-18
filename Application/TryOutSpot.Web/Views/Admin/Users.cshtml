@@ -2,6 +2,7 @@
 
 @{
     ViewData["Title"] = "Admin Users";
+    var returnUrl = $"{Context.Request.Path}{Context.Request.QueryString}";
 }
 
 <section class="account-page admin-page">
@@ -12,6 +13,11 @@
     </div>
 
     @await Html.PartialAsync("_AdminNav")
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
 
     <section class="form-section">
         <form method="get" class="admin-filter-form">
@@ -34,7 +40,16 @@
                 <select id="active-state" class="form-select" name="isActive">
                     <option value="">All users</option>
                     <option value="true" selected="@(Model.IsActive == true)">Active</option>
-                    <option value="false" selected="@(Model.IsActive == false)">Inactive</option>
+                    <option value="false" selected="@(Model.IsActive == false)">Suspended</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="user-page-size">Rows</label>
+                <select id="user-page-size" class="form-select" name="pageSize">
+                    @foreach (var size in PageSizeOptions())
+                    {
+                        <option value="@size" selected="@(Model.PageSize == size)">@size</option>
+                    }
                 </select>
             </div>
             <div class="form-actions admin-filter-actions">
@@ -66,7 +81,7 @@
                                 <span>@user.Email</span>
                             </div>
                             <div class="team-metric-inline">
-                                <span>@(user.IsActive ? "Active" : "Inactive")</span>
+                                <span>@GetUserStatus(user)</span>
                                 <span>@(user.EmailConfirmed ? "Email verified" : "Email unverified")</span>
                                 <span>@(user.PhoneNumberConfirmed ? "Phone verified" : "Phone unverified")</span>
                             </div>
@@ -83,8 +98,25 @@
                             <span><strong class="text-body">Teams:</strong> @user.TeamCount</span>
                             <span><strong class="text-body">Created:</strong> @user.CreatedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</span>
                         </div>
-                        <div class="form-actions mt-2">
+                        <div class="form-actions admin-row-actions mt-2">
                             <a class="btn btn-outline-primary btn-sm" href="/admin/users/@user.UserId">View profile</a>
+                            @if (user.UserId != Model.CurrentAdminUserId)
+                            {
+                                if (user.IsActive)
+                                {
+                                    <form asp-action="SuspendUser" asp-controller="Admin" asp-route-userId="@user.UserId" method="post" class="inline-form">
+                                        <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                        <button type="submit" class="btn btn-outline-danger btn-sm">Suspend user</button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <form asp-action="ReactivateUser" asp-controller="Admin" asp-route-userId="@user.UserId" method="post" class="inline-form">
+                                        <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                        <button type="submit" class="btn btn-outline-success btn-sm">Reactivate user</button>
+                                    </form>
+                                }
+                            }
                         </div>
                     </article>
                 }
@@ -109,6 +141,21 @@
 </section>
 
 @functions {
+    private static int[] PageSizeOptions()
+    {
+        return [10, 25, 50, 100];
+    }
+
+    private static string GetUserStatus(AdminUserListItem user)
+    {
+        if (!user.IsActive)
+        {
+            return "Suspended";
+        }
+
+        return user.IsLockedOut ? "Locked" : "Active";
+    }
+
     private string BuildPageUrl(int page)
     {
         var values = new List<string> { $"page={page}", $"pageSize={Model.PageSize}" };

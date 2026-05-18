@@ -2,6 +2,7 @@
 
 @{
     ViewData["Title"] = "Admin Team Opportunities";
+    var returnUrl = $"{Context.Request.Path}{Context.Request.QueryString}";
 }
 
 <section class="account-page admin-page">
@@ -12,6 +13,11 @@
     </div>
 
     @await Html.PartialAsync("_AdminNav")
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
 
     <section class="form-section">
         <form method="get" class="admin-filter-form">
@@ -33,6 +39,15 @@
                     <option value="">All</option>
                     <option value="true" selected="@(Model.IsActive == true)">Active</option>
                     <option value="false" selected="@(Model.IsActive == false)">Inactive</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="opportunity-page-size">Rows</label>
+                <select id="opportunity-page-size" class="form-select" name="pageSize">
+                    @foreach (var size in PageSizeOptions())
+                    {
+                        <option value="@size" selected="@(Model.PageSize == size)">@size</option>
+                    }
                 </select>
             </div>
             <div class="form-actions admin-filter-actions">
@@ -78,11 +93,30 @@
                         {
                             <p class="section-help small mb-1">@opportunity.Description</p>
                         }
-                        <div class="form-actions mt-2">
+                        <div class="form-actions admin-row-actions mt-2">
+                            <a class="btn btn-outline-primary btn-sm" href="/admin/teams?q=@Uri.EscapeDataString(opportunity.TeamName)">Team profile</a>
                             @if (opportunity.IsPublished)
                             {
                                 <a class="btn btn-outline-secondary btn-sm" href="/opportunities/@opportunity.OpportunityId" target="_blank" rel="noopener">Public page</a>
                             }
+                            @if (opportunity.IsActive)
+                            {
+                                <form asp-action="DeactivateTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@opportunity.OpportunityId" method="post" class="inline-form">
+                                    <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                    <button type="submit" class="btn btn-outline-warning btn-sm">Deactivate</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <form asp-action="ReactivateTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@opportunity.OpportunityId" method="post" class="inline-form">
+                                    <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                    <button type="submit" class="btn btn-outline-success btn-sm">Reactivate</button>
+                                </form>
+                            }
+                            <form asp-action="DeleteTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@opportunity.OpportunityId" method="post" class="inline-form">
+                                <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                            </form>
                         </div>
                     </article>
                 }
@@ -107,6 +141,11 @@
 </section>
 
 @functions {
+    private static int[] PageSizeOptions()
+    {
+        return [10, 25, 50, 100];
+    }
+
     private string BuildPageUrl(int page)
     {
         var values = new List<string> { $"page={page}", $"pageSize={Model.PageSize}" };

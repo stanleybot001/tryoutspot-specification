@@ -36,6 +36,9 @@ public sealed class AdminController(
         var activeUserCount = await dbContext.Users
             .AsNoTracking()
             .CountAsync(user => user.IsActive, cancellationToken);
+        var activeTeamCount = await dbContext.Teams
+            .AsNoTracking()
+            .CountAsync(team => team.IsActive, cancellationToken);
         var activePlayerListingCount = await dbContext.PlayerListings
             .AsNoTracking()
             .CountAsync(listing => listing.IsActive, cancellationToken);
@@ -55,6 +58,7 @@ public sealed class AdminController(
             pendingReportCount,
             inReviewReportCount,
             activeUserCount,
+            activeTeamCount,
             activePlayerListingCount,
             activeTeamOpportunityCount,
             recentReports.Select(ToReportListItem).ToArray()));
@@ -197,6 +201,7 @@ public sealed class AdminController(
                 user.FirstName,
                 user.LastName,
                 user.IsActive,
+                user.LockoutEnd,
                 user.EmailConfirmed,
                 user.PhoneNumberConfirmed,
                 user.UserPlayerRelationships.Count,
@@ -218,6 +223,7 @@ public sealed class AdminController(
                     user.LastName,
                     GetRolesForUser(roleLookup, user.UserId),
                     user.IsActive,
+                    IsLockedOut(user.LockoutEnd),
                     user.EmailConfirmed,
                     user.PhoneNumberConfirmed,
                     user.PlayerProfileCount,
@@ -226,6 +232,7 @@ public sealed class AdminController(
                     user.CreatedAt,
                     user.UpdatedAt))
                 .ToArray(),
+            CurrentAdminUserId = GetCurrentUserIdOrDefault(),
             Search = normalizedSearch,
             AccountType = normalizedAccountType,
             IsActive = isActive,
@@ -308,6 +315,7 @@ public sealed class AdminController(
                 user.LastName,
                 roles,
                 user.IsActive,
+                IsLockedOut(user.LockoutEnd),
                 user.EmailConfirmed,
                 user.PhoneNumberConfirmed,
                 playerRelationships.Length,
@@ -315,6 +323,7 @@ public sealed class AdminController(
                 teamRoles.Count(teamRole => teamRole.IsActive),
                 user.CreatedAt,
                 user.UpdatedAt),
+            CurrentAdminUserId = GetCurrentUserIdOrDefault(),
             PhoneNumber = user.PhoneNumber,
             DateOfBirth = user.DateOfBirth,
             City = user.City,
@@ -325,6 +334,211 @@ public sealed class AdminController(
             Teams = teamRoles.Select(ToTeamProfileItem).ToArray(),
             TeamOpportunities = teamOpportunities.Select(ToTeamOpportunityItem).ToArray()
         });
+    }
+
+    [HttpPost("users/{userId:guid}/suspend")]
+    public async Task<IActionResult> SuspendUser(
+        Guid userId,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        if (IsCurrentAdminUser(userId))
+        {
+            TempData["StatusMessage"] = "Platform administrators cannot suspend their own account.";
+            return RedirectToLocalOrAdmin(returnUrl, nameof(Users));
+        }
+
+        var user = await userManager.FindByIdAsync(userId.ToString());
+        if (user is null)
+        {
+            return NotFound();
+        }
+
+        user.IsActive = false;
+        user.LockoutEnabled = true;
+        user.LockoutEnd = DateTimeOffset.UtcNow.AddYears(100);
+        user.SecurityStamp = Guid.NewGuid().ToString("N");
+        user.UpdatedAt = DateTime.UtcNow;
+
+        var result = await userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+        {
+            TempData["StatusMessage"] = "User could not be suspended.";
+            return RedirectToLocalOrAdmin(returnUrl, nameof(UserDetail), new { userId });
+        }
+
+        TempData["StatusMessage"] = "User suspended.";
+        return RedirectToLocalOrAdmin(returnUrl, nameof(UserDetail), new { userId });
+    }
+
+    [HttpPost("users/{userId:guid}/reactivate")]
+    public async Task<IActionResult> ReactivateUser(
+        Guid userId,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await userManager.FindByIdAsync(userId.ToString());
+        if (user is null)
+        {
+            return NotFound();
+        }
+
+        user.IsActive = true;
+        user.LockoutEnabled = true;
+        user.LockoutEnd = null;
+        user.AccessFailedCount = 0;
+        user.SecurityStamp = Guid.NewGuid().ToString("N");
+        user.UpdatedAt = DateTime.UtcNow;
+
+        var result = await userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+        {
+            TempData["StatusMessage"] = "User could not be reactivated.";
+            return RedirectToLocalOrAdmin(returnUrl, nameof(UserDetail), new { userId });
+        }
+
+        TempData["StatusMessage"] = "User reactivated.";
+        return RedirectToLocalOrAdmin(returnUrl, nameof(UserDetail), new { userId });
+    }
+
+    [HttpGet("teams")]
+    public async Task<IActionResult> Teams(
+        [FromQuery(Name = "q")] string? search,
+        [FromQuery] bool? isActive,
+        [FromQuery] bool? isSearchable,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
+        var query = dbContext.Teams.AsNoTracking();
+
+        if (isActive.HasValue)
+        {
+            query = query.Where(team => team.IsActive == isActive.Value);
+        }
+
+        if (isSearchable.HasValue)
+        {
+            query = query.Where(team => team.IsSearchable == isSearchable.Value);
+        }
+
+        var normalizedSearch = NormalizeOptional(search);
+        if (!string.IsNullOrWhiteSpace(normalizedSearch))
+        {
+            var loweredSearch = normalizedSearch.ToLowerInvariant();
+            query = query.Where(team =>
+                team.Name.ToLower().Contains(loweredSearch)
+                || (team.Organization != null && team.Organization.Name.ToLower().Contains(loweredSearch))
+                || (team.City != null && team.City.ToLower().Contains(loweredSearch))
+                || (team.State != null && team.State.ToLower().Contains(loweredSearch))
+                || (team.ZipCode != null && team.ZipCode.ToLower().Contains(loweredSearch))
+                || team.UserTeamRoles.Any(teamRole =>
+                    teamRole.User.Email!.ToLower().Contains(loweredSearch)
+                    || teamRole.User.FirstName.ToLower().Contains(loweredSearch)
+                    || teamRole.User.LastName.ToLower().Contains(loweredSearch)));
+        }
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var teams = await query
+            .Include(team => team.Organization)
+            .Include(team => team.TeamSports)
+                .ThenInclude(teamSport => teamSport.Sport)
+            .OrderByDescending(team => team.UpdatedAt)
+            .ThenBy(team => team.Name)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToArrayAsync(cancellationToken);
+
+        var teamIds = teams.Select(team => team.Id).ToArray();
+        var representativeCounts = teamIds.Length == 0
+            ? new Dictionary<Guid, int>()
+            : await dbContext.UserTeamRoles
+                .AsNoTracking()
+                .Where(teamRole => teamIds.Contains(teamRole.TeamId) && teamRole.IsActive)
+                .GroupBy(teamRole => teamRole.TeamId)
+                .Select(group => new { TeamId = group.Key, Count = group.Count() })
+                .ToDictionaryAsync(group => group.TeamId, group => group.Count, cancellationToken);
+        var opportunityCounts = teamIds.Length == 0
+            ? new Dictionary<Guid, TeamOpportunityCountProjection>()
+            : await dbContext.Opportunities
+                .AsNoTracking()
+                .Where(opportunity => teamIds.Contains(opportunity.TeamId))
+                .GroupBy(opportunity => opportunity.TeamId)
+                .Select(group => new TeamOpportunityCountProjection(
+                    group.Key,
+                    group.Count(),
+                    group.Count(opportunity => opportunity.IsActive)))
+                .ToDictionaryAsync(group => group.TeamId, cancellationToken);
+        var openReportCounts = teamIds.Length == 0
+            ? new Dictionary<Guid, int>()
+            : await dbContext.ListingReports
+                .AsNoTracking()
+                .Where(report => report.Opportunity != null && teamIds.Contains(report.Opportunity.TeamId))
+                .Where(IsOpenReportExpression())
+                .GroupBy(report => report.Opportunity!.TeamId)
+                .Select(group => new { TeamId = group.Key, Count = group.Count() })
+                .ToDictionaryAsync(group => group.TeamId, group => group.Count, cancellationToken);
+
+        return View(new AdminTeamListPageModel
+        {
+            Teams = teams.Select(team => ToTeamListItem(
+                    team,
+                    representativeCounts.GetValueOrDefault(team.Id),
+                    opportunityCounts.GetValueOrDefault(team.Id),
+                    openReportCounts.GetValueOrDefault(team.Id)))
+                .ToArray(),
+            Search = normalizedSearch,
+            IsActive = isActive,
+            IsSearchable = isSearchable,
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount,
+            TotalPages = CalculateTotalPages(totalCount, pageSize)
+        });
+    }
+
+    [HttpPost("teams/{teamId:guid}/suspend")]
+    public async Task<IActionResult> SuspendTeam(
+        Guid teamId,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var team = await dbContext.Teams
+            .SingleOrDefaultAsync(currentTeam => currentTeam.Id == teamId, cancellationToken);
+        if (team is null)
+        {
+            return NotFound();
+        }
+
+        team.IsActive = false;
+        team.UpdatedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = "Team suspended.";
+        return RedirectToLocalOrAdmin(returnUrl, nameof(Teams));
+    }
+
+    [HttpPost("teams/{teamId:guid}/reactivate")]
+    public async Task<IActionResult> ReactivateTeam(
+        Guid teamId,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var team = await dbContext.Teams
+            .SingleOrDefaultAsync(currentTeam => currentTeam.Id == teamId, cancellationToken);
+        if (team is null)
+        {
+            return NotFound();
+        }
+
+        team.IsActive = true;
+        team.UpdatedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = "Team reactivated.";
+        return RedirectToLocalOrAdmin(returnUrl, nameof(Teams));
     }
 
     [HttpGet("player-listings")]
@@ -388,6 +602,76 @@ public sealed class AdminController(
         });
     }
 
+    [HttpPost("player-listings/{listingId:guid}/deactivate")]
+    public async Task<IActionResult> DeactivatePlayerListing(
+        Guid listingId,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var listing = await dbContext.PlayerListings
+            .SingleOrDefaultAsync(currentListing => currentListing.Id == listingId, cancellationToken);
+        if (listing is null)
+        {
+            return NotFound();
+        }
+
+        listing.IsActive = false;
+        listing.IsPublished = false;
+        listing.PublishedAt = null;
+        listing.UpdatedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = "Player listing deactivated.";
+        return RedirectToLocalOrAdmin(returnUrl, nameof(PlayerListings));
+    }
+
+    [HttpPost("player-listings/{listingId:guid}/reactivate")]
+    public async Task<IActionResult> ReactivatePlayerListing(
+        Guid listingId,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var listing = await dbContext.PlayerListings
+            .SingleOrDefaultAsync(currentListing => currentListing.Id == listingId, cancellationToken);
+        if (listing is null)
+        {
+            return NotFound();
+        }
+
+        listing.IsActive = true;
+        listing.UpdatedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = "Player listing reactivated. It remains unpublished until the owner republishes it.";
+        return RedirectToLocalOrAdmin(returnUrl, nameof(PlayerListings));
+    }
+
+    [HttpPost("player-listings/{listingId:guid}/delete")]
+    public async Task<IActionResult> DeletePlayerListing(
+        Guid listingId,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var listing = await dbContext.PlayerListings
+            .SingleOrDefaultAsync(currentListing => currentListing.Id == listingId, cancellationToken);
+        if (listing is null)
+        {
+            return NotFound();
+        }
+
+        var now = DateTime.UtcNow;
+        listing.IsActive = false;
+        listing.IsPublished = false;
+        listing.IsSearchable = false;
+        listing.PublishedAt = null;
+        listing.ExpiresAt = now;
+        listing.UpdatedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = "Player listing deleted from public and owner-facing listings. The record is retained for admin audit history.";
+        return RedirectToLocalOrAdmin(returnUrl, nameof(PlayerListings));
+    }
+
     [HttpGet("team-opportunities")]
     public async Task<IActionResult> TeamOpportunities(
         [FromQuery(Name = "q")] string? search,
@@ -444,6 +728,74 @@ public sealed class AdminController(
             TotalCount = totalCount,
             TotalPages = CalculateTotalPages(totalCount, pageSize)
         });
+    }
+
+    [HttpPost("team-opportunities/{opportunityId:guid}/deactivate")]
+    public async Task<IActionResult> DeactivateTeamOpportunity(
+        Guid opportunityId,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var opportunity = await dbContext.Opportunities
+            .SingleOrDefaultAsync(currentOpportunity => currentOpportunity.Id == opportunityId, cancellationToken);
+        if (opportunity is null)
+        {
+            return NotFound();
+        }
+
+        opportunity.IsActive = false;
+        opportunity.IsPublished = false;
+        opportunity.UpdatedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = "Team opportunity deactivated.";
+        return RedirectToLocalOrAdmin(returnUrl, nameof(TeamOpportunities));
+    }
+
+    [HttpPost("team-opportunities/{opportunityId:guid}/reactivate")]
+    public async Task<IActionResult> ReactivateTeamOpportunity(
+        Guid opportunityId,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var opportunity = await dbContext.Opportunities
+            .SingleOrDefaultAsync(currentOpportunity => currentOpportunity.Id == opportunityId, cancellationToken);
+        if (opportunity is null)
+        {
+            return NotFound();
+        }
+
+        opportunity.IsActive = true;
+        opportunity.UpdatedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = "Team opportunity reactivated. It remains unpublished until a team representative republishes it.";
+        return RedirectToLocalOrAdmin(returnUrl, nameof(TeamOpportunities));
+    }
+
+    [HttpPost("team-opportunities/{opportunityId:guid}/delete")]
+    public async Task<IActionResult> DeleteTeamOpportunity(
+        Guid opportunityId,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var opportunity = await dbContext.Opportunities
+            .SingleOrDefaultAsync(currentOpportunity => currentOpportunity.Id == opportunityId, cancellationToken);
+        if (opportunity is null)
+        {
+            return NotFound();
+        }
+
+        var now = DateTime.UtcNow;
+        opportunity.IsActive = false;
+        opportunity.IsPublished = false;
+        opportunity.ListingEndDate = now;
+        opportunity.ExpiresAt = now;
+        opportunity.UpdatedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = "Team opportunity deleted from public and owner-facing listings. The record is retained for admin audit history.";
+        return RedirectToLocalOrAdmin(returnUrl, nameof(TeamOpportunities));
     }
 
     private IQueryable<ListingReport> BuildReportQuery(string? status, string? targetType, string? search)
@@ -750,6 +1102,39 @@ public sealed class AdminController(
             sports);
     }
 
+    private static AdminTeamListItem ToTeamListItem(
+        Team team,
+        int representativeCount,
+        TeamOpportunityCountProjection? opportunityCounts,
+        int openReportCount)
+    {
+        var sports = team.TeamSports
+            .Where(teamSport => teamSport.IsActive)
+            .OrderBy(teamSport => teamSport.Sport.Name)
+            .Select(teamSport => teamSport.Sport.Name)
+            .ToArray();
+
+        return new AdminTeamListItem(
+            team.Id,
+            team.Name,
+            team.Organization?.Name,
+            team.TeamLevel,
+            team.GeographicScope,
+            team.City,
+            team.State,
+            team.ZipCode,
+            team.IsSearchable,
+            team.IsContactInfoVisible,
+            team.IsActive,
+            representativeCount,
+            opportunityCounts?.TotalCount ?? 0,
+            opportunityCounts?.ActiveCount ?? 0,
+            openReportCount,
+            sports,
+            team.CreatedAt,
+            team.UpdatedAt);
+    }
+
     private static AdminTeamOpportunityListItem ToTeamOpportunityItem(Opportunity opportunity)
     {
         return new AdminTeamOpportunityListItem(
@@ -824,6 +1209,31 @@ public sealed class AdminController(
         return Guid.TryParse(userIdClaim, out userId);
     }
 
+    private Guid GetCurrentUserIdOrDefault()
+    {
+        return TryGetCurrentUserId(out var userId) ? userId : Guid.Empty;
+    }
+
+    private bool IsCurrentAdminUser(Guid userId)
+    {
+        return TryGetCurrentUserId(out var currentUserId) && currentUserId == userId;
+    }
+
+    private IActionResult RedirectToLocalOrAdmin(string? returnUrl, string fallbackAction, object? routeValues = null)
+    {
+        if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+        {
+            return Redirect(returnUrl);
+        }
+
+        return RedirectToAction(fallbackAction, routeValues);
+    }
+
+    private static bool IsLockedOut(DateTimeOffset? lockoutEnd)
+    {
+        return lockoutEnd.HasValue && lockoutEnd.Value > DateTimeOffset.UtcNow;
+    }
+
     private static int CalculateTotalPages(int totalCount, int pageSize)
     {
         return totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
@@ -845,6 +1255,7 @@ public sealed class AdminController(
         string FirstName,
         string LastName,
         bool IsActive,
+        DateTimeOffset? LockoutEnd,
         bool EmailConfirmed,
         bool PhoneNumberConfirmed,
         int PlayerProfileCount,
@@ -852,4 +1263,9 @@ public sealed class AdminController(
         int TeamCount,
         DateTime CreatedAt,
         DateTime UpdatedAt);
+
+    private sealed record TeamOpportunityCountProjection(
+        Guid TeamId,
+        int TotalCount,
+        int ActiveCount);
 }

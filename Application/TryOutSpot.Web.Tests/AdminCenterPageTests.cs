@@ -61,7 +61,7 @@ public sealed class AdminCenterPageTests
         var sportId = GetActiveSportId(factory);
         var playerId = SeedPlayerProfile(factory, owner.Id, sportId);
         var playerListingId = SeedPlayerListing(factory, owner.Id, sportId, playerId, "Admin UI reported pickup listing");
-        var (_, opportunityId) = SeedTeamOpportunity(factory, teamOwner.Id, sportId, "Admin UI Aces", "Admin UI reported tryout");
+        var (teamId, opportunityId) = SeedTeamOpportunity(factory, teamOwner.Id, sportId, "Admin UI Aces", "Admin UI reported tryout");
         var reportId = SeedListingReport(factory, reporter.Id, playerListingId: playerListingId);
         SeedListingReport(factory, reporter.Id, opportunityId: opportunityId);
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -76,6 +76,7 @@ public sealed class AdminCenterPageTests
         await AssertPageContainsAsync(client, $"/admin/reports/{reportId}", "Review action");
         await AssertPageContainsAsync(client, "/admin/users", owner.Email!);
         await AssertPageContainsAsync(client, $"/admin/users/{owner.Id}", "Player profiles");
+        await AssertPageContainsAsync(client, "/admin/teams?q=Admin%20UI%20Aces", "Admin UI Aces");
         await AssertPageContainsAsync(client, "/admin/player-listings", "Admin UI reported pickup listing");
         await AssertPageContainsAsync(client, "/admin/team-opportunities", "Admin UI reported tryout");
 
@@ -99,6 +100,86 @@ public sealed class AdminCenterPageTests
         Assert.Equal("Reviewed from the admin center page.", report.AdminNotes);
         Assert.Equal(admin.Id, report.ReviewedByUserId);
         Assert.NotNull(report.ReviewedAt);
+    }
+
+    [Fact]
+    public async Task PlatformAdmin_CanSuspendUsersTeamsAndRemoveListings()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var owner = await factory.CreateUserAsync("admin-action-owner@example.com", [TryOutSpotRoles.Parent]);
+        var teamOwner = await factory.CreateUserAsync("admin-action-team-owner@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var admin = await factory.CreateUserAsync("admin-action-admin@example.com", [TryOutSpotRoles.PlatformAdmin]);
+        var sportId = GetActiveSportId(factory);
+        var playerId = SeedPlayerProfile(factory, owner.Id, sportId);
+        var playerListingId = SeedPlayerListing(factory, owner.Id, sportId, playerId, "Admin action pickup listing");
+        var (teamId, opportunityId) = SeedTeamOpportunity(factory, teamOwner.Id, sportId, "Admin Action Aces", "Admin action tryout");
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        await LoginWebUserAsync(client, admin.Email!);
+
+        var usersToken = await GetAntiForgeryTokenAsync(client, "/admin/users");
+        var suspendUserResponse = await client.PostAsync(
+            $"/admin/users/{owner.Id}/suspend",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", usersToken),
+                new("returnUrl", "/admin/users?q=admin-action-owner")
+            ]));
+        Assert.Equal(HttpStatusCode.Redirect, suspendUserResponse.StatusCode);
+        Assert.Equal("/admin/users?q=admin-action-owner", suspendUserResponse.Headers.Location?.ToString());
+
+        var teamsToken = await GetAntiForgeryTokenAsync(client, "/admin/teams");
+        var suspendTeamResponse = await client.PostAsync(
+            $"/admin/teams/{teamId}/suspend",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", teamsToken),
+                new("returnUrl", "/admin/teams?q=Admin%20Action")
+            ]));
+        Assert.Equal(HttpStatusCode.Redirect, suspendTeamResponse.StatusCode);
+        Assert.Equal("/admin/teams?q=Admin%20Action", suspendTeamResponse.Headers.Location?.ToString());
+
+        var listingsToken = await GetAntiForgeryTokenAsync(client, "/admin/player-listings");
+        var deletePlayerListingResponse = await client.PostAsync(
+            $"/admin/player-listings/{playerListingId}/delete",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", listingsToken),
+                new("returnUrl", "/admin/player-listings?q=Admin%20action")
+            ]));
+        Assert.Equal(HttpStatusCode.Redirect, deletePlayerListingResponse.StatusCode);
+        Assert.Equal("/admin/player-listings?q=Admin%20action", deletePlayerListingResponse.Headers.Location?.ToString());
+
+        var opportunitiesToken = await GetAntiForgeryTokenAsync(client, "/admin/team-opportunities");
+        var deactivateOpportunityResponse = await client.PostAsync(
+            $"/admin/team-opportunities/{opportunityId}/deactivate",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", opportunitiesToken),
+                new("returnUrl", "/admin/team-opportunities?q=Admin%20action")
+            ]));
+        Assert.Equal(HttpStatusCode.Redirect, deactivateOpportunityResponse.StatusCode);
+        Assert.Equal("/admin/team-opportunities?q=Admin%20action", deactivateOpportunityResponse.Headers.Location?.ToString());
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = await dbContext.Users.SingleAsync(currentUser => currentUser.Id == owner.Id);
+        var team = await dbContext.Teams.SingleAsync(currentTeam => currentTeam.Id == teamId);
+        var playerListing = await dbContext.PlayerListings.SingleAsync(listing => listing.Id == playerListingId);
+        var opportunity = await dbContext.Opportunities.SingleAsync(currentOpportunity => currentOpportunity.Id == opportunityId);
+
+        Assert.False(user.IsActive);
+        Assert.NotNull(user.LockoutEnd);
+        Assert.False(team.IsActive);
+        Assert.False(playerListing.IsActive);
+        Assert.False(playerListing.IsPublished);
+        Assert.False(playerListing.IsSearchable);
+        Assert.NotNull(playerListing.ExpiresAt);
+        Assert.False(opportunity.IsActive);
+        Assert.False(opportunity.IsPublished);
     }
 
     private static async Task AssertPageContainsAsync(HttpClient client, string path, string expectedText)

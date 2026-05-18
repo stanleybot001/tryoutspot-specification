@@ -2,6 +2,7 @@
 
 @{
     ViewData["Title"] = "Admin User Profile";
+    var returnUrl = $"{Context.Request.Path}{Context.Request.QueryString}";
 }
 
 <section class="account-page admin-page">
@@ -13,10 +14,15 @@
 
     @await Html.PartialAsync("_AdminNav")
 
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
     <section class="account-summary-strip admin-summary-grid">
         <div>
             <span>Account status</span>
-            <strong>@(Model.User.IsActive ? "Active" : "Inactive")</strong>
+            <strong>@GetUserStatus(Model.User)</strong>
         </div>
         <div>
             <span>Email</span>
@@ -43,6 +49,23 @@
         </div>
         <div class="form-actions mt-3">
             <a class="btn btn-outline-secondary btn-sm" href="/admin/users">Back to users</a>
+            @if (Model.User.UserId != Model.CurrentAdminUserId)
+            {
+                if (Model.User.IsActive)
+                {
+                    <form asp-action="SuspendUser" asp-controller="Admin" asp-route-userId="@Model.User.UserId" method="post" class="inline-form">
+                        <input type="hidden" name="returnUrl" value="@returnUrl" />
+                        <button type="submit" class="btn btn-outline-danger btn-sm">Suspend user</button>
+                    </form>
+                }
+                else
+                {
+                    <form asp-action="ReactivateUser" asp-controller="Admin" asp-route-userId="@Model.User.UserId" method="post" class="inline-form">
+                        <input type="hidden" name="returnUrl" value="@returnUrl" />
+                        <button type="submit" class="btn btn-outline-success btn-sm">Reactivate user</button>
+                    </form>
+                }
+            }
         </div>
     </section>
 
@@ -112,6 +135,30 @@
                             <span><strong class="text-body">Location:</strong> @FormatLocation(listing.City, listing.State, listing.ZipCode)</span>
                             <span><strong class="text-body">Updated:</strong> @listing.UpdatedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</span>
                         </div>
+                        <div class="form-actions admin-row-actions mt-2">
+                            @if (listing.IsPublished && listing.IsSearchable)
+                            {
+                                <a class="btn btn-outline-secondary btn-sm" href="/player-listings/@listing.ListingId" target="_blank" rel="noopener">Public page</a>
+                            }
+                            @if (listing.IsActive)
+                            {
+                                <form asp-action="DeactivatePlayerListing" asp-controller="Admin" asp-route-listingId="@listing.ListingId" method="post" class="inline-form">
+                                    <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                    <button type="submit" class="btn btn-outline-warning btn-sm">Deactivate</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <form asp-action="ReactivatePlayerListing" asp-controller="Admin" asp-route-listingId="@listing.ListingId" method="post" class="inline-form">
+                                    <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                    <button type="submit" class="btn btn-outline-success btn-sm">Reactivate</button>
+                                </form>
+                            }
+                            <form asp-action="DeletePlayerListing" asp-controller="Admin" asp-route-listingId="@listing.ListingId" method="post" class="inline-form">
+                                <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                            </form>
+                        </div>
                     </article>
                 }
             </div>
@@ -151,6 +198,23 @@
                             <span><strong class="text-body">Level:</strong> @(team.TeamLevel ?? "Not set")</span>
                             <span><strong class="text-body">Location:</strong> @FormatLocation(team.City, team.State, team.ZipCode)</span>
                         </div>
+                        <div class="form-actions admin-row-actions mt-2">
+                            <a class="btn btn-outline-primary btn-sm" href="/admin/teams?q=@Uri.EscapeDataString(team.TeamName)">Open in teams</a>
+                            @if (team.IsActive)
+                            {
+                                <form asp-action="SuspendTeam" asp-controller="Admin" asp-route-teamId="@team.TeamId" method="post" class="inline-form">
+                                    <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                    <button type="submit" class="btn btn-outline-danger btn-sm">Suspend team</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <form asp-action="ReactivateTeam" asp-controller="Admin" asp-route-teamId="@team.TeamId" method="post" class="inline-form">
+                                    <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                    <button type="submit" class="btn btn-outline-success btn-sm">Reactivate team</button>
+                                </form>
+                            }
+                        </div>
                     </article>
                 }
             </div>
@@ -184,6 +248,30 @@
                             <span><strong class="text-body">Location:</strong> @FormatLocation(opportunity.City, opportunity.State, opportunity.ZipCode)</span>
                             <span><strong class="text-body">Updated:</strong> @opportunity.UpdatedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</span>
                         </div>
+                        <div class="form-actions admin-row-actions mt-2">
+                            @if (opportunity.IsPublished)
+                            {
+                                <a class="btn btn-outline-secondary btn-sm" href="/opportunities/@opportunity.OpportunityId" target="_blank" rel="noopener">Public page</a>
+                            }
+                            @if (opportunity.IsActive)
+                            {
+                                <form asp-action="DeactivateTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@opportunity.OpportunityId" method="post" class="inline-form">
+                                    <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                    <button type="submit" class="btn btn-outline-warning btn-sm">Deactivate</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <form asp-action="ReactivateTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@opportunity.OpportunityId" method="post" class="inline-form">
+                                    <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                    <button type="submit" class="btn btn-outline-success btn-sm">Reactivate</button>
+                                </form>
+                            }
+                            <form asp-action="DeleteTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@opportunity.OpportunityId" method="post" class="inline-form">
+                                <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                            </form>
+                        </div>
                     </article>
                 }
             </div>
@@ -192,6 +280,16 @@
 </section>
 
 @functions {
+    private static string GetUserStatus(AdminUserListItem user)
+    {
+        if (!user.IsActive)
+        {
+            return "Suspended";
+        }
+
+        return user.IsLockedOut ? "Locked" : "Active";
+    }
+
     private static string FormatLocation(string? city, string? state, string? zipCode)
     {
         var parts = new List<string>();

@@ -6,6 +6,7 @@ public sealed record AdminDashboardPageModel(
     int PendingReportCount,
     int InReviewReportCount,
     int ActiveUserCount,
+    int ActiveTeamCount,
     int ActivePlayerListingCount,
     int ActiveTeamOpportunityCount,
     IReadOnlyCollection<AdminReportListItem> RecentReports);
@@ -80,6 +81,8 @@ public sealed class AdminUserListPageModel
 {
     public IReadOnlyCollection<AdminUserListItem> Users { get; set; } = [];
 
+    public Guid CurrentAdminUserId { get; set; }
+
     public string? Search { get; set; }
 
     public string? AccountType { get; set; }
@@ -104,6 +107,7 @@ public sealed record AdminUserListItem(
     string LastName,
     IReadOnlyCollection<string> AccountTypes,
     bool IsActive,
+    bool IsLockedOut,
     bool EmailConfirmed,
     bool PhoneNumberConfirmed,
     int PlayerProfileCount,
@@ -115,6 +119,8 @@ public sealed record AdminUserListItem(
 public sealed class AdminUserDetailPageModel
 {
     public AdminUserListItem User { get; set; } = null!;
+
+    public Guid CurrentAdminUserId { get; set; }
 
     public string? PhoneNumber { get; set; }
 
@@ -172,6 +178,45 @@ public sealed class AdminListingListPageModel<TListing>
 
     public int TotalPages { get; set; }
 }
+
+public sealed class AdminTeamListPageModel
+{
+    public IReadOnlyCollection<AdminTeamListItem> Teams { get; set; } = [];
+
+    public string? Search { get; set; }
+
+    public bool? IsActive { get; set; }
+
+    public bool? IsSearchable { get; set; }
+
+    public int Page { get; set; }
+
+    public int PageSize { get; set; }
+
+    public int TotalCount { get; set; }
+
+    public int TotalPages { get; set; }
+}
+
+public sealed record AdminTeamListItem(
+    Guid TeamId,
+    string TeamName,
+    string? OrganizationName,
+    string? TeamLevel,
+    string GeographicScope,
+    string? City,
+    string? State,
+    string? ZipCode,
+    bool IsSearchable,
+    bool IsContactInfoVisible,
+    bool IsActive,
+    int RepresentativeCount,
+    int OpportunityCount,
+    int ActiveOpportunityCount,
+    int OpenReportCount,
+    IReadOnlyCollection<string> Sports,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc);
 
 public sealed record AdminPlayerListingListItem(
     Guid ListingId,

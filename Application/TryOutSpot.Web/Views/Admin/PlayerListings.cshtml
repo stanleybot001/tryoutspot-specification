@@ -2,6 +2,7 @@
 
 @{
     ViewData["Title"] = "Admin Player Listings";
+    var returnUrl = $"{Context.Request.Path}{Context.Request.QueryString}";
 }
 
 <section class="account-page admin-page">
@@ -12,6 +13,11 @@
     </div>
 
     @await Html.PartialAsync("_AdminNav")
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
 
     <section class="form-section">
         <form method="get" class="admin-filter-form">
@@ -33,6 +39,15 @@
                     <option value="">All</option>
                     <option value="true" selected="@(Model.IsActive == true)">Active</option>
                     <option value="false" selected="@(Model.IsActive == false)">Inactive</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="listing-page-size">Rows</label>
+                <select id="listing-page-size" class="form-select" name="pageSize">
+                    @foreach (var size in PageSizeOptions())
+                    {
+                        <option value="@size" selected="@(Model.PageSize == size)">@size</option>
+                    }
                 </select>
             </div>
             <div class="form-actions admin-filter-actions">
@@ -65,7 +80,7 @@
                             </div>
                             <div class="team-metric-inline">
                                 <span>@(listing.IsPublished ? "Published" : "Unpublished")</span>
-                                <span>@(listing.IsActive ? "Active" : "Inactive")</span>
+                                <span>@GetListingStatus(listing)</span>
                                 <span>@listing.OpenReportCount open reports</span>
                             </div>
                         </div>
@@ -79,12 +94,30 @@
                         {
                             <p class="section-help small mb-1">@listing.Description</p>
                         }
-                        <div class="form-actions mt-2">
+                        <div class="form-actions admin-row-actions mt-2">
                             <a class="btn btn-outline-primary btn-sm" href="/admin/users/@listing.OwnerUserId">Owner profile</a>
                             @if (listing.IsPublished && listing.IsSearchable)
                             {
                                 <a class="btn btn-outline-secondary btn-sm" href="/player-listings/@listing.ListingId" target="_blank" rel="noopener">Public page</a>
                             }
+                            @if (listing.IsActive)
+                            {
+                                <form asp-action="DeactivatePlayerListing" asp-controller="Admin" asp-route-listingId="@listing.ListingId" method="post" class="inline-form">
+                                    <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                    <button type="submit" class="btn btn-outline-warning btn-sm">Deactivate</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <form asp-action="ReactivatePlayerListing" asp-controller="Admin" asp-route-listingId="@listing.ListingId" method="post" class="inline-form">
+                                    <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                    <button type="submit" class="btn btn-outline-success btn-sm">Reactivate</button>
+                                </form>
+                            }
+                            <form asp-action="DeletePlayerListing" asp-controller="Admin" asp-route-listingId="@listing.ListingId" method="post" class="inline-form">
+                                <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                            </form>
                         </div>
                     </article>
                 }
@@ -109,6 +142,21 @@
 </section>
 
 @functions {
+    private static int[] PageSizeOptions()
+    {
+        return [10, 25, 50, 100];
+    }
+
+    private static string GetListingStatus(AdminPlayerListingListItem listing)
+    {
+        if (listing.IsActive)
+        {
+            return "Active";
+        }
+
+        return listing.IsSearchable ? "Inactive" : "Deleted";
+    }
+
     private string BuildPageUrl(int page)
     {
         var values = new List<string> { $"page={page}", $"pageSize={Model.PageSize}" };

@@ -2,6 +2,7 @@
 
 @{
     ViewData["Title"] = "Review Report";
+    var returnUrl = $"{Context.Request.Path}{Context.Request.QueryString}";
 }
 
 <section class="account-page admin-page">
@@ -133,6 +134,24 @@
                 {
                     <a class="btn btn-outline-secondary btn-sm" href="/player-listings/@Model.PlayerListing.ListingId" target="_blank" rel="noopener">Public page</a>
                 }
+                @if (Model.PlayerListing.IsActive)
+                {
+                    <form asp-action="DeactivatePlayerListing" asp-controller="Admin" asp-route-listingId="@Model.PlayerListing.ListingId" method="post" class="inline-form">
+                        <input type="hidden" name="returnUrl" value="@returnUrl" />
+                        <button type="submit" class="btn btn-outline-warning btn-sm">Deactivate</button>
+                    </form>
+                }
+                else
+                {
+                    <form asp-action="ReactivatePlayerListing" asp-controller="Admin" asp-route-listingId="@Model.PlayerListing.ListingId" method="post" class="inline-form">
+                        <input type="hidden" name="returnUrl" value="@returnUrl" />
+                        <button type="submit" class="btn btn-outline-success btn-sm">Reactivate</button>
+                    </form>
+                }
+                <form asp-action="DeletePlayerListing" asp-controller="Admin" asp-route-listingId="@Model.PlayerListing.ListingId" method="post" class="inline-form">
+                    <input type="hidden" name="returnUrl" value="@returnUrl" />
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                </form>
             </div>
         </section>
     }
@@ -189,10 +208,29 @@
                 </div>
             }
             <div class="form-actions mt-3">
+                <a class="btn btn-outline-primary btn-sm" href="/admin/teams?q=@Uri.EscapeDataString(Model.TeamOpportunity.TeamName)">Team profile</a>
                 @if (Model.TeamOpportunity.IsPublished)
                 {
                     <a class="btn btn-outline-secondary btn-sm" href="/opportunities/@Model.TeamOpportunity.OpportunityId" target="_blank" rel="noopener">Public page</a>
                 }
+                @if (Model.TeamOpportunity.IsActive)
+                {
+                    <form asp-action="DeactivateTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@Model.TeamOpportunity.OpportunityId" method="post" class="inline-form">
+                        <input type="hidden" name="returnUrl" value="@returnUrl" />
+                        <button type="submit" class="btn btn-outline-warning btn-sm">Deactivate</button>
+                    </form>
+                }
+                else
+                {
+                    <form asp-action="ReactivateTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@Model.TeamOpportunity.OpportunityId" method="post" class="inline-form">
+                        <input type="hidden" name="returnUrl" value="@returnUrl" />
+                        <button type="submit" class="btn btn-outline-success btn-sm">Reactivate</button>
+                    </form>
+                }
+                <form asp-action="DeleteTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@Model.TeamOpportunity.OpportunityId" method="post" class="inline-form">
+                    <input type="hidden" name="returnUrl" value="@returnUrl" />
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                </form>
             </div>
         </section>
     }
