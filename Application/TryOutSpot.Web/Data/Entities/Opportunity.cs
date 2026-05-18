@@ -97,6 +97,8 @@ public partial class Opportunity
 
     public virtual ICollection<OpportunityGeographicTarget> OpportunityGeographicTargets { get; set; } = new List<OpportunityGeographicTarget>();
 
+    public virtual ICollection<ListingReport> ListingReports { get; set; } = new List<ListingReport>();
+
     public virtual ICollection<Post> Posts { get; set; } = new List<Post>();
 
     public virtual ICollection<Registration> Registrations { get; set; } = new List<Registration>();

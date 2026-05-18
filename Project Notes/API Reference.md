@@ -522,6 +522,71 @@ Discovery and player-listing search summaries include `isFavorited` when the cal
 - `GET /api/player-listings/search`
 - `GET /api/discovery/opportunities`
 
+## Listing Reports And Admin Review
+
+Signed-in active users can report published listings for platform review. Team representatives report player listings, and parents/players report team opportunities, but the endpoints are role-neutral for any active authenticated user. Duplicate open reports from the same user for the same listing return the existing report instead of creating another row.
+
+### `POST /api/player-listings/{listingId}/report`
+
+Reports a published player listing. Listing owners cannot report their own player listing.
+
+Request:
+
+```json
+{
+  "reason": "Inappropriate content",
+  "details": "Optional context for the platform admin."
+}
+```
+
+Success responses:
+
+- `201 Created` when a new report is created
+- `200 OK` when the user already has an open report for the listing
+
+### `POST /api/team-listings/opportunities/{opportunityId}/report`
+
+Reports a published team opportunity. Active managers for that team cannot report their own opportunity listing.
+
+Request and response shape match player listing reports.
+
+### `GET /api/admin/listings/reports`
+
+PlatformAdmin endpoint for reviewing reported listings.
+
+Query parameters:
+
+- `status`: optional `Pending`, `InReview`, `Reviewed`, `Dismissed`, or `ActionTaken`
+- `targetType`: optional `PlayerListing` or `TeamOpportunity`
+- `q`: optional reporter/reason/listing search
+- `page`: defaults to `1`
+- `pageSize`: defaults to `25`, maximum `100`
+
+### `GET /api/admin/listings/reports/{reportId}`
+
+Returns a report with reporter, reviewer, and target listing context.
+
+### `POST /api/admin/listings/reports/{reportId}/review`
+
+Updates report status and admin notes.
+
+Request:
+
+```json
+{
+  "status": "ActionTaken",
+  "adminNotes": "Unpublished listing and contacted owner."
+}
+```
+
+### `GET /api/admin/listings/player-listings`
+
+Lists all player-side listings with owner details and report counts. Optional filters: `q`, `ownerUserId`, `isPublished`, `isActive`, `page`, and `pageSize`.
+
+### `GET /api/admin/listings/team-opportunities`
+
+Lists all team-side opportunity listings with team details and report counts. Optional filters: `q`, `teamId`, `isPublished`, `isActive`, `page`, and `pageSize`.
+
 ## User Management
 
 User management endpoints require a bearer token for a user in the `PlatformAdmin` account type. State-changing user management actions use `POST`.
@@ -566,6 +631,18 @@ Success response: `200 OK`
 ### `GET /api/user-management/users/{userId}`
 
 Returns administrative account detail for one user.
+
+Success response: `200 OK`
+
+Failure responses:
+
+- `401 Unauthorized`
+- `403 Forbidden`
+- `404 Not Found`
+
+### `GET /api/user-management/users/{userId}/profile`
+
+Returns account detail plus linked player profiles, player listings, managed teams, and team opportunity listings for the user. Listing summaries include open and total report counts for quick admin triage.
 
 Success response: `200 OK`
 

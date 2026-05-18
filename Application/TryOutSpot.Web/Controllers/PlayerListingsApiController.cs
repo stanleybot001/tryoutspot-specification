@@ -734,6 +734,87 @@ public sealed class PlayerListingsApiController(
         return Ok(new PlayerListingActionResponse("Listing deactivated.", ToDetailResponse(response)));
     }
 
+    /// <summary>
+    /// Reports a published player listing for platform administrator review.
+    /// </summary>
+    [HttpPost("{listingId:guid}/report")]
+    [ProducesResponseType<ListingReportActionResponse>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ListingReportActionResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ListingReportActionResponse>> Report(
+        Guid listingId,
+        ReportListingRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var reason = NormalizeOptional(request.Reason);
+        if (reason is null)
+        {
+            ModelState.AddModelError(nameof(request.Reason), "A report reason is required.");
+            return ValidationProblem(ModelState);
+        }
+
+        var listing = await dbContext.PlayerListings
+            .AsNoTracking()
+            .Where(currentListing => currentListing.Id == listingId)
+            .Where(currentListing => currentListing.IsActive)
+            .Where(currentListing => currentListing.IsPublished)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (listing is null)
+        {
+            return NotFound();
+        }
+
+        if (listing.UserId == userId)
+        {
+            ModelState.AddModelError(nameof(listingId), "You cannot report your own listing.");
+            return ValidationProblem(ModelState);
+        }
+
+        var existingReport = await dbContext.ListingReports
+            .AsNoTracking()
+            .Where(report => report.ReporterUserId == userId)
+            .Where(report => report.PlayerListingId == listingId)
+            .Where(report => report.Status == TryOutSpotListingReportStatuses.Pending
+                || report.Status == TryOutSpotListingReportStatuses.InReview)
+            .OrderByDescending(report => report.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (existingReport is not null)
+        {
+            return Ok(new ListingReportActionResponse(
+                "This listing is already in review from your report.",
+                ToReportResponse(existingReport, TryOutSpotListingReportTargetTypes.PlayerListing, listingId)));
+        }
+
+        var now = DateTime.UtcNow;
+        var report = new ListingReport
+        {
+            Id = Guid.NewGuid(),
+            ReporterUserId = userId,
+            PlayerListingId = listingId,
+            Reason = reason,
+            Details = NormalizeOptional(request.Details),
+            Status = TryOutSpotListingReportStatuses.Pending,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        dbContext.ListingReports.Add(report);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return StatusCode(
+            StatusCodes.Status201Created,
+            new ListingReportActionResponse(
+                "Thanks. The listing has been sent to platform review.",
+                ToReportResponse(report, TryOutSpotListingReportTargetTypes.PlayerListing, listingId)));
+    }
+
     private string? NormalizeListingType(string? listingType, string modelStateKey)
     {
         var normalized = TryOutSpotPlayerListingTypes.Normalize(listingType);
@@ -864,5 +945,21 @@ public sealed class PlayerListingsApiController(
             listing.ExpiresAt,
             listing.CreatedAt,
             listing.UpdatedAt);
+    }
+
+    private static ListingReportSummaryResponse ToReportResponse(
+        ListingReport report,
+        string targetType,
+        Guid targetId)
+    {
+        return new ListingReportSummaryResponse(
+            report.Id,
+            targetType,
+            targetId,
+            report.Reason,
+            report.Details,
+            report.Status,
+            report.CreatedAt,
+            report.UpdatedAt);
     }
 }

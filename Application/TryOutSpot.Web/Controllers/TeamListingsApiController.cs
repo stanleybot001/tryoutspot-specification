@@ -7,6 +7,7 @@ using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Listings;
+using TryOutSpot.Web.Models.Listings;
 using TryOutSpot.Web.Models.TeamListings;
 using TryOutSpot.Web.Security;
 using TryOutSpot.Web.Services;
@@ -572,6 +573,99 @@ public sealed class TeamListingsApiController(
         return Ok(new TeamOpportunityActionResponse("Opportunity deactivated.", ToDetailResponse(updated)));
     }
 
+    /// <summary>
+    /// Reports a published team opportunity for platform administrator review.
+    /// </summary>
+    [HttpPost("opportunities/{opportunityId:guid}/report")]
+    [ProducesResponseType<ListingReportActionResponse>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ListingReportActionResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ListingReportActionResponse>> ReportOpportunity(
+        Guid opportunityId,
+        ReportListingRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var reason = NormalizeOptional(request.Reason);
+        if (reason is null)
+        {
+            ModelState.AddModelError(nameof(request.Reason), "A report reason is required.");
+            return ValidationProblem(ModelState);
+        }
+
+        var opportunity = await dbContext.Opportunities
+            .AsNoTracking()
+            .Where(currentOpportunity => currentOpportunity.Id == opportunityId)
+            .Where(currentOpportunity => currentOpportunity.IsActive)
+            .Where(currentOpportunity => currentOpportunity.IsPublished)
+            .Select(currentOpportunity => new
+            {
+                currentOpportunity.Id,
+                currentOpportunity.TeamId
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (opportunity is null)
+        {
+            return NotFound();
+        }
+
+        var userManagesTeam = await dbContext.UserTeamRoles
+            .AsNoTracking()
+            .AnyAsync(
+                teamRole => teamRole.UserId == userId
+                    && teamRole.TeamId == opportunity.TeamId
+                    && teamRole.IsActive,
+                cancellationToken);
+        if (userManagesTeam)
+        {
+            ModelState.AddModelError(nameof(opportunityId), "You cannot report an opportunity for a team you manage.");
+            return ValidationProblem(ModelState);
+        }
+
+        var existingReport = await dbContext.ListingReports
+            .AsNoTracking()
+            .Where(report => report.ReporterUserId == userId)
+            .Where(report => report.OpportunityId == opportunityId)
+            .Where(report => report.Status == TryOutSpotListingReportStatuses.Pending
+                || report.Status == TryOutSpotListingReportStatuses.InReview)
+            .OrderByDescending(report => report.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (existingReport is not null)
+        {
+            return Ok(new ListingReportActionResponse(
+                "This listing is already in review from your report.",
+                ToReportResponse(existingReport, TryOutSpotListingReportTargetTypes.TeamOpportunity, opportunityId)));
+        }
+
+        var now = DateTime.UtcNow;
+        var report = new ListingReport
+        {
+            Id = Guid.NewGuid(),
+            ReporterUserId = userId,
+            OpportunityId = opportunityId,
+            Reason = reason,
+            Details = NormalizeOptional(request.Details),
+            Status = TryOutSpotListingReportStatuses.Pending,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        dbContext.ListingReports.Add(report);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return StatusCode(
+            StatusCodes.Status201Created,
+            new ListingReportActionResponse(
+                "Thanks. The listing has been sent to platform review.",
+                ToReportResponse(report, TryOutSpotListingReportTargetTypes.TeamOpportunity, opportunityId)));
+    }
+
     private async Task ValidateOpportunityWriteRequestAsync(
         string? type,
         Guid sportId,
@@ -980,6 +1074,22 @@ public sealed class TeamListingsApiController(
             DateTimeKind.Local => normalized.ToUniversalTime(),
             _ => DateTime.SpecifyKind(normalized, DateTimeKind.Utc)
         };
+    }
+
+    private static ListingReportSummaryResponse ToReportResponse(
+        ListingReport report,
+        string targetType,
+        Guid targetId)
+    {
+        return new ListingReportSummaryResponse(
+            report.Id,
+            targetType,
+            targetId,
+            report.Reason,
+            report.Details,
+            report.Status,
+            report.CreatedAt,
+            report.UpdatedAt);
     }
 
     private static IReadOnlyCollection<string> NormalizeRegistrationFieldCodes(

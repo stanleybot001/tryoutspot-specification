@@ -6,6 +6,7 @@ using System.Security.Claims;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
+using TryOutSpot.Web.Listings;
 using TryOutSpot.Web.Models.UserManagement;
 using TryOutSpot.Web.Services;
 
@@ -163,6 +164,83 @@ public sealed class UserManagementApiController(
             await userManager.GetRolesAsync(user),
             includePlatformAdmin: true);
         return Ok(ToDetailResponse(user, roles));
+    }
+
+    /// <summary>
+    /// Returns a user account with linked player profiles, listings, teams, and team opportunities.
+    /// </summary>
+    [HttpGet("users/{userId:guid}/profile")]
+    [ProducesResponseType<ManagedUserProfileResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ManagedUserProfileResponse>> GetUserProfile(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var user = await dbContext.Users
+            .AsNoTracking()
+            .SingleOrDefaultAsync(currentUser => currentUser.Id == userId, cancellationToken);
+        if (user is null)
+        {
+            return NotFound();
+        }
+
+        var roles = TryOutSpotRoles.CanonicalizeRoleSet(
+            await userManager.GetRolesAsync(user),
+            includePlatformAdmin: true);
+
+        var playerRelationships = await dbContext.UserPlayerRelationships
+            .AsNoTracking()
+            .Where(relationship => relationship.UserId == userId)
+            .Include(relationship => relationship.Player)
+                .ThenInclude(player => player.PlayerSports)
+                    .ThenInclude(playerSport => playerSport.Sport)
+            .OrderBy(relationship => relationship.Player.LastName)
+            .ThenBy(relationship => relationship.Player.FirstName)
+            .ToArrayAsync(cancellationToken);
+
+        var playerListings = await dbContext.PlayerListings
+            .AsNoTracking()
+            .Where(listing => listing.UserId == userId)
+            .Include(listing => listing.Player)
+            .Include(listing => listing.Sport)
+            .Include(listing => listing.ListingReports)
+            .OrderByDescending(listing => listing.UpdatedAt)
+            .ToArrayAsync(cancellationToken);
+
+        var teamRoles = await dbContext.UserTeamRoles
+            .AsNoTracking()
+            .Where(teamRole => teamRole.UserId == userId)
+            .Include(teamRole => teamRole.Team)
+                .ThenInclude(team => team.Organization)
+            .Include(teamRole => teamRole.Team)
+                .ThenInclude(team => team.TeamSports)
+                    .ThenInclude(teamSport => teamSport.Sport)
+            .OrderBy(teamRole => teamRole.Team.Name)
+            .ToArrayAsync(cancellationToken);
+
+        var teamIds = teamRoles
+            .Select(teamRole => teamRole.TeamId)
+            .Distinct()
+            .ToArray();
+        var teamOpportunities = teamIds.Length == 0
+            ? Array.Empty<Opportunity>()
+            : await dbContext.Opportunities
+                .AsNoTracking()
+                .Where(opportunity => teamIds.Contains(opportunity.TeamId))
+                .Include(opportunity => opportunity.Team)
+                .Include(opportunity => opportunity.Sport)
+                .Include(opportunity => opportunity.ListingReports)
+                .OrderByDescending(opportunity => opportunity.UpdatedAt)
+                .ToArrayAsync(cancellationToken);
+
+        return Ok(new ManagedUserProfileResponse(
+            ToDetailResponse(user, roles),
+            playerRelationships.Select(ToPlayerProfileSummary).ToArray(),
+            playerListings.Select(ToPlayerListingSummary).ToArray(),
+            teamRoles.Select(ToTeamProfileSummary).ToArray(),
+            teamOpportunities.Select(ToTeamOpportunitySummary).ToArray()));
     }
 
     /// <summary>
@@ -636,6 +714,95 @@ public sealed class UserManagementApiController(
     private static string? NormalizeState(string? state)
     {
         return string.IsNullOrWhiteSpace(state) ? null : state.Trim().ToUpperInvariant();
+    }
+
+    private static ManagedUserPlayerProfileSummaryResponse ToPlayerProfileSummary(UserPlayerRelationship relationship)
+    {
+        var player = relationship.Player;
+        var sports = player.PlayerSports
+            .Where(playerSport => playerSport.IsActive)
+            .OrderBy(playerSport => playerSport.Sport.Name)
+            .Select(playerSport => playerSport.Sport.Name)
+            .ToArray();
+
+        return new ManagedUserPlayerProfileSummaryResponse(
+            player.Id,
+            player.FirstName,
+            player.LastName,
+            player.DateOfBirth,
+            player.City,
+            player.State,
+            player.ZipCode,
+            relationship.Relationship,
+            relationship.CanManage,
+            player.IsSearchable,
+            player.IsActive,
+            sports);
+    }
+
+    private static ManagedUserPlayerListingSummaryResponse ToPlayerListingSummary(PlayerListing listing)
+    {
+        return new ManagedUserPlayerListingSummaryResponse(
+            listing.Id,
+            listing.ListingType,
+            listing.Title,
+            listing.Player is null ? null : $"{listing.Player.FirstName} {listing.Player.LastName}".Trim(),
+            listing.Sport?.Name,
+            listing.IsPublished,
+            listing.IsSearchable,
+            listing.IsActive,
+            CountOpenReports(listing.ListingReports),
+            listing.ListingReports.Count,
+            listing.CreatedAt,
+            listing.UpdatedAt);
+    }
+
+    private static ManagedUserTeamProfileSummaryResponse ToTeamProfileSummary(UserTeamRole teamRole)
+    {
+        var team = teamRole.Team;
+        var sports = team.TeamSports
+            .Where(teamSport => teamSport.IsActive)
+            .OrderBy(teamSport => teamSport.Sport.Name)
+            .Select(teamSport => teamSport.Sport.Name)
+            .ToArray();
+
+        return new ManagedUserTeamProfileSummaryResponse(
+            team.Id,
+            team.Name,
+            team.Organization?.Name,
+            teamRole.Role,
+            team.GeographicScope,
+            team.TeamLevel,
+            team.City,
+            team.State,
+            team.ZipCode,
+            team.IsSearchable,
+            team.IsContactInfoVisible,
+            team.IsActive,
+            sports);
+    }
+
+    private static ManagedUserTeamOpportunitySummaryResponse ToTeamOpportunitySummary(Opportunity opportunity)
+    {
+        return new ManagedUserTeamOpportunitySummaryResponse(
+            opportunity.Id,
+            opportunity.TeamId,
+            opportunity.Team.Name,
+            opportunity.Type,
+            opportunity.Title,
+            opportunity.Sport.Name,
+            opportunity.IsPublished,
+            opportunity.IsActive,
+            CountOpenReports(opportunity.ListingReports),
+            opportunity.ListingReports.Count,
+            opportunity.CreatedAt,
+            opportunity.UpdatedAt);
+    }
+
+    private static int CountOpenReports(IEnumerable<ListingReport> reports)
+    {
+        return reports.Count(report => report.Status == TryOutSpotListingReportStatuses.Pending
+            || report.Status == TryOutSpotListingReportStatuses.InReview);
     }
 
     private static ManagedUserDetailResponse ToDetailResponse(User user, IEnumerable<string> roles)

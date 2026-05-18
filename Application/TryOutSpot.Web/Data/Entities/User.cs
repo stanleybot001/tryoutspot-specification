@@ -57,6 +57,10 @@ public partial class User : IdentityUser<Guid>
 
     public virtual ICollection<Comment> Comments { get; set; } = new List<Comment>();
 
+    public virtual ICollection<ListingReport> ListingReportsReviewed { get; set; } = new List<ListingReport>();
+
+    public virtual ICollection<ListingReport> ListingReportsSubmitted { get; set; } = new List<ListingReport>();
+
     public virtual ICollection<Medium> Media { get; set; } = new List<Medium>();
 
     public virtual ICollection<Post> Posts { get; set; } = new List<Post>();

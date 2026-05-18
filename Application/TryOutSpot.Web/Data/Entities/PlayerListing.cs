@@ -57,5 +57,7 @@ public partial class PlayerListing
 
     public virtual User User { get; set; } = null!;
 
+    public virtual ICollection<ListingReport> ListingReports { get; set; } = new List<ListingReport>();
+
     public virtual ICollection<UserFavorite> UserFavorites { get; set; } = new List<UserFavorite>();
 }

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
+using TryOutSpot.Web.Listings;
 
 namespace TryOutSpot.Web.Data;
 
@@ -18,6 +19,8 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
     public virtual DbSet<Comment> Comments { get; set; }
 
     public virtual DbSet<Medium> Media { get; set; }
+
+    public virtual DbSet<ListingReport> ListingReports { get; set; }
 
     public virtual DbSet<Opportunity> Opportunities { get; set; }
 
@@ -85,6 +88,56 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
 
             entity.HasOne(d => d.User).WithMany(p => p.Comments)
                 .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ListingReport>(entity =>
+        {
+            entity.HasIndex(e => e.OpportunityId, "IX_ListingReports_OpportunityId");
+
+            entity.HasIndex(e => new { e.OpportunityId, e.Status, e.CreatedAt }, "IX_ListingReports_OpportunityId_Status_CreatedAt");
+
+            entity.HasIndex(e => e.PlayerListingId, "IX_ListingReports_PlayerListingId");
+
+            entity.HasIndex(e => new { e.PlayerListingId, e.Status, e.CreatedAt }, "IX_ListingReports_PlayerListingId_Status_CreatedAt");
+
+            entity.HasIndex(e => e.ReporterUserId, "IX_ListingReports_ReporterUserId");
+
+            entity.HasIndex(e => new { e.ReporterUserId, e.OpportunityId, e.Status }, "IX_ListingReports_ReporterUserId_OpportunityId_Status");
+
+            entity.HasIndex(e => new { e.ReporterUserId, e.PlayerListingId, e.Status }, "IX_ListingReports_ReporterUserId_PlayerListingId_Status");
+
+            entity.HasIndex(e => e.ReviewedByUserId, "IX_ListingReports_ReviewedByUserId");
+
+            entity.HasIndex(e => new { e.Status, e.CreatedAt }, "IX_ListingReports_Status_CreatedAt");
+
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.AdminNotes).HasMaxLength(2000);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.Details).HasMaxLength(2000);
+            entity.Property(e => e.Reason).HasMaxLength(100);
+            entity.Property(e => e.Status).HasMaxLength(30).HasDefaultValue(TryOutSpotListingReportStatuses.Pending);
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.ToTable(table =>
+                table.HasCheckConstraint(
+                    "CK_ListingReports_OneListingTarget",
+                    "(\"PlayerListingId\" IS NOT NULL AND \"OpportunityId\" IS NULL) OR (\"PlayerListingId\" IS NULL AND \"OpportunityId\" IS NOT NULL)"));
+
+            entity.HasOne(d => d.Opportunity).WithMany(p => p.ListingReports)
+                .HasForeignKey(d => d.OpportunityId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.PlayerListing).WithMany(p => p.ListingReports)
+                .HasForeignKey(d => d.PlayerListingId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.ReporterUser).WithMany(p => p.ListingReportsSubmitted)
+                .HasForeignKey(d => d.ReporterUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.ReviewedByUser).WithMany(p => p.ListingReportsReviewed)
+                .HasForeignKey(d => d.ReviewedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
