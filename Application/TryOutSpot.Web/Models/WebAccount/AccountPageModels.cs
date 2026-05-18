@@ -1401,6 +1401,29 @@ public sealed class TeamOpportunityDetailPageModel
     public bool ViewerHasOpenReport { get; set; }
 }
 
+public sealed class ListingReportPageModel
+{
+    public string TargetTypeLabel { get; set; } = string.Empty;
+
+    public string Title { get; set; } = string.Empty;
+
+    public string? Subtitle { get; set; }
+
+    public string ReturnUrl { get; set; } = "/";
+
+    public string PostUrl { get; set; } = string.Empty;
+
+    public bool ViewerCanReport { get; set; }
+
+    public string? BlockMessage { get; set; }
+
+    public string? Reason { get; set; }
+
+    public string? Details { get; set; }
+
+    public IReadOnlyCollection<ListingReportReasonOptionPageItem> ReasonOptions { get; set; } = [];
+}
+
 public sealed class SearchTeamItemsPageModel
 {
     [MaxLength(200)]
@@ -1769,6 +1792,10 @@ public sealed record OpportunityRegistrationPlayerOptionPageItem(
     string? ProfileSchool,
     string? ProfilePhone,
     string? ProfileEmail);
+
+public sealed record ListingReportReasonOptionPageItem(
+    string Value,
+    string Label);
 
 public sealed class AccountSettingsPageModel
 {

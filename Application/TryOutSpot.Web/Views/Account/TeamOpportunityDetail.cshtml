@@ -3,6 +3,11 @@
 @{
     ViewData["Title"] = Model.Title;
     var googleMapsUrl = BuildGoogleMapsUrl(Model.Address, Model.City, Model.State, Model.ZipCode);
+    var reportPageUrl = $"/opportunities/{Model.OpportunityId}/report";
+    var reportHref = Model.ViewerIsAuthenticated
+        ? reportPageUrl
+        : $"/account/login?returnUrl={Uri.EscapeDataString(reportPageUrl)}";
+    var showReportAction = !Model.ViewerIsAuthenticated || Model.ViewerCanReport;
 }
 
 <section class="account-page">
@@ -30,7 +35,17 @@
         <div class="account-alert">@statusMessage</div>
     }
 
-    <section class="form-section">
+    <section class="form-section listing-detail-card">
+        @if (showReportAction)
+        {
+            <a class="listing-report-icon" href="@reportHref" aria-label="Report listing" title="Report listing">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M5 4v16" />
+                    <path d="M6 5h10l-1 4 1 4H6" />
+                </svg>
+            </a>
+        }
+
         <div class="form-actions">
             @if (Model.ViewerIsAuthenticated)
             {
@@ -61,48 +76,6 @@
                 <a class="btn btn-outline-primary" href="/account/login?returnUrl=@Uri.EscapeDataString($"/opportunities/{Model.OpportunityId}")">Sign in to favorite</a>
             }
         </div>
-    </section>
-
-    <section class="form-section listing-report-box">
-        <h2>Report listing</h2>
-        @if (!Model.ViewerIsAuthenticated)
-        {
-            <p class="section-help">
-                <a href="/account/login?returnUrl=@Uri.EscapeDataString($"/opportunities/{Model.OpportunityId}")">Sign in</a>
-                to report a listing for admin review.
-            </p>
-        }
-        else if (Model.ViewerManagesTeam)
-        {
-            <p class="section-help">You cannot report an opportunity for a team you manage.</p>
-        }
-        else if (Model.ViewerHasOpenReport)
-        {
-            <p class="section-help">This listing is already in review from your report.</p>
-        }
-        else
-        {
-            <form asp-action="ReportTeamOpportunity" asp-controller="Account" asp-route-opportunityId="@Model.OpportunityId" method="post" asp-antiforgery="true" class="stacked-form">
-                <div class="form-field">
-                    <label class="form-label" for="opportunity-report-reason">Reason <span class="required-marker">*</span></label>
-                    <select id="opportunity-report-reason" class="form-select" name="Reason" required>
-                        <option value="">Select a reason</option>
-                        <option value="Inappropriate content">Inappropriate content</option>
-                        <option value="Misleading listing">Misleading listing</option>
-                        <option value="Spam or scam">Spam or scam</option>
-                        <option value="Safety concern">Safety concern</option>
-                        <option value="Other">Other</option>
-                    </select>
-                </div>
-                <div class="form-field">
-                    <label class="form-label" for="opportunity-report-details">Details</label>
-                    <textarea id="opportunity-report-details" class="form-control" name="Details" rows="3" maxlength="2000"></textarea>
-                </div>
-                <div class="form-actions">
-                    <button type="submit" class="btn btn-outline-danger">Submit report</button>
-                </div>
-            </form>
-        }
     </section>
 
     <section class="form-section">

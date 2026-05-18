@@ -58,6 +58,14 @@ public sealed class AccountController(
     private const int FavoriteListLimit = 100;
     private const int DefaultSearchPageSize = 20;
     private const int MaxSearchPageSize = 50;
+    private static readonly ListingReportReasonOptionPageItem[] ListingReportReasonOptions =
+    [
+        new("Inappropriate content", "Inappropriate content"),
+        new("Misleading listing", "Misleading listing"),
+        new("Spam or scam", "Spam or scam"),
+        new("Safety concern", "Safety concern"),
+        new("Other", "Other")
+    ];
     private const int FreeSearchMaxRadiusMiles = 120;
     private const int SearchSuggestionResultLimit = 5;
     private const string AllSearchFilterValue = "all";
@@ -1687,6 +1695,44 @@ public sealed class AccountController(
     [Authorize(
         AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
         Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
+    [HttpGet("/player-listings/{listingId:guid}/report")]
+    public async Task<IActionResult> ReportPlayerListing(
+        Guid listingId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = $"/player-listings/{listingId}/report"
+            });
+        }
+
+        var listing = await QueryVisiblePlayerListingForFavorites(listingId)
+            .Include(currentListing => currentListing.Player)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (listing is null)
+        {
+            return NotFound();
+        }
+
+        var viewerOwnsListing = listing.UserId == user.Id;
+        var viewerHasOpenReport = await UserHasOpenPlayerListingReportAsync(
+            user.Id,
+            listingId,
+            cancellationToken);
+
+        var model = BuildPlayerListingReportPageModel(
+            listing,
+            viewerOwnsListing,
+            viewerHasOpenReport);
+        return View("ReportListing", model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
     [HttpPost("/player-listings/{listingId:guid}/report")]
     public async Task<IActionResult> ReportPlayerListing(
         Guid listingId,
@@ -1698,40 +1744,45 @@ public sealed class AccountController(
         {
             return RedirectToAction(nameof(Login), new
             {
-                returnUrl = Url.Action(nameof(PlayerListingDetail), new { listingId })
+                returnUrl = $"/player-listings/{listingId}/report"
             });
         }
 
         var listing = await QueryVisiblePlayerListingForFavorites(listingId)
+            .Include(currentListing => currentListing.Player)
             .SingleOrDefaultAsync(cancellationToken);
         if (listing is null)
         {
             return NotFound();
         }
 
-        if (listing.UserId == user.Id)
+        var viewerOwnsListing = listing.UserId == user.Id;
+        var existingOpenReport = await UserHasOpenPlayerListingReportAsync(
+            user.Id,
+            listingId,
+            cancellationToken);
+        var reportPageModel = BuildPlayerListingReportPageModel(
+            listing,
+            viewerOwnsListing,
+            existingOpenReport,
+            request.Reason,
+            request.Details);
+
+        if (viewerOwnsListing)
         {
-            TempData["StatusMessage"] = "You cannot report your own listing.";
-            return RedirectToAction(nameof(PlayerListingDetail), new { listingId });
+            return View("ReportListing", reportPageModel);
         }
 
         var validationMessage = ValidateListingReportRequest(request);
         if (validationMessage is not null)
         {
-            TempData["StatusMessage"] = validationMessage;
-            return RedirectToAction(nameof(PlayerListingDetail), new { listingId });
+            ModelState.AddModelError(string.Empty, validationMessage);
+            return View("ReportListing", reportPageModel);
         }
 
-        var existingOpenReport = await dbContext.ListingReports
-            .AsNoTracking()
-            .Where(report => report.ReporterUserId == user.Id)
-            .Where(report => report.PlayerListingId == listingId)
-            .AnyAsync(report => report.Status == TryOutSpotListingReportStatuses.Pending
-                || report.Status == TryOutSpotListingReportStatuses.InReview, cancellationToken);
         if (existingOpenReport)
         {
-            TempData["StatusMessage"] = "This listing is already in review from your report.";
-            return RedirectToAction(nameof(PlayerListingDetail), new { listingId });
+            return View("ReportListing", reportPageModel);
         }
 
         var now = DateTime.UtcNow;
@@ -3103,10 +3154,9 @@ public sealed class AccountController(
     [Authorize(
         AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
         Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
-    [HttpPost("/opportunities/{opportunityId:guid}/report")]
+    [HttpGet("/opportunities/{opportunityId:guid}/report")]
     public async Task<IActionResult> ReportTeamOpportunity(
         Guid opportunityId,
-        ReportListingRequest request,
         CancellationToken cancellationToken = default)
     {
         var user = await GetCurrentWebUserAsync();
@@ -3114,7 +3164,7 @@ public sealed class AccountController(
         {
             return RedirectToAction(nameof(Login), new
             {
-                returnUrl = Url.Action(nameof(TeamOpportunityDetail), new { opportunityId })
+                returnUrl = $"/opportunities/{opportunityId}/report"
             });
         }
 
@@ -3128,34 +3178,73 @@ public sealed class AccountController(
             return NotFound();
         }
 
-        var viewerManagesTeam = await dbContext.UserTeamRoles
-            .AsNoTracking()
-            .AnyAsync(teamRole => teamRole.UserId == user.Id
-                && teamRole.TeamId == opportunity.TeamId
-                && teamRole.IsActive, cancellationToken);
+        var viewerManagesTeam = await UserManagesTeamAsync(user.Id, opportunity.TeamId, cancellationToken);
+        var viewerHasOpenReport = await UserHasOpenOpportunityReportAsync(
+            user.Id,
+            opportunityId,
+            cancellationToken);
+
+        var model = BuildTeamOpportunityReportPageModel(
+            opportunity,
+            viewerManagesTeam,
+            viewerHasOpenReport);
+        return View("ReportListing", model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
+    [HttpPost("/opportunities/{opportunityId:guid}/report")]
+    public async Task<IActionResult> ReportTeamOpportunity(
+        Guid opportunityId,
+        ReportListingRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new
+            {
+                returnUrl = $"/opportunities/{opportunityId}/report"
+            });
+        }
+
+        var hasAdvancedOpportunitySearch = await HasAdvancedOpportunitySearchAsync(user.Id, cancellationToken);
+        var opportunity = await GetPublishedOpportunityForDiscoveryAsync(
+            opportunityId,
+            hasAdvancedOpportunitySearch,
+            cancellationToken);
+        if (opportunity is null)
+        {
+            return NotFound();
+        }
+
+        var viewerManagesTeam = await UserManagesTeamAsync(user.Id, opportunity.TeamId, cancellationToken);
+        var existingOpenReport = await UserHasOpenOpportunityReportAsync(
+            user.Id,
+            opportunityId,
+            cancellationToken);
+        var reportPageModel = BuildTeamOpportunityReportPageModel(
+            opportunity,
+            viewerManagesTeam,
+            existingOpenReport,
+            request.Reason,
+            request.Details);
         if (viewerManagesTeam)
         {
-            TempData["StatusMessage"] = "You cannot report an opportunity for a team you manage.";
-            return RedirectToAction(nameof(TeamOpportunityDetail), new { opportunityId });
+            return View("ReportListing", reportPageModel);
         }
 
         var validationMessage = ValidateListingReportRequest(request);
         if (validationMessage is not null)
         {
-            TempData["StatusMessage"] = validationMessage;
-            return RedirectToAction(nameof(TeamOpportunityDetail), new { opportunityId });
+            ModelState.AddModelError(string.Empty, validationMessage);
+            return View("ReportListing", reportPageModel);
         }
 
-        var existingOpenReport = await dbContext.ListingReports
-            .AsNoTracking()
-            .Where(report => report.ReporterUserId == user.Id)
-            .Where(report => report.OpportunityId == opportunityId)
-            .AnyAsync(report => report.Status == TryOutSpotListingReportStatuses.Pending
-                || report.Status == TryOutSpotListingReportStatuses.InReview, cancellationToken);
         if (existingOpenReport)
         {
-            TempData["StatusMessage"] = "This listing is already in review from your report.";
-            return RedirectToAction(nameof(TeamOpportunityDetail), new { opportunityId });
+            return View("ReportListing", reportPageModel);
         }
 
         var now = DateTime.UtcNow;
@@ -3380,6 +3469,120 @@ public sealed class AccountController(
             .Where(currentListing => currentListing.IsPublished)
             .Where(currentListing => currentListing.IsSearchable)
             .Where(currentListing => currentListing.ExpiresAt == null || currentListing.ExpiresAt > now);
+    }
+
+    private static ListingReportPageModel BuildPlayerListingReportPageModel(
+        PlayerListing listing,
+        bool viewerOwnsListing,
+        bool viewerHasOpenReport,
+        string? reason = null,
+        string? details = null)
+    {
+        var playerName = listing.Player is null
+            ? null
+            : $"{listing.Player.FirstName} {listing.Player.LastName}".Trim();
+        var subtitle = string.IsNullOrWhiteSpace(playerName)
+            ? GetPlayerListingTypeLabel(listing.ListingType)
+            : $"Player: {playerName}";
+        var blockMessage = viewerOwnsListing
+            ? "You cannot report your own listing."
+            : viewerHasOpenReport
+                ? "This listing is already in review from your report."
+                : null;
+
+        return new ListingReportPageModel
+        {
+            TargetTypeLabel = "Player listing",
+            Title = listing.Title,
+            Subtitle = subtitle,
+            ReturnUrl = $"/player-listings/{listing.Id}",
+            PostUrl = $"/player-listings/{listing.Id}/report",
+            ViewerCanReport = !viewerOwnsListing && !viewerHasOpenReport,
+            BlockMessage = blockMessage,
+            Reason = reason,
+            Details = details,
+            ReasonOptions = ListingReportReasonOptions
+        };
+    }
+
+    private static ListingReportPageModel BuildTeamOpportunityReportPageModel(
+        Opportunity opportunity,
+        bool viewerManagesTeam,
+        bool viewerHasOpenReport,
+        string? reason = null,
+        string? details = null)
+    {
+        var subtitleParts = new List<string>
+        {
+            GetOpportunityTypeLabel(opportunity.Type)
+        };
+        if (!string.IsNullOrWhiteSpace(opportunity.Sport?.Name))
+        {
+            subtitleParts.Add(opportunity.Sport.Name);
+        }
+
+        if (!string.IsNullOrWhiteSpace(opportunity.Team?.Name))
+        {
+            subtitleParts.Add(opportunity.Team.Name);
+        }
+
+        var blockMessage = viewerManagesTeam
+            ? "You cannot report an opportunity for a team you manage."
+            : viewerHasOpenReport
+                ? "This listing is already in review from your report."
+                : null;
+
+        return new ListingReportPageModel
+        {
+            TargetTypeLabel = "Team opportunity",
+            Title = opportunity.Title,
+            Subtitle = string.Join(" - ", subtitleParts),
+            ReturnUrl = $"/opportunities/{opportunity.Id}",
+            PostUrl = $"/opportunities/{opportunity.Id}/report",
+            ViewerCanReport = !viewerManagesTeam && !viewerHasOpenReport,
+            BlockMessage = blockMessage,
+            Reason = reason,
+            Details = details,
+            ReasonOptions = ListingReportReasonOptions
+        };
+    }
+
+    private Task<bool> UserHasOpenPlayerListingReportAsync(
+        Guid userId,
+        Guid listingId,
+        CancellationToken cancellationToken)
+    {
+        return dbContext.ListingReports
+            .AsNoTracking()
+            .Where(report => report.ReporterUserId == userId)
+            .Where(report => report.PlayerListingId == listingId)
+            .AnyAsync(report => report.Status == TryOutSpotListingReportStatuses.Pending
+                || report.Status == TryOutSpotListingReportStatuses.InReview, cancellationToken);
+    }
+
+    private Task<bool> UserHasOpenOpportunityReportAsync(
+        Guid userId,
+        Guid opportunityId,
+        CancellationToken cancellationToken)
+    {
+        return dbContext.ListingReports
+            .AsNoTracking()
+            .Where(report => report.ReporterUserId == userId)
+            .Where(report => report.OpportunityId == opportunityId)
+            .AnyAsync(report => report.Status == TryOutSpotListingReportStatuses.Pending
+                || report.Status == TryOutSpotListingReportStatuses.InReview, cancellationToken);
+    }
+
+    private Task<bool> UserManagesTeamAsync(
+        Guid userId,
+        Guid teamId,
+        CancellationToken cancellationToken)
+    {
+        return dbContext.UserTeamRoles
+            .AsNoTracking()
+            .AnyAsync(teamRole => teamRole.UserId == userId
+                && teamRole.TeamId == teamId
+                && teamRole.IsActive, cancellationToken);
     }
 
     private static string? ValidateListingReportRequest(ReportListingRequest request)

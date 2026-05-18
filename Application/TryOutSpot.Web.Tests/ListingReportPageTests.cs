@@ -34,13 +34,20 @@ public sealed class ListingReportPageTests
         var playerPage = await client.GetAsync(playerPath);
         Assert.Equal(HttpStatusCode.OK, playerPage.StatusCode);
         var playerHtml = await playerPage.Content.ReadAsStringAsync();
-        Assert.Contains("Report listing", playerHtml);
-        Assert.Contains("Submit report", playerHtml);
+        var playerReportPath = $"/player-listings/{playerListingId}/report";
+        Assert.Contains($"href=\"{playerReportPath}\"", playerHtml);
+        Assert.Contains("aria-label=\"Report listing\"", playerHtml);
+        Assert.DoesNotContain("Submit report", playerHtml);
+        var playerReportPage = await client.GetAsync(playerReportPath);
+        Assert.Equal(HttpStatusCode.OK, playerReportPage.StatusCode);
+        var playerReportHtml = await playerReportPage.Content.ReadAsStringAsync();
+        Assert.Contains("Report listing", playerReportHtml);
+        Assert.Contains("Submit report", playerReportHtml);
         var playerReportResponse = await client.PostAsync(
-            $"/player-listings/{playerListingId}/report",
+            playerReportPath,
             new FormUrlEncodedContent(
             [
-                new("__RequestVerificationToken", ExtractAntiForgeryToken(playerHtml, playerPath)),
+                new("__RequestVerificationToken", ExtractAntiForgeryToken(playerReportHtml, playerReportPath)),
                 new("Reason", "Inappropriate content"),
                 new("Details", "This player listing needs admin review.")
             ]));
@@ -51,13 +58,20 @@ public sealed class ListingReportPageTests
         var opportunityPage = await client.GetAsync(opportunityPath);
         Assert.Equal(HttpStatusCode.OK, opportunityPage.StatusCode);
         var opportunityHtml = await opportunityPage.Content.ReadAsStringAsync();
-        Assert.Contains("Report listing", opportunityHtml);
-        Assert.Contains("Submit report", opportunityHtml);
+        var opportunityReportPath = $"/opportunities/{opportunityId}/report";
+        Assert.Contains($"href=\"{opportunityReportPath}\"", opportunityHtml);
+        Assert.Contains("aria-label=\"Report listing\"", opportunityHtml);
+        Assert.DoesNotContain("Submit report", opportunityHtml);
+        var opportunityReportPage = await client.GetAsync(opportunityReportPath);
+        Assert.Equal(HttpStatusCode.OK, opportunityReportPage.StatusCode);
+        var opportunityReportHtml = await opportunityReportPage.Content.ReadAsStringAsync();
+        Assert.Contains("Report listing", opportunityReportHtml);
+        Assert.Contains("Submit report", opportunityReportHtml);
         var opportunityReportResponse = await client.PostAsync(
-            $"/opportunities/{opportunityId}/report",
+            opportunityReportPath,
             new FormUrlEncodedContent(
             [
-                new("__RequestVerificationToken", ExtractAntiForgeryToken(opportunityHtml, opportunityPath)),
+                new("__RequestVerificationToken", ExtractAntiForgeryToken(opportunityReportHtml, opportunityReportPath)),
                 new("Reason", "Misleading listing"),
                 new("Details", "This opportunity needs admin review.")
             ]));

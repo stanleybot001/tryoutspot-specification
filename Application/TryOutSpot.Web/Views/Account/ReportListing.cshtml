@@ -1,0 +1,69 @@
+@model ListingReportPageModel
+
+@{
+    ViewData["Title"] = "Report listing";
+}
+
+<section class="account-page compact listing-report-page">
+    <div class="account-heading">
+        <p class="account-kicker">@Model.TargetTypeLabel</p>
+        <h1>Report listing</h1>
+        <p>Send this listing to the TryOutSpot team for review.</p>
+    </div>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    <section class="form-section">
+        <div class="listing-report-target">
+            <span>@Model.TargetTypeLabel</span>
+            <strong>@Model.Title</strong>
+            @if (!string.IsNullOrWhiteSpace(Model.Subtitle))
+            {
+                <p>@Model.Subtitle</p>
+            }
+        </div>
+
+        @if (!Model.ViewerCanReport)
+        {
+            <p class="section-help">@Model.BlockMessage</p>
+            <div class="form-actions">
+                <a class="btn btn-outline-secondary" href="@Model.ReturnUrl">Back to listing</a>
+            </div>
+        }
+        else
+        {
+            <form action="@Model.PostUrl" method="post" class="stacked-form">
+                @Html.AntiForgeryToken()
+                <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+                <div class="form-field">
+                    <label class="form-label" for="listing-report-reason">Reason <span class="required-marker">*</span></label>
+                    <select id="listing-report-reason" class="form-select" name="Reason" required>
+                        <option value="">Select a reason</option>
+                        @foreach (var option in Model.ReasonOptions)
+                        {
+                            <option value="@option.Value" selected="@(string.Equals(Model.Reason, option.Value, StringComparison.Ordinal) ? "selected" : null)">@option.Label</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="form-field">
+                    <label class="form-label" for="listing-report-details">Details</label>
+                    <textarea id="listing-report-details" class="form-control" name="Details" rows="5" maxlength="2000">@Model.Details</textarea>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-danger">Submit report</button>
+                    <a class="btn btn-outline-secondary" href="@Model.ReturnUrl">Cancel</a>
+                </div>
+            </form>
+        }
+    </section>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

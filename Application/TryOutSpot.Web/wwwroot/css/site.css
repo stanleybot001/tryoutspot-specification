@@ -1002,15 +1002,6 @@ body.splash-page {
   margin: 0;
 }
 
-.listing-report-box {
-  border-color: #f2c5a5;
-  background: #fffaf6;
-}
-
-.listing-report-box h2 {
-  color: #7c2d12;
-}
-
 .listing-hero-avatar {
   width: 72px;
   height: 72px;
@@ -1018,6 +1009,71 @@ body.splash-page {
   object-fit: cover;
   border: 1px solid #d7dee8;
   background: #f8fafc;
+}
+
+.listing-detail-card {
+  position: relative;
+  padding-right: 4rem;
+}
+
+.listing-report-icon {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d7dee8;
+  border-radius: 999px;
+  color: #8a3a16;
+  display: inline-flex;
+  height: 2.1rem;
+  justify-content: center;
+  position: absolute;
+  right: 0.85rem;
+  top: 0.85rem;
+  transition: border-color 0.16s ease, color 0.16s ease, background-color 0.16s ease;
+  width: 2.1rem;
+}
+
+.listing-report-icon:hover,
+.listing-report-icon:focus {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #7c2d12;
+}
+
+.listing-report-icon svg {
+  fill: none;
+  height: 1.05rem;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  width: 1.05rem;
+}
+
+.listing-report-target {
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  background: #f8fafc;
+}
+
+.listing-report-target span {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.listing-report-target strong {
+  color: #071731;
+  font-size: 1.08rem;
+}
+
+.listing-report-target p {
+  color: #64748b;
+  margin: 0;
 }
 
 .listing-link-list {
