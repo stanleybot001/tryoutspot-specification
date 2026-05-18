@@ -2,6 +2,7 @@
 
 @{
     ViewData["Title"] = Model.Title;
+    var googleMapsUrl = BuildGoogleMapsUrl(Model.Address, Model.City, Model.State, Model.ZipCode);
 }
 
 <section class="account-page">
@@ -121,6 +122,10 @@
             @if (!string.IsNullOrWhiteSpace(Model.Address))
             {
                 <div><span>Address</span><strong>@Model.Address</strong></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(googleMapsUrl))
+            {
+                <div><span>Map</span><strong><a href="@googleMapsUrl" target="_blank" rel="noopener">View on Google Maps</a></strong></div>
             }
             @if (!string.IsNullOrWhiteSpace(Model.City) || !string.IsNullOrWhiteSpace(Model.State) || !string.IsNullOrWhiteSpace(Model.ZipCode))
             {
@@ -519,6 +524,39 @@
     private static string FormatFee(decimal amount)
     {
         return amount <= 0 ? "Free" : amount.ToString("C");
+    }
+
+    private static string? BuildGoogleMapsUrl(string? address, string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(address))
+        {
+            parts.Add(address.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        if (parts.Count == 0)
+        {
+            return null;
+        }
+
+        var query = Uri.EscapeDataString(string.Join(", ", parts));
+        return $"https://www.google.com/maps/search/?api=1&query={query}";
     }
 
     private static bool RequiresField(TeamOpportunityDetailPageModel model, string code)
