@@ -1018,6 +1018,9 @@ public sealed class AccountController(
                 SkillLevel = NormalizeOptional(sportDetail.SkillLevel),
                 PrimaryPosition = NormalizeOptional(sportDetail.PrimaryPosition),
                 SecondaryPositions = NormalizeOptional(sportDetail.SecondaryPositions),
+                ExperienceLevel = NormalizeOptional(sportDetail.ExperienceLevel),
+                YearsPlaying = sportDetail.YearsPlaying,
+                Availability = NormalizeOptional(sportDetail.Availability),
                 IsActive = true,
                 CreatedAt = now
             });
@@ -1137,6 +1140,9 @@ public sealed class AccountController(
                 playerSport.SkillLevel = NormalizeOptional(selectedDetail.SkillLevel);
                 playerSport.PrimaryPosition = NormalizeOptional(selectedDetail.PrimaryPosition);
                 playerSport.SecondaryPositions = NormalizeOptional(selectedDetail.SecondaryPositions);
+                playerSport.ExperienceLevel = NormalizeOptional(selectedDetail.ExperienceLevel);
+                playerSport.YearsPlaying = selectedDetail.YearsPlaying;
+                playerSport.Availability = NormalizeOptional(selectedDetail.Availability);
                 playerSport.IsActive = true;
             }
             else
@@ -1163,6 +1169,9 @@ public sealed class AccountController(
                 SkillLevel = NormalizeOptional(sportDetail.SkillLevel),
                 PrimaryPosition = NormalizeOptional(sportDetail.PrimaryPosition),
                 SecondaryPositions = NormalizeOptional(sportDetail.SecondaryPositions),
+                ExperienceLevel = NormalizeOptional(sportDetail.ExperienceLevel),
+                YearsPlaying = sportDetail.YearsPlaying,
+                Availability = NormalizeOptional(sportDetail.Availability),
                 IsActive = true,
                 CreatedAt = now
             });
@@ -6025,7 +6034,10 @@ public sealed class AccountController(
                     IsSelected = existingDetail.IsSelected,
                     SkillLevel = existingDetail.SkillLevel,
                     PrimaryPosition = existingDetail.PrimaryPosition,
-                    SecondaryPositions = existingDetail.SecondaryPositions
+                    SecondaryPositions = existingDetail.SecondaryPositions,
+                    ExperienceLevel = existingDetail.ExperienceLevel,
+                    YearsPlaying = existingDetail.YearsPlaying,
+                    Availability = existingDetail.Availability
                 };
             }
 
@@ -6201,6 +6213,13 @@ public sealed class AccountController(
             Weight = player.Weight,
             ThrowsHand = player.ThrowsHand,
             BatsHand = player.BatsHand,
+            SixtyYardDash = player.SixtyYardDash,
+            HomeToFirstTime = player.HomeToFirstTime,
+            ExitVelocity = player.ExitVelocity,
+            ThrowingVelocity = player.ThrowingVelocity,
+            PitchVelocity = player.PitchVelocity,
+            CatcherPopTime = player.CatcherPopTime,
+            AdditionalMetrics = player.AdditionalMetrics,
             City = player.City,
             State = player.State,
             ZipCode = player.ZipCode,
@@ -6223,7 +6242,10 @@ public sealed class AccountController(
                     IsSelected = true,
                     SkillLevel = playerSport.SkillLevel,
                     PrimaryPosition = playerSport.PrimaryPosition,
-                    SecondaryPositions = playerSport.SecondaryPositions
+                    SecondaryPositions = playerSport.SecondaryPositions,
+                    ExperienceLevel = playerSport.ExperienceLevel,
+                    YearsPlaying = playerSport.YearsPlaying,
+                    Availability = playerSport.Availability
                 })
                 .ToList()
         };
@@ -6311,6 +6333,13 @@ public sealed class AccountController(
         player.Weight = NormalizeOptional(model.Weight);
         player.ThrowsHand = NormalizeOptional(model.ThrowsHand);
         player.BatsHand = NormalizeOptional(model.BatsHand);
+        player.SixtyYardDash = NormalizeOptional(model.SixtyYardDash);
+        player.HomeToFirstTime = NormalizeOptional(model.HomeToFirstTime);
+        player.ExitVelocity = NormalizeOptional(model.ExitVelocity);
+        player.ThrowingVelocity = NormalizeOptional(model.ThrowingVelocity);
+        player.PitchVelocity = NormalizeOptional(model.PitchVelocity);
+        player.CatcherPopTime = NormalizeOptional(model.CatcherPopTime);
+        player.AdditionalMetrics = NormalizeOptional(model.AdditionalMetrics);
         player.SchoolName = NormalizeOptional(model.SchoolName);
         player.CurrentTeamName = NormalizeOptional(model.CurrentTeamName);
         player.GraduationYear = model.GraduationYear;
@@ -6611,7 +6640,10 @@ public sealed class AccountController(
                 playerSport.Sport.Name,
                 hasEnhancedProfileVisibility ? NormalizeOptional(playerSport.SkillLevel) : null,
                 hasEnhancedProfileVisibility ? NormalizeOptional(playerSport.PrimaryPosition) : null,
-                hasEnhancedProfileVisibility ? NormalizeOptional(playerSport.SecondaryPositions) : null))
+                hasEnhancedProfileVisibility ? NormalizeOptional(playerSport.SecondaryPositions) : null,
+                hasEnhancedProfileVisibility ? NormalizeOptional(playerSport.ExperienceLevel) : null,
+                hasEnhancedProfileVisibility ? playerSport.YearsPlaying : null,
+                hasEnhancedProfileVisibility ? NormalizeOptional(playerSport.Availability) : null))
             .ToArray() ?? [];
 
         var visibleSocialLinkKeys = ParsePlayerListingVisibleSocialKeys(listing.VisibleSocialLinkKeys);
@@ -6676,6 +6708,13 @@ public sealed class AccountController(
             Weight = NormalizeOptional(player?.Weight),
             ThrowsHand = NormalizeOptional(player?.ThrowsHand),
             BatsHand = NormalizeOptional(player?.BatsHand),
+            SixtyYardDash = hasEnhancedProfileVisibility ? NormalizeOptional(player?.SixtyYardDash) : null,
+            HomeToFirstTime = hasEnhancedProfileVisibility ? NormalizeOptional(player?.HomeToFirstTime) : null,
+            ExitVelocity = hasEnhancedProfileVisibility ? NormalizeOptional(player?.ExitVelocity) : null,
+            ThrowingVelocity = hasEnhancedProfileVisibility ? NormalizeOptional(player?.ThrowingVelocity) : null,
+            PitchVelocity = hasEnhancedProfileVisibility ? NormalizeOptional(player?.PitchVelocity) : null,
+            CatcherPopTime = hasEnhancedProfileVisibility ? NormalizeOptional(player?.CatcherPopTime) : null,
+            AdditionalMetrics = hasEnhancedProfileVisibility ? NormalizeOptional(player?.AdditionalMetrics) : null,
             CanViewContactDetails = canViewContactDetails,
             ContactEmail = canViewContactDetails ? NormalizeOptional(player?.ContactEmail) : null,
             ContactPhone = canViewContactDetails ? NormalizeOptional(player?.ContactPhone) : null,

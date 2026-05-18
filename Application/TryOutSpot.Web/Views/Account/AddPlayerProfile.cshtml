@@ -143,6 +143,41 @@
                     <span asp-validation-for="BatsHand" class="text-danger"></span>
                 </div>
                 <div class="form-field">
+                    <label asp-for="SixtyYardDash" class="form-label">60-yard dash</label>
+                    <input asp-for="SixtyYardDash" class="form-control" placeholder="Example: 6.9 sec" />
+                    <span asp-validation-for="SixtyYardDash" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="HomeToFirstTime" class="form-label">Home-to-first time</label>
+                    <input asp-for="HomeToFirstTime" class="form-control" placeholder="Example: 4.2 sec" />
+                    <span asp-validation-for="HomeToFirstTime" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="ExitVelocity" class="form-label">Exit velocity</label>
+                    <input asp-for="ExitVelocity" class="form-control" placeholder="Example: 82 mph" />
+                    <span asp-validation-for="ExitVelocity" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="ThrowingVelocity" class="form-label">Throwing velocity</label>
+                    <input asp-for="ThrowingVelocity" class="form-control" placeholder="Example: 76 mph" />
+                    <span asp-validation-for="ThrowingVelocity" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="PitchVelocity" class="form-label">Pitch velocity</label>
+                    <input asp-for="PitchVelocity" class="form-control" placeholder="Example: 72 mph" />
+                    <span asp-validation-for="PitchVelocity" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="CatcherPopTime" class="form-label">Catcher pop time</label>
+                    <input asp-for="CatcherPopTime" class="form-control" placeholder="Example: 1.95 sec" />
+                    <span asp-validation-for="CatcherPopTime" class="text-danger"></span>
+                </div>
+                <div class="form-field form-field-full">
+                    <label asp-for="AdditionalMetrics" class="form-label">Additional metrics</label>
+                    <textarea asp-for="AdditionalMetrics" class="form-control" rows="3" placeholder="Example: broad jump, vertical, pitching notes, batting stats"></textarea>
+                    <span asp-validation-for="AdditionalMetrics" class="text-danger"></span>
+                </div>
+                <div class="form-field">
                     <label asp-for="City" class="form-label">City</label>
                     <input asp-for="City" class="form-control" autocomplete="address-level2" />
                     <span asp-validation-for="City" class="text-danger"></span>
@@ -275,6 +310,21 @@
                                     <label asp-for="SportDetails[sportIndex].SecondaryPositions" class="form-label">Secondary positions</label>
                                     <input asp-for="SportDetails[sportIndex].SecondaryPositions" class="form-control" placeholder="Optional additional positions" />
                                     <span asp-validation-for="SportDetails[sportIndex].SecondaryPositions" class="text-danger"></span>
+                                </div>
+                                <div class="form-field">
+                                    <label asp-for="SportDetails[sportIndex].ExperienceLevel" class="form-label">Experience level</label>
+                                    <input asp-for="SportDetails[sportIndex].ExperienceLevel" class="form-control" placeholder="Example: Varsity, travel, club" />
+                                    <span asp-validation-for="SportDetails[sportIndex].ExperienceLevel" class="text-danger"></span>
+                                </div>
+                                <div class="form-field">
+                                    <label asp-for="SportDetails[sportIndex].YearsPlaying" class="form-label">Years playing</label>
+                                    <input asp-for="SportDetails[sportIndex].YearsPlaying" class="form-control" inputmode="numeric" />
+                                    <span asp-validation-for="SportDetails[sportIndex].YearsPlaying" class="text-danger"></span>
+                                </div>
+                                <div class="form-field form-field-full">
+                                    <label asp-for="SportDetails[sportIndex].Availability" class="form-label">Availability</label>
+                                    <input asp-for="SportDetails[sportIndex].Availability" class="form-control" placeholder="Example: Fall 2026, weekends, pickup tournaments" />
+                                    <span asp-validation-for="SportDetails[sportIndex].Availability" class="text-danger"></span>
                                 </div>
                             </div>
                         }

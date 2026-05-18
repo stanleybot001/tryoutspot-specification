@@ -27,6 +27,20 @@ public partial class Player
 
     public string? BatsHand { get; set; }
 
+    public string? SixtyYardDash { get; set; }
+
+    public string? HomeToFirstTime { get; set; }
+
+    public string? ExitVelocity { get; set; }
+
+    public string? ThrowingVelocity { get; set; }
+
+    public string? PitchVelocity { get; set; }
+
+    public string? CatcherPopTime { get; set; }
+
+    public string? AdditionalMetrics { get; set; }
+
     public string? ContactEmail { get; set; }
 
     public string? ContactPhone { get; set; }

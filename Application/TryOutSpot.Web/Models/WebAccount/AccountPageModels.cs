@@ -365,6 +365,34 @@ public sealed class AddPlayerProfilePageModel
     [Display(Name = "Bats hand")]
     public string? BatsHand { get; set; }
 
+    [MaxLength(20)]
+    [Display(Name = "60-yard dash")]
+    public string? SixtyYardDash { get; set; }
+
+    [MaxLength(20)]
+    [Display(Name = "Home-to-first time")]
+    public string? HomeToFirstTime { get; set; }
+
+    [MaxLength(20)]
+    [Display(Name = "Exit velocity")]
+    public string? ExitVelocity { get; set; }
+
+    [MaxLength(20)]
+    [Display(Name = "Throwing velocity")]
+    public string? ThrowingVelocity { get; set; }
+
+    [MaxLength(20)]
+    [Display(Name = "Pitch velocity")]
+    public string? PitchVelocity { get; set; }
+
+    [MaxLength(20)]
+    [Display(Name = "Catcher pop time")]
+    public string? CatcherPopTime { get; set; }
+
+    [MaxLength(1000)]
+    [Display(Name = "Additional metrics")]
+    public string? AdditionalMetrics { get; set; }
+
     [MaxLength(100)]
     [Display(Name = "City")]
     public string? City { get; set; }
@@ -1220,6 +1248,20 @@ public sealed class PlayerListingDetailPageModel
 
     public string? BatsHand { get; set; }
 
+    public string? SixtyYardDash { get; set; }
+
+    public string? HomeToFirstTime { get; set; }
+
+    public string? ExitVelocity { get; set; }
+
+    public string? ThrowingVelocity { get; set; }
+
+    public string? PitchVelocity { get; set; }
+
+    public string? CatcherPopTime { get; set; }
+
+    public string? AdditionalMetrics { get; set; }
+
     public bool CanViewContactDetails { get; set; }
 
     public string? ContactEmail { get; set; }
@@ -1919,7 +1961,10 @@ public sealed record PlayerListingSportSummaryPageItem(
     string SportName,
     string? SkillLevel,
     string? PrimaryPosition,
-    string? SecondaryPositions);
+    string? SecondaryPositions,
+    string? ExperienceLevel,
+    int? YearsPlaying,
+    string? Availability);
 
 public sealed record ExternalProfileLinkPageItem(
     string Label,
@@ -1949,4 +1994,16 @@ public sealed class PlayerSportDetailPageModel
     [MaxLength(200)]
     [Display(Name = "Secondary positions")]
     public string? SecondaryPositions { get; set; }
+
+    [MaxLength(50)]
+    [Display(Name = "Experience level")]
+    public string? ExperienceLevel { get; set; }
+
+    [Range(0, 100)]
+    [Display(Name = "Years playing")]
+    public int? YearsPlaying { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Availability")]
+    public string? Availability { get; set; }
 }

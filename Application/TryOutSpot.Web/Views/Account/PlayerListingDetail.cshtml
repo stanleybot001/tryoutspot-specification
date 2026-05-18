@@ -4,6 +4,13 @@
     ViewData["Title"] = Model.Title;
     var profileSize = FormatSize(Model.Height, Model.Weight);
     var playerLocation = FormatLocation(Model.PlayerCity, Model.PlayerState, Model.PlayerZipCode);
+    var hasPerformanceMetrics = !string.IsNullOrWhiteSpace(Model.SixtyYardDash)
+        || !string.IsNullOrWhiteSpace(Model.HomeToFirstTime)
+        || !string.IsNullOrWhiteSpace(Model.ExitVelocity)
+        || !string.IsNullOrWhiteSpace(Model.ThrowingVelocity)
+        || !string.IsNullOrWhiteSpace(Model.PitchVelocity)
+        || !string.IsNullOrWhiteSpace(Model.CatcherPopTime)
+        || !string.IsNullOrWhiteSpace(Model.AdditionalMetrics);
     var hasVisibleProfileFacts = Model.PlayerDateOfBirth.HasValue
         || !string.IsNullOrWhiteSpace(playerLocation)
         || !string.IsNullOrWhiteSpace(Model.SchoolName)
@@ -176,6 +183,41 @@
                 </div>
             }
 
+            @if (hasPerformanceMetrics)
+            {
+                <h3 class="mt-3">Performance metrics</h3>
+                <div class="team-summary-grid opportunity-summary-grid">
+                    @if (!string.IsNullOrWhiteSpace(Model.SixtyYardDash))
+                    {
+                        <div><span>60-yard dash</span><strong>@Model.SixtyYardDash</strong></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.HomeToFirstTime))
+                    {
+                        <div><span>Home-to-first</span><strong>@Model.HomeToFirstTime</strong></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.ExitVelocity))
+                    {
+                        <div><span>Exit velocity</span><strong>@Model.ExitVelocity</strong></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.ThrowingVelocity))
+                    {
+                        <div><span>Throwing velocity</span><strong>@Model.ThrowingVelocity</strong></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.PitchVelocity))
+                    {
+                        <div><span>Pitch velocity</span><strong>@Model.PitchVelocity</strong></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.CatcherPopTime))
+                    {
+                        <div><span>Catcher pop time</span><strong>@Model.CatcherPopTime</strong></div>
+                    }
+                </div>
+                @if (!string.IsNullOrWhiteSpace(Model.AdditionalMetrics))
+                {
+                    <div class="readonly-field mt-2">@Model.AdditionalMetrics</div>
+                }
+            }
+
             @if (Model.SocialLinks.Count > 0)
             {
                 <h3 class="mt-3">Social pages</h3>
@@ -245,6 +287,18 @@
                             @if (!string.IsNullOrWhiteSpace(sport.SecondaryPositions))
                             {
                                 <span>Secondary positions: @sport.SecondaryPositions</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(sport.ExperienceLevel))
+                            {
+                                <span>Experience: @sport.ExperienceLevel</span>
+                            }
+                            @if (sport.YearsPlaying.HasValue)
+                            {
+                                <span>Years playing: @sport.YearsPlaying.Value</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(sport.Availability))
+                            {
+                                <span>Availability: @sport.Availability</span>
                             }
                         </div>
                     }

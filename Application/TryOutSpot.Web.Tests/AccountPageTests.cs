@@ -663,6 +663,13 @@ public sealed class AccountPageTests
                 new("Weight", "145 lb"),
                 new("ThrowsHand", "Right"),
                 new("BatsHand", "Left"),
+                new("SixtyYardDash", "6.9 sec"),
+                new("HomeToFirstTime", "4.2 sec"),
+                new("ExitVelocity", "82 mph"),
+                new("ThrowingVelocity", "76 mph"),
+                new("PitchVelocity", "72 mph"),
+                new("CatcherPopTime", "1.95 sec"),
+                new("AdditionalMetrics", "Strong first-step quickness."),
                 new("ContactVisibility", "VerifiedCoachesOnly"),
                 new("City", "Wichita"),
                 new("State", "ks"),
@@ -681,7 +688,10 @@ public sealed class AccountPageTests
                 new("SportDetails[0].IsSelected", "true"),
                 new("SportDetails[0].SkillLevel", "A"),
                 new("SportDetails[0].PrimaryPosition", "Pitcher"),
-                new("SportDetails[0].SecondaryPositions", "Shortstop")
+                new("SportDetails[0].SecondaryPositions", "Shortstop"),
+                new("SportDetails[0].ExperienceLevel", "Travel"),
+                new("SportDetails[0].YearsPlaying", "6"),
+                new("SportDetails[0].Availability", "Fall weekends")
             ]));
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
@@ -707,6 +717,13 @@ public sealed class AccountPageTests
         Assert.Equal("145 lb", player.Weight);
         Assert.Equal("Right", player.ThrowsHand);
         Assert.Equal("Left", player.BatsHand);
+        Assert.Equal("6.9 sec", player.SixtyYardDash);
+        Assert.Equal("4.2 sec", player.HomeToFirstTime);
+        Assert.Equal("82 mph", player.ExitVelocity);
+        Assert.Equal("76 mph", player.ThrowingVelocity);
+        Assert.Equal("72 mph", player.PitchVelocity);
+        Assert.Equal("1.95 sec", player.CatcherPopTime);
+        Assert.Equal("Strong first-step quickness.", player.AdditionalMetrics);
         Assert.Equal("VerifiedCoachesOnly", player.ContactVisibility);
         Assert.Equal(user.Id, relationship.UserId);
         Assert.Equal(player.Id, relationship.PlayerId);
@@ -716,6 +733,9 @@ public sealed class AccountPageTests
         Assert.Equal("A", playerSport.SkillLevel);
         Assert.Equal("Pitcher", playerSport.PrimaryPosition);
         Assert.Equal("Shortstop", playerSport.SecondaryPositions);
+        Assert.Equal("Travel", playerSport.ExperienceLevel);
+        Assert.Equal(6, playerSport.YearsPlaying);
+        Assert.Equal("Fall weekends", playerSport.Availability);
 
         var socialMediaLinks = JsonSerializer.Deserialize<Dictionary<string, string>>(player.SocialMediaLinks ?? "{}");
         Assert.Equal("https://facebook.com/alex", socialMediaLinks?["facebook"]);
@@ -762,6 +782,9 @@ public sealed class AccountPageTests
         Assert.DoesNotContain("Recruiting profiles", html);
         Assert.DoesNotContain("Level: Advanced", html);
         Assert.DoesNotContain("Primary position: Pitcher", html);
+        Assert.DoesNotContain("60-yard dash", html);
+        Assert.DoesNotContain("6.9 sec", html);
+        Assert.DoesNotContain("Experience: Varsity", html);
         Assert.DoesNotContain("SportsRecruits", html);
     }
 
@@ -785,6 +808,15 @@ public sealed class AccountPageTests
         Assert.Contains("Level: Advanced", html);
         Assert.Contains("Primary position: Pitcher", html);
         Assert.Contains("Secondary positions: Shortstop", html);
+        Assert.Contains("Experience: Varsity", html);
+        Assert.Contains("Years playing: 8", html);
+        Assert.Contains("Availability: Fall 2026 weekends", html);
+        Assert.Contains("Performance metrics", html);
+        Assert.Contains("60-yard dash", html);
+        Assert.Contains("6.9 sec", html);
+        Assert.Contains("Exit velocity", html);
+        Assert.Contains("82 mph", html);
+        Assert.Contains("Strong first-step quickness.", html);
         Assert.Contains("SportsRecruits", html);
         Assert.Contains("https://youtube.com/watch?v=alex-highlight", html);
     }
@@ -1184,6 +1216,13 @@ public sealed class AccountPageTests
             Weight = "185 lb",
             ThrowsHand = "Right",
             BatsHand = "Left",
+            SixtyYardDash = "6.9 sec",
+            HomeToFirstTime = "4.2 sec",
+            ExitVelocity = "82 mph",
+            ThrowingVelocity = "76 mph",
+            PitchVelocity = "72 mph",
+            CatcherPopTime = "1.95 sec",
+            AdditionalMetrics = "Strong first-step quickness.",
             ContactEmail = "player-contact@example.com",
             ContactPhone = null,
             ContactVisibility = contactVisibility,
@@ -1209,6 +1248,9 @@ public sealed class AccountPageTests
             SkillLevel = "Advanced",
             PrimaryPosition = "Pitcher",
             SecondaryPositions = "Shortstop",
+            ExperienceLevel = "Varsity",
+            YearsPlaying = 8,
+            Availability = "Fall 2026 weekends",
             IsActive = true,
             CreatedAt = now
         });
