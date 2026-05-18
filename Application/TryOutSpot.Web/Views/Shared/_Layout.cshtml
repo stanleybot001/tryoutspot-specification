@@ -69,10 +69,10 @@
                                         <a class="nav-link text-dark" asp-area="" asp-controller="Account" asp-action="SearchPlayers">Search Players</a>
                                     </li>
                                 }
-                                <li class="nav-item">
+                                <li class="nav-item d-sm-none">
                                     <a class="nav-link text-dark" asp-area="" asp-controller="Account" asp-action="Settings">Account Settings</a>
                                 </li>
-                                <li class="nav-item">
+                                <li class="nav-item d-sm-none">
                                     <form asp-action="Logout" asp-controller="Account" method="post" class="nav-signout-form">
                                         <button type="submit" class="nav-link text-dark btn btn-link">Sign out</button>
                                     </form>
@@ -88,6 +88,27 @@
                                 </li>
                             }
                         </ul>
+                        @if (User.Identity?.IsAuthenticated ?? false)
+                        {
+                            <ul class="navbar-nav account-nav d-none d-sm-flex">
+                                <li class="nav-item dropdown">
+                                    <button class="nav-link account-menu-toggle" type="button" id="accountMenuButton" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Open account menu">
+                                        <span class="account-menu-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24" focusable="false" role="img">
+                                                <path d="M12 12.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+                                                <path d="M4.75 20a7.25 7.25 0 0 1 14.5 0" />
+                                            </svg>
+                                        </span>
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-end account-menu" aria-labelledby="accountMenuButton">
+                                        <a class="dropdown-item" asp-area="" asp-controller="Account" asp-action="Settings">Account Settings</a>
+                                        <form asp-action="Logout" asp-controller="Account" method="post" class="nav-signout-form">
+                                            <button type="submit" class="dropdown-item">Sign out</button>
+                                        </form>
+                                    </div>
+                                </li>
+                            </ul>
+                        }
                     </div>
                 </div>
             </nav>

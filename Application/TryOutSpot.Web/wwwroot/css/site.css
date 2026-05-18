@@ -55,6 +55,70 @@ body.splash-page {
   filter: invert(1) brightness(1.4);
 }
 
+.account-nav {
+  align-items: center;
+  margin-left: auto;
+}
+
+.navbar .account-menu-toggle {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(151, 178, 218, 0.45);
+  border-radius: 999px;
+  background: rgba(226, 238, 255, 0.08);
+  color: #d9e6fb !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.navbar .account-menu-toggle:hover,
+.navbar .account-menu-toggle:focus {
+  background: rgba(226, 238, 255, 0.16);
+  border-color: rgba(205, 223, 250, 0.72);
+  color: #ffffff !important;
+}
+
+.account-menu-icon {
+  width: 21px;
+  height: 21px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.account-menu-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.navbar .account-menu {
+  background: #ffffff;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  box-shadow: 0 16px 36px rgba(3, 9, 20, 0.2);
+  min-width: 190px;
+  padding: 0.35rem;
+}
+
+.navbar .account-menu .dropdown-item {
+  border-radius: 6px;
+  color: #0f1b2d;
+  font-weight: 500;
+}
+
+.navbar .account-menu .dropdown-item:hover,
+.navbar .account-menu .dropdown-item:focus {
+  background: #eef5ff;
+  color: #0b3f75;
+}
+
 .footer {
   background: linear-gradient(180deg, rgba(7, 13, 24, 0.88), rgba(6, 11, 21, 0.94));
   border-top: 1px solid rgba(96, 129, 178, 0.38) !important;

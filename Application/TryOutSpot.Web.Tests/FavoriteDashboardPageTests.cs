@@ -402,6 +402,7 @@ public sealed class FavoriteDashboardPageTests
     private static void AssertAuthenticatedNavigation(string html)
     {
         Assert.Contains(">Dashboard</a>", html);
+        Assert.Contains("account-menu-toggle", html);
         Assert.Contains(">Account Settings</a>", html);
         Assert.Contains(">Sign out</button>", html);
         Assert.DoesNotContain(">Create Account</a>", html);
