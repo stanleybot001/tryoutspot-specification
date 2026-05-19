@@ -5490,6 +5490,7 @@ public sealed class AccountController(
             : 1d;
         var entitlingStatusActive = "active";
         var entitlingStatusTrialing = "trialing";
+        var now = DateTime.UtcNow;
 
         var rows = from listing in query
                    join zip in dbContext.ZipCodeGeographies.AsNoTracking()
@@ -5527,7 +5528,13 @@ public sealed class AccountController(
                        IsPriorityListing = dbContext.Subscriptions.Any(subscription =>
                            subscription.UserId == listing.UserId
                            && (subscription.Status == entitlingStatusActive || subscription.Status == entitlingStatusTrialing)
-                           && (subscription.PlanType == TryOutSpotPlanCodes.PremiumPlayer || subscription.IsElite)),
+                           && (subscription.PlanType == TryOutSpotPlanCodes.PremiumPlayer || subscription.IsElite))
+                           || dbContext.ComplimentaryPlanGrants.Any(grant =>
+                               grant.UserId == listing.UserId
+                               && grant.PlanType == TryOutSpotPlanCodes.PremiumPlayer
+                               && grant.RevokedAt == null
+                               && grant.StartsAt <= now
+                               && (grant.EndsAt == null || grant.EndsAt > now)),
                        IsFavorited = dbContext.UserFavorites.Any(favorite =>
                            favorite.UserId == viewerUserId
                            && favorite.PlayerListingId == listing.Id),
@@ -10448,7 +10455,24 @@ public sealed class AccountController(
             }
         }
 
-        return false;
+        var now = DateTime.UtcNow;
+        var complimentaryGrantPlanCodes = bundleType == BundleType.Team
+            ? new[]
+            {
+                TryOutSpotPlanCodes.TeamBasic,
+                TryOutSpotPlanCodes.TeamProfessional,
+                TryOutSpotPlanCodes.EnterpriseOrganization
+            }
+            : new[] { TryOutSpotPlanCodes.PremiumPlayer };
+
+        return await dbContext.ComplimentaryPlanGrants
+            .AsNoTracking()
+            .AnyAsync(grant => grant.UserId == userId
+                && complimentaryGrantPlanCodes.Contains(grant.PlanType)
+                && grant.RevokedAt == null
+                && grant.StartsAt <= now
+                && (grant.EndsAt == null || grant.EndsAt > now),
+                cancellationToken);
     }
 
     private async Task SoftDeactivateTeamBundleDataAsync(

@@ -51,6 +51,8 @@ public sealed record CurrentBillingResponse(
     bool CancelAtPeriodEnd)
 {
     public IReadOnlyCollection<CurrentBillingSubscriptionResponse> Subscriptions { get; init; } = [];
+
+    public IReadOnlyCollection<ComplimentaryPlanGrantResponse> ComplimentaryGrants { get; init; } = [];
 }
 
 /// <summary>
@@ -69,6 +71,58 @@ public sealed record CurrentBillingSubscriptionResponse(
     bool CancelAtPeriodEnd,
     string ScopeType,
     Guid? ScopeId);
+
+/// <summary>
+/// Complimentary plan access granted by an admin or promotion.
+/// </summary>
+public sealed record ComplimentaryPlanGrantResponse(
+    Guid Id,
+    Guid UserId,
+    string PlanCode,
+    string PlanName,
+    string Status,
+    bool HasActiveEntitlement,
+    string ScopeType,
+    Guid? ScopeId,
+    DateTime StartsAt,
+    DateTime? EndsAt,
+    string Source,
+    string? PromotionCode,
+    string? Reason,
+    Guid GrantedByUserId,
+    DateTime CreatedAt,
+    DateTime UpdatedAt,
+    DateTime? RevokedAt,
+    Guid? RevokedByUserId,
+    string? RevokeReason);
+
+/// <summary>
+/// Request for a platform admin to grant complimentary plan access.
+/// </summary>
+public sealed record CreateComplimentaryPlanGrantRequest(
+    Guid UserId,
+    string PlanCode,
+    int? DurationMonths = null,
+    DateTime? StartsAt = null,
+    DateTime? EndsAt = null,
+    string? ScopeType = null,
+    Guid? ScopeId = null,
+    string? Reason = null);
+
+/// <summary>
+/// Request for a platform admin to revoke complimentary plan access.
+/// </summary>
+public sealed record RevokeComplimentaryPlanGrantRequest(
+    string? Reason = null);
+
+/// <summary>
+/// Response returned after claiming a promotion.
+/// </summary>
+public sealed record PromotionClaimResponse(
+    string PromotionCode,
+    bool Claimed,
+    DateTime? EndsAt,
+    IReadOnlyCollection<ComplimentaryPlanGrantResponse> Grants);
 
 /// <summary>
 /// Request to create a Stripe Checkout subscription session.

@@ -78,6 +78,135 @@ public sealed class BillingApiTests
         Assert.DoesNotContain(TryOutSpotFeatureCodes.PriorityApplicationReview, entitlements.FeatureCodes);
     }
 
+    [Fact]
+    public async Task AdminComplimentaryGrant_GrantsAccessWithoutCreatingStripeSubscription()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync("admin-grant-parent@example.com", [TryOutSpotRoles.Parent]);
+        var adminClient = await CreateAdminClientAsync(factory);
+
+        var grantResponse = await adminClient.PostAsJsonAsync(
+            "/api/admin/billing/grants",
+            new CreateComplimentaryPlanGrantRequest(
+                user.Id,
+                TryOutSpotPlanCodes.PremiumPlayer,
+                DurationMonths: 3,
+                Reason: "Founder comp"));
+
+        Assert.Equal(HttpStatusCode.Created, grantResponse.StatusCode);
+        var grant = await grantResponse.Content.ReadFromJsonAsync<ComplimentaryPlanGrantResponse>();
+
+        Assert.NotNull(grant);
+        Assert.Equal(user.Id, grant.UserId);
+        Assert.Equal(TryOutSpotPlanCodes.PremiumPlayer, grant.PlanCode);
+        Assert.True(grant.HasActiveEntitlement);
+        Assert.Equal("complimentary", grant.Status);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.False(await dbContext.Subscriptions.AnyAsync(subscription => subscription.UserId == user.Id));
+        }
+
+        var userClient = await CreateAuthorizedClientAsync(factory, user.Email!);
+        var billingResponse = await userClient.GetAsync("/api/billing/me");
+
+        Assert.Equal(HttpStatusCode.OK, billingResponse.StatusCode);
+        var billing = await billingResponse.Content.ReadFromJsonAsync<CurrentBillingResponse>();
+
+        Assert.NotNull(billing);
+        Assert.Equal(TryOutSpotPlanCodes.PremiumPlayer, billing.PlanCode);
+        Assert.Equal("complimentary", billing.Status);
+        Assert.True(billing.HasActiveEntitlement);
+        Assert.Single(billing.ComplimentaryGrants);
+    }
+
+    [Fact]
+    public async Task RevokeComplimentaryGrant_RemovesPaidEntitlement()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync("revoke-grant-parent@example.com", [TryOutSpotRoles.Parent]);
+        var adminClient = await CreateAdminClientAsync(factory);
+        var grantResponse = await adminClient.PostAsJsonAsync(
+            "/api/admin/billing/grants",
+            new CreateComplimentaryPlanGrantRequest(
+                user.Id,
+                TryOutSpotPlanCodes.PremiumPlayer,
+                DurationMonths: 3,
+                Reason: "Temporary comp"));
+        grantResponse.EnsureSuccessStatusCode();
+        var grant = await grantResponse.Content.ReadFromJsonAsync<ComplimentaryPlanGrantResponse>();
+        Assert.NotNull(grant);
+
+        var revokeResponse = await adminClient.PostAsJsonAsync(
+            $"/api/admin/billing/grants/{grant.Id}/revoke",
+            new RevokeComplimentaryPlanGrantRequest("No longer eligible"));
+
+        Assert.Equal(HttpStatusCode.OK, revokeResponse.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var entitlementService = scope.ServiceProvider.GetRequiredService<IEntitlementService>();
+        var entitlements = await entitlementService.GetEntitlementsAsync(user.Id, CancellationToken.None);
+
+        Assert.NotNull(entitlements);
+        Assert.DoesNotContain(TryOutSpotFeatureCodes.PriorityApplicationReview, entitlements.FeatureCodes);
+    }
+
+    [Fact]
+    public async Task LaunchFounderOffer_ClaimsTwoMonthComplimentaryGrant()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync(
+            "launch-claim-parent-team@example.com",
+            [TryOutSpotRoles.Parent, TryOutSpotRoles.TeamRepresentative]);
+        var client = await CreateAuthorizedClientAsync(factory, user.Email!);
+
+        var response = await client.PostAsync("/api/billing/promotions/launch-founder-offer/claim", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var claim = await response.Content.ReadFromJsonAsync<PromotionClaimResponse>();
+
+        Assert.NotNull(claim);
+        Assert.True(claim.Claimed);
+        Assert.Equal(TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths, claim.PromotionCode);
+        Assert.Equal(2, claim.Grants.Count);
+        Assert.Contains(claim.Grants, grant => grant.PlanCode == TryOutSpotPlanCodes.PremiumPlayer);
+        Assert.Contains(claim.Grants, grant => grant.PlanCode == TryOutSpotPlanCodes.TeamBasic);
+        Assert.All(claim.Grants, grant => Assert.True(grant.HasActiveEntitlement));
+
+        using var scope = factory.Services.CreateScope();
+        var entitlementService = scope.ServiceProvider.GetRequiredService<IEntitlementService>();
+        var entitlements = await entitlementService.GetEntitlementsAsync(user.Id, CancellationToken.None);
+
+        Assert.NotNull(entitlements);
+        Assert.Contains(TryOutSpotFeatureCodes.PriorityApplicationReview, entitlements.FeatureCodes);
+        Assert.Contains(TryOutSpotFeatureCodes.AdvancedPlayerSearch, entitlements.FeatureCodes);
+    }
+
+    [Fact]
+    public async Task LaunchFounderOffer_SecondClaimReturnsExistingPromotionGrants()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync("launch-claim-once-parent@example.com", [TryOutSpotRoles.Parent]);
+        var client = await CreateAuthorizedClientAsync(factory, user.Email!);
+
+        var firstResponse = await client.PostAsync("/api/billing/promotions/launch-founder-offer/claim", null);
+        var secondResponse = await client.PostAsync("/api/billing/promotions/launch-founder-offer/claim", null);
+
+        Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
+
+        var secondClaim = await secondResponse.Content.ReadFromJsonAsync<PromotionClaimResponse>();
+        Assert.NotNull(secondClaim);
+        Assert.False(secondClaim.Claimed);
+        Assert.Single(secondClaim.Grants);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(1, await dbContext.PromotionRedemptions.CountAsync(redemption => redemption.UserId == user.Id));
+        Assert.Equal(1, await dbContext.ComplimentaryPlanGrants.CountAsync(grant => grant.UserId == user.Id));
+    }
+
     [Theory]
     [InlineData(TryOutSpotRoles.Parent, TryOutSpotPlanCodes.TeamBasic)]
     [InlineData(TryOutSpotRoles.TeamRepresentative, TryOutSpotPlanCodes.PremiumPlayer)]
@@ -535,6 +664,16 @@ public sealed class BillingApiTests
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Bearer",
             token.AccessToken);
+        return client;
+    }
+
+    private static async Task<HttpClient> CreateAdminClientAsync(TryOutSpotWebApplicationFactory factory)
+    {
+        var adminTokens = await factory.LoginAsPlatformAdminAsync();
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            adminTokens.TokenType,
+            adminTokens.AccessToken);
         return client;
     }
 

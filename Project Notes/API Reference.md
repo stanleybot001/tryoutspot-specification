@@ -946,9 +946,79 @@ Success response: `200 OK`
       "scopeType": "player",
       "scopeId": "994d4f68-b1af-44e5-adfc-394ba4e903f5"
     }
+  ],
+  "complimentaryGrants": [
+    {
+      "id": "79a17a6f-cf87-4d72-a1fd-5322a75de040",
+      "userId": "81f22c76-9960-4e35-919d-718bce4e7499",
+      "planCode": "premium_player",
+      "planName": "Premium Player",
+      "status": "complimentary",
+      "hasActiveEntitlement": true,
+      "scopeType": "account",
+      "scopeId": null,
+      "startsAt": "2026-05-19T04:00:00Z",
+      "endsAt": "2026-07-19T04:00:00Z",
+      "source": "promotion",
+      "promotionCode": "launch_first_1000_two_months",
+      "reason": "Launch promotion: first 1000 users receive two free months.",
+      "grantedByUserId": "81f22c76-9960-4e35-919d-718bce4e7499",
+      "createdAt": "2026-05-19T04:00:00Z",
+      "updatedAt": "2026-05-19T04:00:00Z",
+      "revokedAt": null,
+      "revokedByUserId": null,
+      "revokeReason": null
+    }
   ]
 }
 ```
+
+Complimentary grants are local TryOutSpot entitlements. They do not create, update, or cancel Stripe subscriptions.
+
+### `POST /api/billing/promotions/launch-founder-offer/claim`
+
+Claims the launch founder offer for the authenticated user. Requires verified email. The launch offer grants two free months to the first 1000 claiming users, using local complimentary grants rather than Stripe subscriptions.
+
+The granted plan depends on current account type:
+
+- Parent or Player: `premium_player`
+- TeamRepresentative: `team_basic`
+- Mixed accounts can receive both account-scoped grants.
+
+Success response: `200 OK`
+
+```json
+{
+  "promotionCode": "launch_first_1000_two_months",
+  "claimed": true,
+  "endsAt": "2026-07-19T04:00:00Z",
+  "grants": [
+    {
+      "id": "79a17a6f-cf87-4d72-a1fd-5322a75de040",
+      "userId": "81f22c76-9960-4e35-919d-718bce4e7499",
+      "planCode": "premium_player",
+      "planName": "Premium Player",
+      "status": "complimentary",
+      "hasActiveEntitlement": true,
+      "scopeType": "account",
+      "scopeId": null,
+      "startsAt": "2026-05-19T04:00:00Z",
+      "endsAt": "2026-07-19T04:00:00Z",
+      "source": "promotion",
+      "promotionCode": "launch_first_1000_two_months",
+      "reason": "Launch promotion: first 1000 users receive two free months.",
+      "grantedByUserId": "81f22c76-9960-4e35-919d-718bce4e7499",
+      "createdAt": "2026-05-19T04:00:00Z",
+      "updatedAt": "2026-05-19T04:00:00Z",
+      "revokedAt": null,
+      "revokedByUserId": null,
+      "revokeReason": null
+    }
+  ]
+}
+```
+
+Returns `409 Conflict` after the promotion reaches 1000 redemptions. A repeat claim by the same user returns `200 OK` with `claimed: false` and the existing grants.
 
 ### `POST /api/billing/checkout-session`
 
@@ -992,6 +1062,50 @@ Success response: `200 OK`
 ```json
 {
   "url": "https://billing.stripe.com/p/session/test_123"
+}
+```
+
+### `GET /api/admin/billing/grants`
+
+Lists complimentary grants for platform administrators. Requires `PlatformAdmin`.
+
+Query parameters:
+
+- `userId`: optional user filter
+- `activeOnly`: optional boolean, default `false`
+- `limit`: page size, max 100
+- `offset`: zero-based row offset
+
+### `POST /api/admin/billing/grants`
+
+Creates a complimentary local plan grant. Requires `PlatformAdmin`.
+
+Request:
+
+```json
+{
+  "userId": "81f22c76-9960-4e35-919d-718bce4e7499",
+  "planCode": "premium_player",
+  "durationMonths": 3,
+  "startsAt": null,
+  "endsAt": null,
+  "scopeType": "account",
+  "scopeId": null,
+  "reason": "Founder comp"
+}
+```
+
+Use either `durationMonths` or `endsAt`. If both are omitted, the grant has no end date and remains active until revoked.
+
+### `POST /api/admin/billing/grants/{grantId}/revoke`
+
+Revokes a complimentary grant. Requires `PlatformAdmin`.
+
+Request:
+
+```json
+{
+  "reason": "Promotion ended"
 }
 ```
 

@@ -70,6 +70,106 @@
     </section>
 
     <section class="form-section">
+        <div class="opportunity-row-head">
+            <div>
+                <h2>Complimentary access</h2>
+                <p class="section-help">Grant or revoke no-charge paid-plan access for this account.</p>
+            </div>
+        </div>
+
+        @if (Model.EligibleComplimentaryGrantPlans.Count == 0)
+        {
+            <p class="section-help">No paid plans are available for this user's current account types.</p>
+        }
+        else
+        {
+            <form asp-action="CreateComplimentaryGrant" asp-controller="Admin" asp-route-userId="@Model.User.UserId" method="post" class="stacked-form">
+                <input type="hidden" name="ReturnUrl" value="@returnUrl" />
+                <div class="form-grid two-column">
+                    <div>
+                        <label class="form-label" for="complimentary-plan">Plan</label>
+                        <select id="complimentary-plan" name="PlanCode" class="form-select" required>
+                            @foreach (var plan in Model.EligibleComplimentaryGrantPlans)
+                            {
+                                <option value="@plan.Code">@plan.Name (@plan.Audience)</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label" for="complimentary-duration">Months</label>
+                        <input id="complimentary-duration" class="form-control" name="DurationMonths" type="number" min="1" max="120" placeholder="Blank for forever" />
+                    </div>
+                    <div>
+                        <label class="form-label" for="complimentary-starts">Starts</label>
+                        <input id="complimentary-starts" class="form-control" name="StartsAt" type="date" />
+                    </div>
+                    <div>
+                        <label class="form-label" for="complimentary-ends">Ends</label>
+                        <input id="complimentary-ends" class="form-control" name="EndsAt" type="date" />
+                    </div>
+                </div>
+                <label class="form-label" for="complimentary-reason">Reason</label>
+                <textarea id="complimentary-reason" class="form-control" name="Reason" rows="3" maxlength="1000" placeholder="Support note, founder comp, sponsorship, or manual exception"></textarea>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary btn-sm">Grant access</button>
+                </div>
+            </form>
+        }
+
+        @if (Model.ComplimentaryGrants.Count == 0)
+        {
+            <p class="section-help mt-3">No complimentary access has been granted.</p>
+        }
+        else
+        {
+            <div class="plan-list mt-3">
+                @foreach (var grant in Model.ComplimentaryGrants)
+                {
+                    <article class="plan-row plan-row-stack admin-list-row">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@grant.PlanName</strong>
+                                <span>@FormatGrantWindow(grant)</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                <span>@GetGrantStatusLabel(grant)</span>
+                                <span>@grant.Source</span>
+                                @if (!string.IsNullOrWhiteSpace(grant.PromotionCode))
+                                {
+                                    <span>@grant.PromotionCode</span>
+                                }
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(grant.Reason))
+                        {
+                            <p class="section-help small mb-1">@grant.Reason</p>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(grant.RevokeReason))
+                        {
+                            <p class="section-help small mb-1"><strong>Revoked:</strong> @grant.RevokeReason</p>
+                        }
+                        <div class="d-flex flex-wrap gap-2 mt-2 small text-muted">
+                            <span><strong class="text-body">Scope:</strong> @FormatGrantScope(grant)</span>
+                            <span><strong class="text-body">Created:</strong> @grant.CreatedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</span>
+                        </div>
+                        @if (grant.RevokedAtUtc is null && grant.HasActiveEntitlement)
+                        {
+                            <form asp-action="RevokeComplimentaryGrant" asp-controller="Admin" asp-route-userId="@Model.User.UserId" asp-route-grantId="@grant.GrantId" method="post" class="stacked-form mt-2">
+                                <input type="hidden" name="ReturnUrl" value="@returnUrl" />
+                                <label class="form-label" for="revoke-@grant.GrantId">Revoke reason</label>
+                                <input id="revoke-@grant.GrantId" class="form-control" name="Reason" maxlength="1000" placeholder="Optional admin note" />
+                                <div class="form-actions">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm">Revoke access</button>
+                                </div>
+                            </form>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="form-section">
         <h2>Player profiles</h2>
         @if (Model.PlayerProfiles.Count == 0)
         {
@@ -309,5 +409,25 @@
         }
 
         return parts.Count == 0 ? "Not set" : string.Join(", ", parts);
+    }
+
+    private static string FormatGrantWindow(AdminComplimentaryGrantItem grant)
+    {
+        var start = grant.StartsAtUtc.ToLocalTime().ToString("MMM d, yyyy");
+        return grant.EndsAtUtc is null
+            ? $"Starts {start}; no end date"
+            : $"{start} through {grant.EndsAtUtc.Value.ToLocalTime():MMM d, yyyy}";
+    }
+
+    private static string FormatGrantScope(AdminComplimentaryGrantItem grant)
+    {
+        return grant.ScopeId is null
+            ? grant.ScopeType
+            : $"{grant.ScopeType} {grant.ScopeId}";
+    }
+
+    private static string GetGrantStatusLabel(AdminComplimentaryGrantItem grant)
+    {
+        return grant.HasActiveEntitlement ? "Active" : grant.Status;
     }
 }

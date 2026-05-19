@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
@@ -305,6 +306,21 @@ public sealed class AdminController(
                 .Include(opportunity => opportunity.ListingReports)
                 .OrderByDescending(opportunity => opportunity.UpdatedAt)
                 .ToArrayAsync(cancellationToken);
+        var now = DateTime.UtcNow;
+        var complimentaryGrants = await dbContext.ComplimentaryPlanGrants
+            .AsNoTracking()
+            .Where(grant => grant.UserId == userId)
+            .OrderByDescending(grant => grant.RevokedAt == null
+                && grant.StartsAt <= now
+                && (grant.EndsAt == null || grant.EndsAt > now))
+            .ThenByDescending(grant => grant.UpdatedAt)
+            .ToArrayAsync(cancellationToken);
+        var eligibleComplimentaryPlans = TryOutSpotBillingCatalog.GetEligiblePlanCodesForAccountTypes(roles)
+            .Select(TryOutSpotBillingCatalog.GetPlan)
+            .Where(plan => plan is not null && plan.RequiresStripeSubscription)
+            .Cast<BillingPlanDefinition>()
+            .Select(plan => new AdminBillingPlanOption(plan.Code, plan.Name, plan.Audience))
+            .ToArray();
 
         return View(new AdminUserDetailPageModel
         {
@@ -332,8 +348,140 @@ public sealed class AdminController(
             PlayerProfiles = playerRelationships.Select(ToPlayerProfileItem).ToArray(),
             PlayerListings = playerListings.Select(ToPlayerListingItem).ToArray(),
             Teams = teamRoles.Select(ToTeamProfileItem).ToArray(),
-            TeamOpportunities = teamOpportunities.Select(ToTeamOpportunityItem).ToArray()
+            TeamOpportunities = teamOpportunities.Select(ToTeamOpportunityItem).ToArray(),
+            EligibleComplimentaryGrantPlans = eligibleComplimentaryPlans,
+            ComplimentaryGrants = complimentaryGrants.Select(grant => ToComplimentaryGrantItem(grant, now)).ToArray()
         });
+    }
+
+    [HttpPost("users/{userId:guid}/complimentary-grants")]
+    public async Task<IActionResult> CreateComplimentaryGrant(
+        Guid userId,
+        AdminCreateComplimentaryGrantForm form,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var adminUserId))
+        {
+            return Unauthorized();
+        }
+
+        var user = await dbContext.Users
+            .SingleOrDefaultAsync(currentUser => currentUser.Id == userId && currentUser.IsActive, cancellationToken);
+        if (user is null)
+        {
+            return NotFound();
+        }
+
+        var plan = TryOutSpotBillingCatalog.GetPlan(form.PlanCode);
+        if (plan is null || !plan.RequiresStripeSubscription)
+        {
+            TempData["StatusMessage"] = "Choose a paid plan that can be granted.";
+            return RedirectToLocalOrAdmin(form.ReturnUrl, nameof(UserDetail), new { userId });
+        }
+
+        var roles = await userManager.GetRolesAsync(user);
+        if (!TryOutSpotBillingCatalog.IsPlanEligibleForAccountTypes(plan.Code, roles))
+        {
+            TempData["StatusMessage"] = "That plan is not available for this user's account type.";
+            return RedirectToLocalOrAdmin(form.ReturnUrl, nameof(UserDetail), new { userId });
+        }
+
+        var startsAt = NormalizeUtc(form.StartsAt) ?? DateTime.UtcNow;
+        if (form.DurationMonths is not null && form.EndsAt is not null)
+        {
+            TempData["StatusMessage"] = "Choose either a month duration or an end date, not both.";
+            return RedirectToLocalOrAdmin(form.ReturnUrl, nameof(UserDetail), new { userId });
+        }
+
+        if (form.DurationMonths is < 1 or > 120)
+        {
+            TempData["StatusMessage"] = "Complimentary grant duration must be between 1 and 120 months.";
+            return RedirectToLocalOrAdmin(form.ReturnUrl, nameof(UserDetail), new { userId });
+        }
+
+        var endsAt = form.DurationMonths is null
+            ? NormalizeUtc(form.EndsAt)
+            : startsAt.AddMonths(form.DurationMonths.Value);
+        if (endsAt is not null && endsAt <= startsAt)
+        {
+            TempData["StatusMessage"] = "Complimentary grant end date must be after its start date.";
+            return RedirectToLocalOrAdmin(form.ReturnUrl, nameof(UserDetail), new { userId });
+        }
+
+        var now = DateTime.UtcNow;
+        var overlapsExistingGrant = await dbContext.ComplimentaryPlanGrants
+            .AsNoTracking()
+            .AnyAsync(grant => grant.UserId == userId
+                && grant.PlanType == plan.Code
+                && grant.ScopeType == TryOutSpotSubscriptionScopeTypes.Account
+                && grant.ScopeId == null
+                && grant.RevokedAt == null
+                && (endsAt == null || grant.StartsAt < endsAt)
+                && (grant.EndsAt == null || grant.EndsAt > startsAt),
+                cancellationToken);
+        if (overlapsExistingGrant)
+        {
+            TempData["StatusMessage"] = "This user already has an overlapping complimentary grant for that plan.";
+            return RedirectToLocalOrAdmin(form.ReturnUrl, nameof(UserDetail), new { userId });
+        }
+
+        dbContext.ComplimentaryPlanGrants.Add(new ComplimentaryPlanGrant
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            PlanType = plan.Code,
+            ScopeType = TryOutSpotSubscriptionScopeTypes.Account,
+            StartsAt = startsAt,
+            EndsAt = endsAt,
+            Source = TryOutSpotPromotionCodes.AdminComplimentaryGrantSource,
+            Reason = NormalizeOptional(form.Reason),
+            GrantedByUserId = adminUserId,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = endsAt is null
+            ? $"{plan.Name} granted forever."
+            : $"{plan.Name} granted through {endsAt.Value.ToLocalTime():MMM d, yyyy}.";
+        return RedirectToLocalOrAdmin(form.ReturnUrl, nameof(UserDetail), new { userId });
+    }
+
+    [HttpPost("users/{userId:guid}/complimentary-grants/{grantId:guid}/revoke")]
+    public async Task<IActionResult> RevokeComplimentaryGrant(
+        Guid userId,
+        Guid grantId,
+        AdminRevokeComplimentaryGrantForm form,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var adminUserId))
+        {
+            return Unauthorized();
+        }
+
+        var grant = await dbContext.ComplimentaryPlanGrants
+            .SingleOrDefaultAsync(currentGrant => currentGrant.Id == grantId && currentGrant.UserId == userId, cancellationToken);
+        if (grant is null)
+        {
+            return NotFound();
+        }
+
+        if (grant.RevokedAt is null)
+        {
+            var now = DateTime.UtcNow;
+            grant.RevokedAt = now;
+            grant.RevokedByUserId = adminUserId;
+            grant.RevokeReason = NormalizeOptional(form.Reason);
+            grant.UpdatedAt = now;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            TempData["StatusMessage"] = "Complimentary grant revoked.";
+        }
+        else
+        {
+            TempData["StatusMessage"] = "Complimentary grant was already revoked.";
+        }
+
+        return RedirectToLocalOrAdmin(form.ReturnUrl, nameof(UserDetail), new { userId });
     }
 
     [HttpPost("users/{userId:guid}/suspend")]
@@ -1191,6 +1339,34 @@ public sealed class AdminController(
             opportunity.UpdatedAt);
     }
 
+    private static AdminComplimentaryGrantItem ToComplimentaryGrantItem(
+        ComplimentaryPlanGrant grant,
+        DateTime now)
+    {
+        var planCode = TryOutSpotBillingCatalog.NormalizePlanCode(grant.PlanType) ?? grant.PlanType;
+        var plan = TryOutSpotBillingCatalog.GetPlan(planCode);
+
+        return new AdminComplimentaryGrantItem(
+            grant.Id,
+            planCode,
+            plan?.Name ?? grant.PlanType,
+            ComplimentaryPlanGrantMapper.GetStatus(grant, now),
+            plan is not null && ComplimentaryPlanGrantMapper.IsActive(grant, now),
+            grant.ScopeType,
+            grant.ScopeId,
+            grant.StartsAt,
+            grant.EndsAt,
+            grant.Source,
+            grant.PromotionCode,
+            grant.Reason,
+            grant.GrantedByUserId,
+            grant.CreatedAt,
+            grant.UpdatedAt,
+            grant.RevokedAt,
+            grant.RevokedByUserId,
+            grant.RevokeReason);
+    }
+
     private static int CountOpenReports(IEnumerable<ListingReport> reports)
     {
         return reports.Count(report => report.Status == TryOutSpotListingReportStatuses.Pending
@@ -1242,6 +1418,21 @@ public sealed class AdminController(
     private static string? NormalizeOptional(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static DateTime? NormalizeUtc(DateTime? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        return value.Value.Kind switch
+        {
+            DateTimeKind.Utc => value.Value,
+            DateTimeKind.Local => value.Value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
+        };
     }
 
     private static string GetDisplayName(User user)

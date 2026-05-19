@@ -111,6 +111,53 @@ public sealed class EntitlementServiceTests
     }
 
     [Fact]
+    public async Task ActiveComplimentaryGrant_AddsPaidFeaturesWithoutStripeSubscription()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var userId = await factory.RegisterUserAsync("comped-parent@example.com", ["Parent"]);
+        await AddComplimentaryGrantAsync(factory, userId, TryOutSpotPlanCodes.PremiumPlayer);
+
+        using var scope = factory.Services.CreateScope();
+        var entitlementService = scope.ServiceProvider.GetRequiredService<IEntitlementService>();
+
+        var entitlements = await entitlementService.GetEntitlementsAsync(userId, CancellationToken.None);
+
+        Assert.NotNull(entitlements);
+        Assert.Contains(TryOutSpotPlanCodes.PremiumPlayer, entitlements.ActivePlanCodes);
+        Assert.Contains(TryOutSpotFeatureCodes.PriorityApplicationReview, entitlements.FeatureCodes);
+        Assert.Contains(TryOutSpotFeatureCodes.AdvancedOpportunitySearch, entitlements.FeatureCodes);
+    }
+
+    [Fact]
+    public async Task ExpiredOrRevokedComplimentaryGrant_DoesNotGrantPaidFeatures()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var userId = await factory.RegisterUserAsync("expired-comped-parent@example.com", ["Parent"]);
+        await AddComplimentaryGrantAsync(
+            factory,
+            userId,
+            TryOutSpotPlanCodes.PremiumPlayer,
+            startsAt: DateTime.UtcNow.AddMonths(-2),
+            endsAt: DateTime.UtcNow.AddMonths(-1));
+        await AddComplimentaryGrantAsync(
+            factory,
+            userId,
+            TryOutSpotPlanCodes.PremiumPlayer,
+            startsAt: DateTime.UtcNow.AddDays(-1),
+            endsAt: DateTime.UtcNow.AddMonths(1),
+            revokedAt: DateTime.UtcNow);
+
+        using var scope = factory.Services.CreateScope();
+        var entitlementService = scope.ServiceProvider.GetRequiredService<IEntitlementService>();
+
+        var entitlements = await entitlementService.GetEntitlementsAsync(userId, CancellationToken.None);
+
+        Assert.NotNull(entitlements);
+        Assert.DoesNotContain(TryOutSpotFeatureCodes.PriorityApplicationReview, entitlements.FeatureCodes);
+        Assert.DoesNotContain(TryOutSpotPlanCodes.PremiumPlayer, entitlements.ActivePlanCodes);
+    }
+
+    [Fact]
     public async Task ActiveMultipleSubscriptions_CombinePlayerAndTeamFeatures()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -213,6 +260,39 @@ public sealed class EntitlementServiceTests
         dbContext.ChangeTracker.Clear();
 
         Assert.True(await dbContext.Subscriptions.AnyAsync(subscription => subscription.UserId == userId));
+    }
+
+    private static async Task AddComplimentaryGrantAsync(
+        TryOutSpotWebApplicationFactory factory,
+        Guid userId,
+        string planType,
+        DateTime? startsAt = null,
+        DateTime? endsAt = null,
+        DateTime? revokedAt = null)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+
+        dbContext.ComplimentaryPlanGrants.Add(new ComplimentaryPlanGrant
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            PlanType = planType,
+            ScopeType = TryOutSpotSubscriptionScopeTypes.Account,
+            StartsAt = startsAt ?? now.AddMinutes(-1),
+            EndsAt = endsAt ?? now.AddMonths(2),
+            Source = TryOutSpotPromotionCodes.AdminComplimentaryGrantSource,
+            Reason = "Test grant",
+            GrantedByUserId = userId,
+            CreatedAt = now,
+            UpdatedAt = now,
+            RevokedAt = revokedAt,
+            RevokedByUserId = revokedAt is null ? null : userId
+        });
+
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
     }
 }
 

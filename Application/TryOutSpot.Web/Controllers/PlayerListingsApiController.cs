@@ -284,7 +284,13 @@ public sealed class PlayerListingsApiController(
                 .ThenByDescending(listing => dbContext.Subscriptions.Any(subscription =>
                     subscription.UserId == listing.UserId
                     && (subscription.Status == entitlingStatusActive || subscription.Status == entitlingStatusTrialing)
-                    && (subscription.PlanType == TryOutSpotPlanCodes.PremiumPlayer || subscription.IsElite)))
+                    && (subscription.PlanType == TryOutSpotPlanCodes.PremiumPlayer || subscription.IsElite))
+                    || dbContext.ComplimentaryPlanGrants.Any(grant =>
+                        grant.UserId == listing.UserId
+                        && grant.PlanType == TryOutSpotPlanCodes.PremiumPlayer
+                        && grant.RevokedAt == null
+                        && grant.StartsAt <= now
+                        && (grant.EndsAt == null || grant.EndsAt > now)))
                 .ThenByDescending(listing => listing.PublishedAt)
                 .ThenByDescending(listing => listing.UpdatedAt);
         }
@@ -294,7 +300,13 @@ public sealed class PlayerListingsApiController(
                 .OrderByDescending(listing => dbContext.Subscriptions.Any(subscription =>
                     subscription.UserId == listing.UserId
                     && (subscription.Status == entitlingStatusActive || subscription.Status == entitlingStatusTrialing)
-                    && (subscription.PlanType == TryOutSpotPlanCodes.PremiumPlayer || subscription.IsElite)))
+                    && (subscription.PlanType == TryOutSpotPlanCodes.PremiumPlayer || subscription.IsElite))
+                    || dbContext.ComplimentaryPlanGrants.Any(grant =>
+                        grant.UserId == listing.UserId
+                        && grant.PlanType == TryOutSpotPlanCodes.PremiumPlayer
+                        && grant.RevokedAt == null
+                        && grant.StartsAt <= now
+                        && (grant.EndsAt == null || grant.EndsAt > now)))
                 .ThenByDescending(listing => listing.PublishedAt)
                 .ThenByDescending(listing => listing.UpdatedAt);
         }

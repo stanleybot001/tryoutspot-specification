@@ -139,6 +139,10 @@ public sealed class AdminUserDetailPageModel
     public IReadOnlyCollection<AdminTeamProfileItem> Teams { get; set; } = [];
 
     public IReadOnlyCollection<AdminTeamOpportunityListItem> TeamOpportunities { get; set; } = [];
+
+    public IReadOnlyCollection<AdminBillingPlanOption> EligibleComplimentaryGrantPlans { get; set; } = [];
+
+    public IReadOnlyCollection<AdminComplimentaryGrantItem> ComplimentaryGrants { get; set; } = [];
 }
 
 public sealed record AdminUserSummaryItem(
@@ -146,6 +150,58 @@ public sealed record AdminUserSummaryItem(
     string DisplayName,
     string Email,
     bool IsActive);
+
+public sealed record AdminBillingPlanOption(
+    string Code,
+    string Name,
+    string Audience);
+
+public sealed record AdminComplimentaryGrantItem(
+    Guid GrantId,
+    string PlanCode,
+    string PlanName,
+    string Status,
+    bool HasActiveEntitlement,
+    string ScopeType,
+    Guid? ScopeId,
+    DateTime StartsAtUtc,
+    DateTime? EndsAtUtc,
+    string Source,
+    string? PromotionCode,
+    string? Reason,
+    Guid GrantedByUserId,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc,
+    DateTime? RevokedAtUtc,
+    Guid? RevokedByUserId,
+    string? RevokeReason);
+
+public sealed class AdminCreateComplimentaryGrantForm
+{
+    [Required]
+    [MaxLength(50)]
+    public string PlanCode { get; set; } = string.Empty;
+
+    [Range(1, 120)]
+    public int? DurationMonths { get; set; }
+
+    public DateTime? StartsAt { get; set; }
+
+    public DateTime? EndsAt { get; set; }
+
+    [MaxLength(1000)]
+    public string? Reason { get; set; }
+
+    public string? ReturnUrl { get; set; }
+}
+
+public sealed class AdminRevokeComplimentaryGrantForm
+{
+    [MaxLength(1000)]
+    public string? Reason { get; set; }
+
+    public string? ReturnUrl { get; set; }
+}
 
 public sealed record AdminPlayerProfileItem(
     Guid PlayerId,

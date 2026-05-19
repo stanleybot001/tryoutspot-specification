@@ -30,6 +30,7 @@ public sealed class EntitlementService(
         var activePlanCodes = new SortedSet<string>(StringComparer.Ordinal);
         string? primaryPlanCode = null;
         string? primarySubscriptionStatus = null;
+        var now = DateTime.UtcNow;
         foreach (var subscription in user.Subscriptions
             .Where(subscription => TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status))
             .OrderByDescending(subscription => subscription.UpdatedAt))
@@ -44,6 +45,28 @@ public sealed class EntitlementService(
             activePlanCodes.Add(planCode);
             primaryPlanCode ??= planCode;
             primarySubscriptionStatus ??= subscription.Status;
+        }
+
+        var activeComplimentaryGrants = await dbContext.ComplimentaryPlanGrants
+            .AsNoTracking()
+            .Where(grant => grant.UserId == userId
+                && grant.RevokedAt == null
+                && grant.StartsAt <= now
+                && (grant.EndsAt == null || grant.EndsAt > now))
+            .OrderByDescending(grant => grant.UpdatedAt)
+            .ToArrayAsync(cancellationToken);
+        foreach (var grant in activeComplimentaryGrants)
+        {
+            var planCode = TryOutSpotBillingCatalog.NormalizePlanCode(grant.PlanType);
+            if (planCode is null || TryOutSpotBillingCatalog.GetPlan(planCode) is not { } plan)
+            {
+                continue;
+            }
+
+            features.UnionWith(plan.IncludedFeatureCodes);
+            activePlanCodes.Add(planCode);
+            primaryPlanCode ??= planCode;
+            primarySubscriptionStatus ??= "complimentary";
         }
 
         var hasPaidTeamPlan = activePlanCodes.Contains(TryOutSpotPlanCodes.TeamBasic)

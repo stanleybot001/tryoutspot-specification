@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
@@ -76,6 +77,7 @@ public sealed class AdminCenterPageTests
         await AssertPageContainsAsync(client, $"/admin/reports/{reportId}", "Review action");
         await AssertPageContainsAsync(client, "/admin/users", owner.Email!);
         await AssertPageContainsAsync(client, $"/admin/users/{owner.Id}", "Player profiles");
+        await AssertPageContainsAsync(client, $"/admin/users/{owner.Id}", "Complimentary access");
         await AssertPageContainsAsync(client, "/admin/teams?q=Admin%20UI%20Aces", "Admin UI Aces");
         await AssertPageContainsAsync(client, "/admin/player-listings", "Admin UI reported pickup listing");
         await AssertPageContainsAsync(client, "/admin/team-opportunities", "Admin UI reported tryout");
@@ -180,6 +182,82 @@ public sealed class AdminCenterPageTests
         Assert.NotNull(playerListing.ExpiresAt);
         Assert.False(opportunity.IsActive);
         Assert.False(opportunity.IsPublished);
+    }
+
+    [Fact]
+    public async Task PlatformAdmin_CanGrantAndRevokeComplimentaryAccessFromUserProfile()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("admin-comp-grant-user@example.com", [TryOutSpotRoles.Parent]);
+        var admin = await factory.CreateUserAsync("admin-comp-grant-admin@example.com", [TryOutSpotRoles.PlatformAdmin]);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        await LoginWebUserAsync(client, admin.Email!);
+
+        var userProfilePath = $"/admin/users/{user.Id}";
+        var grantToken = await GetAntiForgeryTokenAsync(client, userProfilePath);
+        var grantResponse = await client.PostAsync(
+            $"/admin/users/{user.Id}/complimentary-grants",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", grantToken),
+                new("ReturnUrl", userProfilePath),
+                new("PlanCode", TryOutSpotPlanCodes.PremiumPlayer),
+                new("DurationMonths", "2"),
+                new("Reason", "Admin UI comp")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, grantResponse.StatusCode);
+        Assert.Equal(userProfilePath, grantResponse.Headers.Location?.ToString());
+
+        Guid grantId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var grant = await dbContext.ComplimentaryPlanGrants.SingleAsync(currentGrant => currentGrant.UserId == user.Id);
+            grantId = grant.Id;
+
+            Assert.Equal(TryOutSpotPlanCodes.PremiumPlayer, grant.PlanType);
+            Assert.Equal(TryOutSpotPromotionCodes.AdminComplimentaryGrantSource, grant.Source);
+            Assert.Equal(admin.Id, grant.GrantedByUserId);
+            Assert.Null(grant.RevokedAt);
+
+            var entitlementService = scope.ServiceProvider.GetRequiredService<IEntitlementService>();
+            var entitlements = await entitlementService.GetEntitlementsAsync(user.Id, CancellationToken.None);
+            Assert.NotNull(entitlements);
+            Assert.Contains(TryOutSpotFeatureCodes.PriorityApplicationReview, entitlements.FeatureCodes);
+        }
+
+        var revokeToken = await GetAntiForgeryTokenAsync(client, userProfilePath);
+        var revokeResponse = await client.PostAsync(
+            $"/admin/users/{user.Id}/complimentary-grants/{grantId}/revoke",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", revokeToken),
+                new("ReturnUrl", userProfilePath),
+                new("Reason", "Admin UI revoke")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, revokeResponse.StatusCode);
+        Assert.Equal(userProfilePath, revokeResponse.Headers.Location?.ToString());
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var grant = await dbContext.ComplimentaryPlanGrants.SingleAsync(currentGrant => currentGrant.Id == grantId);
+
+            Assert.NotNull(grant.RevokedAt);
+            Assert.Equal(admin.Id, grant.RevokedByUserId);
+            Assert.Equal("Admin UI revoke", grant.RevokeReason);
+
+            var entitlementService = scope.ServiceProvider.GetRequiredService<IEntitlementService>();
+            var entitlements = await entitlementService.GetEntitlementsAsync(user.Id, CancellationToken.None);
+            Assert.NotNull(entitlements);
+            Assert.DoesNotContain(TryOutSpotFeatureCodes.PriorityApplicationReview, entitlements.FeatureCodes);
+        }
     }
 
     private static async Task AssertPageContainsAsync(HttpClient client, string path, string expectedText)

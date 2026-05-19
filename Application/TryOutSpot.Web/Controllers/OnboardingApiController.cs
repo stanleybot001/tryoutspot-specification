@@ -165,7 +165,20 @@ public sealed class OnboardingApiController(
             .AsNoTracking()
             .Where(subscription => subscription.UserId == user.Id)
             .ToArrayAsync(cancellationToken);
-        var hasPaidPlan = subscriptions.Any(IsActivePaidSubscription);
+        var paidPlanCodes = TryOutSpotBillingCatalog.Plans
+            .Where(plan => plan.RequiresStripeSubscription)
+            .Select(plan => plan.Code)
+            .ToArray();
+        var now = DateTime.UtcNow;
+        var hasPaidPlan = subscriptions.Any(IsActivePaidSubscription)
+            || await dbContext.ComplimentaryPlanGrants
+                .AsNoTracking()
+                .AnyAsync(grant => grant.UserId == user.Id
+                    && paidPlanCodes.Contains(grant.PlanType)
+                    && grant.RevokedAt == null
+                    && grant.StartsAt <= now
+                    && (grant.EndsAt == null || grant.EndsAt > now),
+                    cancellationToken);
         var entitlements = await entitlementService.GetEntitlementsAsync(user.Id, cancellationToken);
         var hasTeamProfileManagementAccess = entitlements?.FeatureCodes.Contains(
                 TryOutSpotFeatureCodes.PostLimitedOpportunities,

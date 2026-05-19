@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
 using TryOutSpot.Web.Listings;
@@ -17,6 +18,8 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
     }
 
     public virtual DbSet<Comment> Comments { get; set; }
+
+    public virtual DbSet<ComplimentaryPlanGrant> ComplimentaryPlanGrants { get; set; }
 
     public virtual DbSet<Medium> Media { get; set; }
 
@@ -37,6 +40,8 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
     public virtual DbSet<PendingAccountTypeChange> PendingAccountTypeChanges { get; set; }
 
     public virtual DbSet<Post> Posts { get; set; }
+
+    public virtual DbSet<PromotionRedemption> PromotionRedemptions { get; set; }
 
     public virtual DbSet<Registration> Registrations { get; set; }
 
@@ -88,6 +93,40 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
 
             entity.HasOne(d => d.User).WithMany(p => p.Comments)
                 .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ComplimentaryPlanGrant>(entity =>
+        {
+            entity.HasIndex(e => e.UserId, "IX_ComplimentaryPlanGrants_UserId");
+            entity.HasIndex(e => new { e.UserId, e.RevokedAt, e.StartsAt, e.EndsAt }, "IX_ComplimentaryPlanGrants_User_Status_Window");
+            entity.HasIndex(e => e.GrantedByUserId, "IX_ComplimentaryPlanGrants_GrantedByUserId");
+            entity.HasIndex(e => e.PromotionCode, "IX_ComplimentaryPlanGrants_PromotionCode");
+            entity.HasIndex(e => e.RevokedByUserId, "IX_ComplimentaryPlanGrants_RevokedByUserId");
+
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.PlanType).HasMaxLength(50);
+            entity.Property(e => e.PromotionCode).HasMaxLength(100);
+            entity.Property(e => e.Reason).HasMaxLength(1000);
+            entity.Property(e => e.RevokeReason).HasMaxLength(1000);
+            entity.Property(e => e.ScopeType).HasMaxLength(50).HasDefaultValue("account");
+            entity.Property(e => e.Source).HasMaxLength(40).HasDefaultValue(TryOutSpotPromotionCodes.AdminComplimentaryGrantSource);
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(e => e.GrantedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(e => e.RevokedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -398,6 +437,23 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.Notes).HasMaxLength(2000);
             entity.Property(e => e.RequestedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+        });
+
+        modelBuilder.Entity<PromotionRedemption>(entity =>
+        {
+            entity.HasIndex(e => e.PromotionCode, "IX_PromotionRedemptions_PromotionCode");
+            entity.HasIndex(e => new { e.PromotionCode, e.UserId }, "IX_PromotionRedemptions_PromotionCode_UserId").IsUnique();
+            entity.HasIndex(e => e.UserId, "IX_PromotionRedemptions_UserId");
+
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.GrantedPlanCodes).HasMaxLength(500);
+            entity.Property(e => e.PromotionCode).HasMaxLength(100);
+            entity.Property(e => e.RedeemedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<Sport>().HasData(TryOutSpotSportsCatalog.SeedSports);
 

@@ -102,26 +102,55 @@ public sealed class BillingApiController(
             return Unauthorized();
         }
 
+        var now = DateTime.UtcNow;
         var subscriptions = user.Subscriptions
             .OrderByDescending(subscription => TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status))
             .ThenByDescending(subscription => subscription.UpdatedAt)
             .Select(ToCurrentBillingSubscriptionResponse)
             .ToArray();
-        var primarySubscription = subscriptions.FirstOrDefault(subscription => subscription.HasActiveEntitlement)
-            ?? subscriptions.FirstOrDefault();
+        var complimentaryGrantEntities = await dbContext.ComplimentaryPlanGrants
+            .AsNoTracking()
+            .Where(grant => grant.UserId == user.Id)
+            .OrderByDescending(grant => grant.RevokedAt == null
+                && grant.StartsAt <= now
+                && (grant.EndsAt == null || grant.EndsAt > now))
+            .ThenByDescending(grant => grant.UpdatedAt)
+            .ToArrayAsync(cancellationToken);
+        var complimentaryGrants = complimentaryGrantEntities
+            .Select(grant => ComplimentaryPlanGrantMapper.ToResponse(grant, now))
+            .ToArray();
+        var primarySubscription = subscriptions.FirstOrDefault(subscription => subscription.HasActiveEntitlement);
+        var primaryGrant = complimentaryGrants.FirstOrDefault(grant => grant.HasActiveEntitlement);
+        var fallbackSubscription = subscriptions.FirstOrDefault();
 
-        return Ok(new CurrentBillingResponse(
-            primarySubscription?.PlanCode,
-            primarySubscription?.PlanName,
-            primarySubscription?.Status,
-            primarySubscription?.HasActiveEntitlement ?? false,
-            primarySubscription?.BillingInterval,
-            primarySubscription?.Amount,
-            primarySubscription?.Currency,
-            primarySubscription?.CurrentPeriodEnd,
-            primarySubscription?.CancelAtPeriodEnd ?? false)
+        return Ok(primarySubscription is not null || primaryGrant is null
+            ? new CurrentBillingResponse(
+                primarySubscription?.PlanCode ?? fallbackSubscription?.PlanCode,
+                primarySubscription?.PlanName ?? fallbackSubscription?.PlanName,
+                primarySubscription?.Status ?? fallbackSubscription?.Status,
+                primarySubscription?.HasActiveEntitlement ?? false,
+                primarySubscription?.BillingInterval ?? fallbackSubscription?.BillingInterval,
+                primarySubscription?.Amount ?? fallbackSubscription?.Amount,
+                primarySubscription?.Currency ?? fallbackSubscription?.Currency,
+                primarySubscription?.CurrentPeriodEnd ?? fallbackSubscription?.CurrentPeriodEnd,
+                primarySubscription?.CancelAtPeriodEnd ?? fallbackSubscription?.CancelAtPeriodEnd ?? false)
+            {
+                Subscriptions = subscriptions,
+                ComplimentaryGrants = complimentaryGrants
+            }
+            : new CurrentBillingResponse(
+                primaryGrant.PlanCode,
+                primaryGrant.PlanName,
+                primaryGrant.Status,
+                true,
+                "complimentary",
+                0m,
+                TryOutSpotBillingCatalog.GetPlan(primaryGrant.PlanCode)?.Currency ?? "USD",
+                primaryGrant.EndsAt,
+                false)
         {
-            Subscriptions = subscriptions
+            Subscriptions = subscriptions,
+            ComplimentaryGrants = complimentaryGrants
         });
     }
 
