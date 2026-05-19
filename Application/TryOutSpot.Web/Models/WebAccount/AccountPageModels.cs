@@ -1948,7 +1948,12 @@ public sealed record AccountMembershipSummaryItem(
     DateTime? CurrentPeriodStart,
     DateTime? CurrentPeriodEnd,
     bool CancelAtPeriodEnd,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt)
+{
+    public string? CurrentPeriodEndLabel { get; init; }
+
+    public string? ActiveEntitlementLabel { get; init; }
+}
 
 public sealed record AccountTypeSelectionItem(
     string Name,

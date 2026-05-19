@@ -580,6 +580,32 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task Settings_WithActiveComplimentaryGrant_ShowsComplimentaryMembership()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("settings-complimentary@example.com", [TryOutSpotRoles.Parent]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.FreePlayerParent, "active");
+        await AddComplimentaryGrantAsync(factory, user.Id, TryOutSpotPlanCodes.PremiumPlayer);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        await LoginWebUserAsync(client, user.Email!);
+        var response = await client.GetAsync("/account/settings");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+
+        Assert.Contains("Current membership: Premium Player", html);
+        Assert.Contains("Status: Complimentary", html);
+        Assert.Contains("Access ends:", html);
+        Assert.Contains("Complimentary access", html);
+        Assert.Contains("players.profiles.enhanced", html);
+        Assert.DoesNotContain("Current membership: Free Player/Parent", html);
+    }
+
+    [Fact]
     public async Task Logout_PostWithoutAntiforgeryToken_SignsOutAndRedirectsToLogin()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -1897,6 +1923,33 @@ public sealed class AccountPageTests
             Amount = 29m,
             Currency = "USD",
             BillingInterval = BillingIntervalCodes.Month,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+
+        await dbContext.SaveChangesAsync();
+    }
+
+    private static async Task AddComplimentaryGrantAsync(
+        TryOutSpotWebApplicationFactory factory,
+        Guid userId,
+        string planType)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+
+        dbContext.ComplimentaryPlanGrants.Add(new ComplimentaryPlanGrant
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            PlanType = planType,
+            ScopeType = TryOutSpotSubscriptionScopeTypes.Account,
+            StartsAt = now.AddMinutes(-1),
+            EndsAt = now.AddMonths(2),
+            Source = TryOutSpotPromotionCodes.AdminComplimentaryGrantSource,
+            Reason = "Account settings test grant",
+            GrantedByUserId = userId,
             CreatedAt = now,
             UpdatedAt = now
         });

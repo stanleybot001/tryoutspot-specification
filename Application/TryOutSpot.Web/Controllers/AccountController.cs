@@ -9843,7 +9843,19 @@ public sealed class AccountController(
             .Where(currentSubscription => currentSubscription.UserId == user.Id)
             .OrderByDescending(currentSubscription => currentSubscription.UpdatedAt)
             .ToArrayAsync(cancellationToken);
+        var now = DateTime.UtcNow;
+        var complimentaryGrants = await dbContext.ComplimentaryPlanGrants
+            .AsNoTracking()
+            .Where(grant => grant.UserId == user.Id)
+            .OrderByDescending(grant => grant.RevokedAt == null
+                && grant.StartsAt <= now
+                && (grant.EndsAt == null || grant.EndsAt > now))
+            .ThenByDescending(grant => grant.UpdatedAt)
+            .ToArrayAsync(cancellationToken);
         var activePaidSubscriptions = subscriptions.Where(IsActivePaidSubscription).ToArray();
+        var activeComplimentaryGrants = complimentaryGrants
+            .Where(grant => ComplimentaryPlanGrantMapper.IsActive(grant, now))
+            .ToArray();
         var cancelablePaidMemberships = activePaidSubscriptions
             .Where(subscription =>
                 !subscription.CancelAtPeriodEnd
@@ -9907,14 +9919,14 @@ public sealed class AccountController(
                 SmsConsentAcceptedAt = user.SmsConsentAcceptedAt,
                 PhoneNumber = user.PhoneNumber
             },
-            CurrentPlanName = FormatCurrentPlanName(activePaidSubscriptions),
-            CurrentPlanStatus = FormatCurrentPlanStatus(activePaidSubscriptions),
+            CurrentPlanName = FormatCurrentPlanName(activePaidSubscriptions, activeComplimentaryGrants),
+            CurrentPlanStatus = FormatCurrentPlanStatus(activePaidSubscriptions, activeComplimentaryGrants),
             RecommendedPlans = GetPlansForAccountTypes(roles),
             FeatureCodes = entitlements?.FeatureCodes ?? [],
             StripeCheckoutConfigured = stripeBillingOptions.IsConfigured,
             HasStripeCustomer = hasStripeCustomer,
             HasPendingPaidPlanSelection = hasPendingPaidPlanSelection,
-            MembershipSummaries = BuildMembershipSummaries(subscriptions),
+            MembershipSummaries = BuildMembershipSummaries(subscriptions, complimentaryGrants, now),
             CanCancelPaidMembership = cancelablePaidMemberships.Length > 0 && stripeBillingOptions.IsConfigured,
             HasScheduledPaidCancellation = scheduledPaidCancellationAt is not null,
             ScheduledPaidCancellationAt = scheduledPaidCancellationAt,
@@ -10557,48 +10569,79 @@ public sealed class AccountController(
             && TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status);
     }
 
-    private static string FormatCurrentPlanName(IReadOnlyCollection<Subscription> activePaidSubscriptions)
+    private static string FormatCurrentPlanName(
+        IReadOnlyCollection<Subscription> activePaidSubscriptions,
+        IReadOnlyCollection<ComplimentaryPlanGrant> activeComplimentaryGrants)
     {
-        if (activePaidSubscriptions.Count == 0)
+        var activeMembershipCount = activePaidSubscriptions.Count + activeComplimentaryGrants.Count;
+        if (activeMembershipCount == 0)
         {
             return "Free Player/Parent";
         }
 
-        if (activePaidSubscriptions.Count == 1)
+        if (activeMembershipCount == 1)
         {
-            var subscription = activePaidSubscriptions.Single();
-            return TryOutSpotBillingCatalog.GetPlan(subscription.PlanType)?.Name ?? subscription.PlanType;
+            if (activePaidSubscriptions.Count == 1)
+            {
+                var subscription = activePaidSubscriptions.Single();
+                return TryOutSpotBillingCatalog.GetPlan(subscription.PlanType)?.Name ?? subscription.PlanType;
+            }
+
+            var grant = activeComplimentaryGrants.Single();
+            return TryOutSpotBillingCatalog.GetPlan(grant.PlanType)?.Name ?? grant.PlanType;
         }
 
-        return $"{activePaidSubscriptions.Count} active memberships";
+        return $"{activeMembershipCount} active memberships";
     }
 
-    private static string? FormatCurrentPlanStatus(IReadOnlyCollection<Subscription> activePaidSubscriptions)
+    private static string? FormatCurrentPlanStatus(
+        IReadOnlyCollection<Subscription> activePaidSubscriptions,
+        IReadOnlyCollection<ComplimentaryPlanGrant> activeComplimentaryGrants)
     {
-        if (activePaidSubscriptions.Count == 0)
+        var activeMembershipCount = activePaidSubscriptions.Count + activeComplimentaryGrants.Count;
+        if (activeMembershipCount == 0)
         {
             return null;
         }
 
-        if (activePaidSubscriptions.Count == 1)
+        if (activeMembershipCount == 1)
         {
-            return activePaidSubscriptions.Single().Status;
+            return activePaidSubscriptions.Count == 1
+                ? activePaidSubscriptions.Single().Status
+                : "Complimentary";
         }
 
-        var planNames = activePaidSubscriptions
+        var subscriptionPlanNames = activePaidSubscriptions
             .Select(subscription => TryOutSpotBillingCatalog.GetPlan(subscription.PlanType)?.Name ?? subscription.PlanType)
-            .OrderBy(planName => planName)
             .ToArray();
-        return string.Join(", ", planNames);
+        var grantPlanNames = activeComplimentaryGrants
+            .Select(grant => $"{TryOutSpotBillingCatalog.GetPlan(grant.PlanType)?.Name ?? grant.PlanType} complimentary")
+            .ToArray();
+
+        return string.Join(", ", subscriptionPlanNames.Concat(grantPlanNames).OrderBy(planName => planName));
     }
 
     private static IReadOnlyCollection<AccountMembershipSummaryItem> BuildMembershipSummaries(
-        IReadOnlyCollection<Subscription> subscriptions)
+        IReadOnlyCollection<Subscription> subscriptions,
+        IReadOnlyCollection<ComplimentaryPlanGrant> complimentaryGrants,
+        DateTime now)
     {
-        return subscriptions
-            .OrderByDescending(subscription => TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status))
-            .ThenByDescending(subscription => subscription.UpdatedAt)
-            .Select(ToMembershipSummaryItem)
+        var subscriptionSummaries = subscriptions
+            .Select(subscription => new AccountMembershipSummaryProjection(
+                ToMembershipSummaryItem(subscription),
+                GetSubscriptionMembershipSummaryRank(subscription),
+                subscription.UpdatedAt));
+        var grantSummaries = complimentaryGrants
+            .Select(grant => new AccountMembershipSummaryProjection(
+                ToMembershipSummaryItem(grant, now),
+                GetComplimentaryGrantMembershipSummaryRank(grant, now),
+                grant.UpdatedAt));
+
+        return subscriptionSummaries
+            .Concat(grantSummaries)
+            .OrderByDescending(summary => summary.Rank)
+            .ThenByDescending(summary => summary.UpdatedAt)
+            .Select(summary => summary.Item)
             .ToArray();
     }
 
@@ -10621,6 +10664,56 @@ public sealed class AccountController(
             subscription.CurrentPeriodEnd,
             subscription.CancelAtPeriodEnd,
             subscription.UpdatedAt);
+    }
+
+    private static AccountMembershipSummaryItem ToMembershipSummaryItem(
+        ComplimentaryPlanGrant grant,
+        DateTime now)
+    {
+        var normalizedPlanCode = TryOutSpotBillingCatalog.NormalizePlanCode(grant.PlanType);
+        var plan = normalizedPlanCode is null
+            ? null
+            : TryOutSpotBillingCatalog.GetPlan(normalizedPlanCode);
+        var hasActiveEntitlement = ComplimentaryPlanGrantMapper.IsActive(grant, now);
+
+        return new AccountMembershipSummaryItem(
+            plan?.Name ?? grant.PlanType,
+            FormatSubscriptionStatus(ComplimentaryPlanGrantMapper.GetStatus(grant, now)),
+            "Complimentary",
+            "Free",
+            FormatScopeDisplay(grant.ScopeType),
+            hasActiveEntitlement,
+            grant.StartsAt,
+            grant.EndsAt,
+            false,
+            grant.UpdatedAt)
+        {
+            CurrentPeriodEndLabel = "Access ends",
+            ActiveEntitlementLabel = "Complimentary access"
+        };
+    }
+
+    private static int GetSubscriptionMembershipSummaryRank(Subscription subscription)
+    {
+        var plan = TryOutSpotBillingCatalog.GetPlan(subscription.PlanType);
+        var hasActiveEntitlement = TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status);
+
+        return hasActiveEntitlement switch
+        {
+            true when plan?.RequiresStripeSubscription == true => 4,
+            true => 2,
+            _ => 0
+        };
+    }
+
+    private static int GetComplimentaryGrantMembershipSummaryRank(ComplimentaryPlanGrant grant, DateTime now)
+    {
+        if (ComplimentaryPlanGrantMapper.IsActive(grant, now))
+        {
+            return 3;
+        }
+
+        return grant.RevokedAt is null && grant.StartsAt > now ? 1 : 0;
     }
 
     private static string FormatSubscriptionStatus(string? status)
@@ -11092,6 +11185,12 @@ public sealed class AccountController(
     }
 
     private sealed record UploadedImagePayload(string FileName, byte[] Content, string ContentType);
+
+    private sealed record AccountMembershipSummaryProjection(
+        AccountMembershipSummaryItem Item,
+        int Rank,
+        DateTime UpdatedAt);
+
     private enum BundleType
     {
         Team,
