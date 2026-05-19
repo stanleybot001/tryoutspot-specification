@@ -129,14 +129,24 @@ public sealed record PromotionClaimResponse(
 /// </summary>
 public sealed record LaunchPromotionStatusResponse(
     string PromotionCode,
+    string PromotionName,
     int ClaimedCount,
     int RemainingCount,
     int MaxClaims,
+    int GrantMonths,
     int ActiveGrantCount,
     DateTime? LatestGrantEndsAt,
     int Limit,
     int Offset,
     IReadOnlyCollection<LaunchPromotionClaimResponse> RecentClaims);
+
+/// <summary>
+/// Request for platform admins to configure or reset the launch founder promotion.
+/// </summary>
+public sealed record LaunchPromotionSettingsRequest(
+    string? Name,
+    int MaxRedemptions,
+    int GrantMonths);
 
 /// <summary>
 /// Platform admin claim summary for a launch founder promotion redemption.

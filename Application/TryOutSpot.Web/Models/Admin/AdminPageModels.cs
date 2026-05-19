@@ -15,11 +15,15 @@ public sealed class AdminPromotionsPageModel
 {
     public string PromotionCode { get; set; } = string.Empty;
 
+    public string PromotionName { get; set; } = string.Empty;
+
     public int ClaimedCount { get; set; }
 
     public int RemainingCount { get; set; }
 
     public int MaxClaims { get; set; }
+
+    public int GrantMonths { get; set; }
 
     public int ActiveGrantCount { get; set; }
 
@@ -34,6 +38,18 @@ public sealed class AdminPromotionsPageModel
     public int TotalCount { get; set; }
 
     public int TotalPages { get; set; }
+}
+
+public sealed class AdminPromotionSettingsForm
+{
+    [MaxLength(200)]
+    public string? Name { get; set; }
+
+    [Range(1, 100000)]
+    public int MaxRedemptions { get; set; }
+
+    [Range(1, 120)]
+    public int GrantMonths { get; set; }
 }
 
 public sealed record AdminPromotionClaimItem(

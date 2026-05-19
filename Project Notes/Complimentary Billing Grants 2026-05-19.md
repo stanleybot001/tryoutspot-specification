@@ -8,10 +8,13 @@ Implemented local billing grants so TryOutSpot can comp paid-plan access without
 - Complimentary access is local and additive: entitlement checks merge role-free features, active Stripe subscriptions, and active complimentary grants.
 - Revoked or expired grants no longer contribute features.
 - The first-1000 launch offer uses local grants for two months instead of Stripe coupons, so users can receive the startup promo without forcing immediate payment setup.
+- The launch offer is campaign-backed. Admins can update the active campaign limit/duration or reset to a fresh campaign code for a later promo wave.
 - Admin user profiles include grant/revoke controls for account-scoped paid-plan access.
 
 ## Data
 
+- `PromotionCampaigns`
+  - Stores the active launch promotion campaign code, name, claim limit, free-month duration, active flag, and admin audit fields.
 - `ComplimentaryPlanGrants`
   - Stores user, plan, scope, start/end window, source, optional promotion code, admin reason, and revoke audit fields.
 - `PromotionRedemptions`
@@ -24,13 +27,17 @@ Implemented local billing grants so TryOutSpot can comp paid-plan access without
   - Maximum launch redemptions: 1000.
 - `GET /api/admin/billing/promotions/launch-founder-offer/status`
   - Platform admin status for total claims, remaining slots, active grant count, latest grant end, and recent claim details.
+- `POST /api/admin/billing/promotions/launch-founder-offer/settings`
+  - Updates the active campaign name, claim limit, and free-month duration for future claims.
+- `POST /api/admin/billing/promotions/launch-founder-offer/reset`
+  - Starts a new active campaign code and resets the claim counter without revoking existing grants.
 - `GET /api/admin/billing/grants`
 - `POST /api/admin/billing/grants`
 - `POST /api/admin/billing/grants/{grantId}/revoke`
 
 ## Admin UI
 
-Platform admins can open `/admin/promotions` to monitor the first-1000 launch offer and recent claims.
+Platform admins can open `/admin/promotions` to monitor the launch offer, update claim limit/duration, or reset the campaign counter for a later promo wave.
 
 Platform admins can open `/admin/users/{userId}` and manage complimentary access from the user's profile. The form supports:
 

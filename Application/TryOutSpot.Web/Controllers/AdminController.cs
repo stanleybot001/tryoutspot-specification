@@ -83,9 +83,11 @@ public sealed class AdminController(
         return View(new AdminPromotionsPageModel
         {
             PromotionCode = status.PromotionCode,
+            PromotionName = status.PromotionName,
             ClaimedCount = status.ClaimedCount,
             RemainingCount = status.RemainingCount,
             MaxClaims = status.MaxClaims,
+            GrantMonths = status.GrantMonths,
             ActiveGrantCount = status.ActiveGrantCount,
             LatestGrantEndsAtUtc = status.LatestGrantEndsAtUtc,
             Page = page,
@@ -103,6 +105,58 @@ public sealed class AdminController(
                     claim.RedeemedAtUtc))
                 .ToArray()
         });
+    }
+
+    [HttpPost("promotions/settings")]
+    public async Task<IActionResult> UpdatePromotionSettings(
+        AdminPromotionSettingsForm form,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var adminUserId))
+        {
+            return Unauthorized();
+        }
+
+        if (!ValidatePromotionSettingsForm(form))
+        {
+            return RedirectToAction(nameof(Promotions));
+        }
+
+        await launchPromotionStatusService.UpdateLaunchFounderOfferSettingsAsync(
+            form.Name,
+            form.MaxRedemptions,
+            form.GrantMonths,
+            adminUserId,
+            cancellationToken);
+
+        TempData["StatusMessage"] = "Promotion settings updated. Existing grants were left unchanged.";
+        return RedirectToAction(nameof(Promotions));
+    }
+
+    [HttpPost("promotions/reset")]
+    public async Task<IActionResult> ResetPromotion(
+        AdminPromotionSettingsForm form,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var adminUserId))
+        {
+            return Unauthorized();
+        }
+
+        if (!ValidatePromotionSettingsForm(form))
+        {
+            return RedirectToAction(nameof(Promotions));
+        }
+
+        await launchPromotionStatusService.ResetLaunchFounderOfferAsync(
+            form.Name,
+            form.MaxRedemptions,
+            form.GrantMonths,
+            adminUserId,
+            cancellationToken);
+
+        TempData["StatusMessage"] = "Promotion reset. The claim counter now starts at zero for the new campaign code.";
+        return RedirectToAction(nameof(Promotions));
     }
 
     [HttpGet("reports")]
@@ -1433,6 +1487,25 @@ public sealed class AdminController(
     private bool IsCurrentAdminUser(Guid userId)
     {
         return TryGetCurrentUserId(out var currentUserId) && currentUserId == userId;
+    }
+
+    private bool ValidatePromotionSettingsForm(AdminPromotionSettingsForm form)
+    {
+        if (form.MaxRedemptions is < LaunchPromotionStatusService.MinMaxRedemptions
+            or > LaunchPromotionStatusService.MaxMaxRedemptions)
+        {
+            TempData["StatusMessage"] = "Promotion claim limit must be between 1 and 100000.";
+            return false;
+        }
+
+        if (form.GrantMonths is < LaunchPromotionStatusService.MinGrantMonths
+            or > LaunchPromotionStatusService.MaxGrantMonths)
+        {
+            TempData["StatusMessage"] = "Promotion duration must be between 1 and 120 months.";
+            return false;
+        }
+
+        return true;
     }
 
     private IActionResult RedirectToLocalOrAdmin(string? returnUrl, string fallbackAction, object? routeValues = null)

@@ -13,6 +13,11 @@
 
     @await Html.PartialAsync("_AdminNav")
 
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
     <section class="account-summary-strip admin-summary-grid">
         <div>
             <span>Claims used</span>
@@ -27,6 +32,10 @@
             <strong>@Model.MaxClaims</strong>
         </div>
         <div>
+            <span>Duration</span>
+            <strong>@Model.GrantMonths months</strong>
+        </div>
+        <div>
             <span>Active promo grants</span>
             <strong>@Model.ActiveGrantCount</strong>
         </div>
@@ -39,8 +48,8 @@
     <section class="form-section">
         <div class="opportunity-row-head">
             <div>
-                <h2>Launch founder offer</h2>
-                <p class="section-help">First 1000 eligible users get two free months when they claim the offer.</p>
+                <h2>@Model.PromotionName</h2>
+                <p class="section-help">@Model.MaxClaims eligible users get @Model.GrantMonths free month(s) when they claim the offer.</p>
             </div>
             <a class="btn btn-outline-primary btn-sm" href="/admin/users">Open users</a>
         </div>
@@ -49,6 +58,37 @@
             <span><strong class="text-body">Promotion code:</strong> @Model.PromotionCode</span>
             <span><strong class="text-body">API:</strong> GET /api/admin/billing/promotions/launch-founder-offer/status</span>
         </div>
+    </section>
+
+    <section class="form-section">
+        <div class="opportunity-row-head">
+            <div>
+                <h2>Promotion settings</h2>
+                <p class="section-help">Saving changes affects future claims only. Resetting creates a new campaign code and starts the claim counter at zero.</p>
+            </div>
+        </div>
+
+        <form asp-action="UpdatePromotionSettings" asp-controller="Admin" method="post" class="stacked-form">
+            <div class="form-grid two-column">
+                <div>
+                    <label class="form-label" for="promotion-name">Name</label>
+                    <input id="promotion-name" class="form-control" name="Name" maxlength="200" value="@Model.PromotionName" />
+                </div>
+                <div>
+                    <label class="form-label" for="promotion-max-redemptions">Claim limit</label>
+                    <input id="promotion-max-redemptions" class="form-control" name="MaxRedemptions" type="number" min="1" max="100000" value="@Model.MaxClaims" required />
+                </div>
+                <div>
+                    <label class="form-label" for="promotion-grant-months">Free months</label>
+                    <input id="promotion-grant-months" class="form-control" name="GrantMonths" type="number" min="1" max="120" value="@Model.GrantMonths" required />
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary btn-sm">Save settings</button>
+                <button type="submit" class="btn btn-outline-danger btn-sm" formaction="/admin/promotions/reset">Reset promo counter</button>
+            </div>
+            <p class="section-help">Existing complimentary grants are never revoked by save or reset.</p>
+        </form>
     </section>
 
     <section class="form-section">

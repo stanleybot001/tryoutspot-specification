@@ -11,6 +11,7 @@ using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
 using TryOutSpot.Web.Models.Billing;
 using TryOutSpot.Web.Security;
+using TryOutSpot.Web.Services;
 
 namespace TryOutSpot.Web.Controllers;
 
@@ -21,7 +22,8 @@ namespace TryOutSpot.Web.Controllers;
 [Route("api/billing/promotions")]
 public sealed class BillingPromotionsApiController(
     AppDbContext dbContext,
-    UserManager<User> userManager) : ControllerBase
+    UserManager<User> userManager,
+    ILaunchPromotionStatusService launchPromotionStatusService) : ControllerBase
 {
     [HttpPost("launch-founder-offer/claim")]
     [ProducesResponseType<PromotionClaimResponse>(StatusCodes.Status200OK)]
@@ -46,29 +48,30 @@ public sealed class BillingPromotionsApiController(
         }
 
         var now = DateTime.UtcNow;
+        var campaign = await launchPromotionStatusService.GetActiveLaunchFounderOfferCampaignAsync(cancellationToken);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var existingRedemption = await dbContext.PromotionRedemptions
             .AsNoTracking()
             .SingleOrDefaultAsync(redemption =>
-                    redemption.PromotionCode == TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths
+                    redemption.PromotionCode == campaign.Code
                     && redemption.UserId == user.Id,
                 cancellationToken);
         if (existingRedemption is not null)
         {
-            var previousGrants = await GetLaunchGrantResponsesAsync(user.Id, now, cancellationToken);
+            var previousGrants = await GetLaunchGrantResponsesAsync(user.Id, campaign.Code, now, cancellationToken);
             return Ok(new PromotionClaimResponse(
-                TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths,
+                campaign.Code,
                 false,
                 previousGrants.Where(grant => grant.HasActiveEntitlement).Select(grant => grant.EndsAt).DefaultIfEmpty().Max(),
                 previousGrants));
         }
 
         var redemptionCount = await dbContext.PromotionRedemptions
-            .CountAsync(redemption => redemption.PromotionCode == TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths, cancellationToken);
-        if (redemptionCount >= TryOutSpotPromotionCodes.LaunchFirst1000MaxRedemptions)
+            .CountAsync(redemption => redemption.PromotionCode == campaign.Code, cancellationToken);
+        if (redemptionCount >= campaign.MaxRedemptions)
         {
             return Conflict(new PromotionClaimResponse(
-                TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths,
+                campaign.Code,
                 false,
                 null,
                 []));
@@ -106,7 +109,7 @@ public sealed class BillingPromotionsApiController(
             return ValidationProblem(ModelState);
         }
 
-        var grantEndsAt = now.AddMonths(TryOutSpotPromotionCodes.LaunchFirst1000GrantMonths);
+        var grantEndsAt = now.AddMonths(campaign.GrantMonths);
         var grants = planCodesToGrant
             .Select(planCode => new ComplimentaryPlanGrant
             {
@@ -117,8 +120,8 @@ public sealed class BillingPromotionsApiController(
                 StartsAt = now,
                 EndsAt = grantEndsAt,
                 Source = TryOutSpotPromotionCodes.LaunchPromotionGrantSource,
-                PromotionCode = TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths,
-                Reason = "Launch promotion: first 1000 users receive two free months.",
+                PromotionCode = campaign.Code,
+                Reason = $"Launch promotion: {campaign.Name} grants {campaign.GrantMonths} free month(s).",
                 GrantedByUserId = user.Id,
                 CreatedAt = now,
                 UpdatedAt = now
@@ -129,7 +132,7 @@ public sealed class BillingPromotionsApiController(
         dbContext.PromotionRedemptions.Add(new PromotionRedemption
         {
             Id = Guid.NewGuid(),
-            PromotionCode = TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths,
+            PromotionCode = campaign.Code,
             UserId = user.Id,
             GrantedPlanCodes = string.Join(",", planCodesToGrant),
             RedeemedAt = now
@@ -144,14 +147,14 @@ public sealed class BillingPromotionsApiController(
         {
             await transaction.RollbackAsync(cancellationToken);
             return Conflict(new PromotionClaimResponse(
-                TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths,
+                campaign.Code,
                 false,
                 null,
                 []));
         }
 
         return Ok(new PromotionClaimResponse(
-            TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths,
+            campaign.Code,
             true,
             grantEndsAt,
             grants.Select(grant => ComplimentaryPlanGrantMapper.ToResponse(grant, now)).ToArray()));
@@ -172,13 +175,14 @@ public sealed class BillingPromotionsApiController(
 
     private async Task<ComplimentaryPlanGrantResponse[]> GetLaunchGrantResponsesAsync(
         Guid userId,
+        string promotionCode,
         DateTime now,
         CancellationToken cancellationToken)
     {
         var grants = await dbContext.ComplimentaryPlanGrants
             .AsNoTracking()
             .Where(grant => grant.UserId == userId
-                && grant.PromotionCode == TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths)
+                && grant.PromotionCode == promotionCode)
             .OrderByDescending(grant => grant.CreatedAt)
             .ToArrayAsync(cancellationToken);
         return grants

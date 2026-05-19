@@ -202,9 +202,11 @@ public sealed class BillingApiTests
 
         Assert.NotNull(status);
         Assert.Equal(TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths, status.PromotionCode);
+        Assert.Equal(TryOutSpotPromotionCodes.LaunchFounderOfferName, status.PromotionName);
         Assert.Equal(1, status.ClaimedCount);
         Assert.Equal(TryOutSpotPromotionCodes.LaunchFirst1000MaxRedemptions - 1, status.RemainingCount);
         Assert.Equal(TryOutSpotPromotionCodes.LaunchFirst1000MaxRedemptions, status.MaxClaims);
+        Assert.Equal(TryOutSpotPromotionCodes.LaunchFirst1000GrantMonths, status.GrantMonths);
         Assert.Equal(2, status.ActiveGrantCount);
         Assert.Single(status.RecentClaims);
 
@@ -215,6 +217,82 @@ public sealed class BillingApiTests
         Assert.Contains(TryOutSpotPlanCodes.PremiumPlayer, claim.GrantedPlanCodes);
         Assert.Contains(TryOutSpotPlanCodes.TeamBasic, claim.GrantedPlanCodes);
         Assert.NotNull(claim.LatestGrantEndsAt);
+    }
+
+    [Fact]
+    public async Task AdminLaunchFounderOfferSettings_ControlsFutureClaimLimitAndDuration()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var adminClient = await CreateAdminClientAsync(factory);
+
+        var settingsResponse = await adminClient.PostAsJsonAsync(
+            "/api/admin/billing/promotions/launch-founder-offer/settings",
+            new LaunchPromotionSettingsRequest("Spring beta offer", 1, 4));
+
+        Assert.Equal(HttpStatusCode.OK, settingsResponse.StatusCode);
+        var settings = await settingsResponse.Content.ReadFromJsonAsync<LaunchPromotionStatusResponse>();
+        Assert.NotNull(settings);
+        Assert.Equal("Spring beta offer", settings.PromotionName);
+        Assert.Equal(1, settings.MaxClaims);
+        Assert.Equal(4, settings.GrantMonths);
+
+        var firstUser = await factory.CreateUserAsync("launch-settings-first@example.com", [TryOutSpotRoles.Parent]);
+        var firstClient = await CreateAuthorizedClientAsync(factory, firstUser.Email!);
+        var firstClaimResponse = await firstClient.PostAsync("/api/billing/promotions/launch-founder-offer/claim", null);
+
+        Assert.Equal(HttpStatusCode.OK, firstClaimResponse.StatusCode);
+        var firstClaim = await firstClaimResponse.Content.ReadFromJsonAsync<PromotionClaimResponse>();
+        Assert.NotNull(firstClaim);
+        Assert.True(firstClaim.Claimed);
+        Assert.NotNull(firstClaim.EndsAt);
+        Assert.InRange(
+            firstClaim.EndsAt.Value,
+            DateTime.UtcNow.AddMonths(4).AddMinutes(-5),
+            DateTime.UtcNow.AddMonths(4).AddMinutes(5));
+
+        var secondUser = await factory.CreateUserAsync("launch-settings-second@example.com", [TryOutSpotRoles.Parent]);
+        var secondClient = await CreateAuthorizedClientAsync(factory, secondUser.Email!);
+        var secondClaimResponse = await secondClient.PostAsync("/api/billing/promotions/launch-founder-offer/claim", null);
+
+        Assert.Equal(HttpStatusCode.Conflict, secondClaimResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task AdminLaunchFounderOfferReset_StartsFreshCampaignCounter()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var firstUser = await factory.CreateUserAsync("launch-reset-first@example.com", [TryOutSpotRoles.Parent]);
+        var firstClient = await CreateAuthorizedClientAsync(factory, firstUser.Email!);
+        var firstClaimResponse = await firstClient.PostAsync("/api/billing/promotions/launch-founder-offer/claim", null);
+        firstClaimResponse.EnsureSuccessStatusCode();
+        var firstClaim = await firstClaimResponse.Content.ReadFromJsonAsync<PromotionClaimResponse>();
+        Assert.NotNull(firstClaim);
+
+        var adminClient = await CreateAdminClientAsync(factory);
+        var resetResponse = await adminClient.PostAsJsonAsync(
+            "/api/admin/billing/promotions/launch-founder-offer/reset",
+            new LaunchPromotionSettingsRequest("Second launch wave", 5, 1));
+
+        Assert.Equal(HttpStatusCode.OK, resetResponse.StatusCode);
+        var resetStatus = await resetResponse.Content.ReadFromJsonAsync<LaunchPromotionStatusResponse>();
+
+        Assert.NotNull(resetStatus);
+        Assert.NotEqual(firstClaim.PromotionCode, resetStatus.PromotionCode);
+        Assert.Equal("Second launch wave", resetStatus.PromotionName);
+        Assert.Equal(0, resetStatus.ClaimedCount);
+        Assert.Equal(5, resetStatus.RemainingCount);
+        Assert.Equal(5, resetStatus.MaxClaims);
+        Assert.Equal(1, resetStatus.GrantMonths);
+        Assert.Empty(resetStatus.RecentClaims);
+
+        var secondUser = await factory.CreateUserAsync("launch-reset-second@example.com", [TryOutSpotRoles.Parent]);
+        var secondClient = await CreateAuthorizedClientAsync(factory, secondUser.Email!);
+        var secondClaimResponse = await secondClient.PostAsync("/api/billing/promotions/launch-founder-offer/claim", null);
+        var secondClaim = await secondClaimResponse.Content.ReadFromJsonAsync<PromotionClaimResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, secondClaimResponse.StatusCode);
+        Assert.NotNull(secondClaim);
+        Assert.Equal(resetStatus.PromotionCode, secondClaim.PromotionCode);
     }
 
     [Fact]

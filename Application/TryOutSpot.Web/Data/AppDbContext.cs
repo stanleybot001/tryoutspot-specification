@@ -41,6 +41,8 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
 
     public virtual DbSet<Post> Posts { get; set; }
 
+    public virtual DbSet<PromotionCampaign> PromotionCampaigns { get; set; }
+
     public virtual DbSet<PromotionRedemption> PromotionRedemptions { get; set; }
 
     public virtual DbSet<Registration> Registrations { get; set; }
@@ -437,6 +439,45 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.Notes).HasMaxLength(2000);
             entity.Property(e => e.RequestedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+        });
+
+        modelBuilder.Entity<PromotionCampaign>(entity =>
+        {
+            entity.HasIndex(e => e.Code, "IX_PromotionCampaigns_Code").IsUnique();
+            entity.HasIndex(e => e.IsActive, "IX_PromotionCampaigns_IsActive");
+            entity.HasIndex(e => e.CreatedByUserId, "IX_PromotionCampaigns_CreatedByUserId");
+            entity.HasIndex(e => e.UpdatedByUserId, "IX_PromotionCampaigns_UpdatedByUserId");
+
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Code).HasMaxLength(100);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.GrantMonths).HasDefaultValue(TryOutSpotPromotionCodes.LaunchFirst1000GrantMonths);
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.MaxRedemptions).HasDefaultValue(TryOutSpotPromotionCodes.LaunchFirst1000MaxRedemptions);
+            entity.Property(e => e.Name).HasMaxLength(200);
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(e => e.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(e => e.UpdatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasData(new PromotionCampaign
+            {
+                Id = TryOutSpotPromotionCodes.LaunchFounderOfferCampaignId,
+                Code = TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths,
+                Name = TryOutSpotPromotionCodes.LaunchFounderOfferName,
+                MaxRedemptions = TryOutSpotPromotionCodes.LaunchFirst1000MaxRedemptions,
+                GrantMonths = TryOutSpotPromotionCodes.LaunchFirst1000GrantMonths,
+                IsActive = true,
+                CreatedAt = new DateTime(2026, 5, 19, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt = new DateTime(2026, 5, 19, 0, 0, 0, DateTimeKind.Utc)
+            });
         });
 
         modelBuilder.Entity<PromotionRedemption>(entity =>

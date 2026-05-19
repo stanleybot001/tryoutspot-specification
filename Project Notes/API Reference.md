@@ -977,7 +977,7 @@ Complimentary grants are local TryOutSpot entitlements. They do not create, upda
 
 ### `POST /api/billing/promotions/launch-founder-offer/claim`
 
-Claims the launch founder offer for the authenticated user. Requires verified email. The launch offer grants two free months to the first 1000 claiming users, using local complimentary grants rather than Stripe subscriptions.
+Claims the active launch founder offer for the authenticated user. Requires verified email. The default launch offer grants two free months to the first 1000 claiming users, and platform admins can adjust the active campaign limit and duration from `/admin/promotions`. Claims use local complimentary grants rather than Stripe subscriptions.
 
 The granted plan depends on current account type:
 
@@ -1018,7 +1018,7 @@ Success response: `200 OK`
 }
 ```
 
-Returns `409 Conflict` after the promotion reaches 1000 redemptions. A repeat claim by the same user returns `200 OK` with `claimed: false` and the existing grants.
+Returns `409 Conflict` after the active campaign reaches its configured redemption limit. A repeat claim by the same user for the same active campaign returns `200 OK` with `claimed: false` and the existing grants.
 
 ### `GET /api/admin/billing/promotions/launch-founder-offer/status`
 
@@ -1034,9 +1034,11 @@ Success response: `200 OK`
 ```json
 {
   "promotionCode": "launch_first_1000_two_months",
+  "promotionName": "Launch founder offer",
   "claimedCount": 1,
   "remainingCount": 999,
   "maxClaims": 1000,
+  "grantMonths": 2,
   "activeGrantCount": 1,
   "latestGrantEndsAt": "2026-07-19T04:00:00Z",
   "limit": 25,
@@ -1056,6 +1058,28 @@ Success response: `200 OK`
 ```
 
 The same status is available to platform admins in the web admin center at `/admin/promotions`.
+
+### `POST /api/admin/billing/promotions/launch-founder-offer/settings`
+
+Updates the active launch promotion name, claim limit, and free-month duration for future claims. Requires `PlatformAdmin`.
+
+Request:
+
+```json
+{
+  "name": "Launch founder offer",
+  "maxRedemptions": 1000,
+  "grantMonths": 2
+}
+```
+
+Existing complimentary grants are not changed.
+
+### `POST /api/admin/billing/promotions/launch-founder-offer/reset`
+
+Creates a new active launch promotion campaign code and starts the claim counter at zero. Requires `PlatformAdmin`.
+
+Request shape matches the settings endpoint. Existing redemptions and complimentary grants remain in place for audit/history and continue until revoked or expired.
 
 ### `POST /api/billing/checkout-session`
 

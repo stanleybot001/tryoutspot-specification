@@ -1,14 +1,31 @@
 using Microsoft.EntityFrameworkCore;
 using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data;
+using TryOutSpot.Web.Data.Entities;
 
 namespace TryOutSpot.Web.Services;
 
 public interface ILaunchPromotionStatusService
 {
+    Task<PromotionCampaign> GetActiveLaunchFounderOfferCampaignAsync(CancellationToken cancellationToken);
+
     Task<LaunchPromotionStatus> GetLaunchFounderOfferStatusAsync(
         int limit,
         int offset,
+        CancellationToken cancellationToken);
+
+    Task<PromotionCampaign> UpdateLaunchFounderOfferSettingsAsync(
+        string? name,
+        int maxRedemptions,
+        int grantMonths,
+        Guid adminUserId,
+        CancellationToken cancellationToken);
+
+    Task<PromotionCampaign> ResetLaunchFounderOfferAsync(
+        string? name,
+        int maxRedemptions,
+        int grantMonths,
+        Guid adminUserId,
         CancellationToken cancellationToken);
 }
 
@@ -16,6 +33,25 @@ public sealed class LaunchPromotionStatusService(AppDbContext dbContext) : ILaun
 {
     public const int DefaultClaimLimit = 25;
     public const int MaxClaimLimit = 100;
+    public const int MinMaxRedemptions = 1;
+    public const int MaxMaxRedemptions = 100000;
+    public const int MinGrantMonths = 1;
+    public const int MaxGrantMonths = 120;
+
+    public async Task<PromotionCampaign> GetActiveLaunchFounderOfferCampaignAsync(CancellationToken cancellationToken)
+    {
+        var campaign = await dbContext.PromotionCampaigns
+            .AsNoTracking()
+            .Where(currentCampaign => currentCampaign.IsActive)
+            .OrderByDescending(currentCampaign => currentCampaign.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (campaign is not null)
+        {
+            return campaign;
+        }
+
+        return await CreateDefaultLaunchFounderOfferAsync(cancellationToken);
+    }
 
     public async Task<LaunchPromotionStatus> GetLaunchFounderOfferStatusAsync(
         int limit,
@@ -24,13 +60,14 @@ public sealed class LaunchPromotionStatusService(AppDbContext dbContext) : ILaun
     {
         var normalizedLimit = Math.Clamp(limit, 1, MaxClaimLimit);
         var normalizedOffset = Math.Max(offset, 0);
-        var promotionCode = TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths;
+        var campaign = await GetActiveLaunchFounderOfferCampaignAsync(cancellationToken);
+        var promotionCode = campaign.Code;
         var now = DateTime.UtcNow;
 
         var claimedCount = await dbContext.PromotionRedemptions
             .AsNoTracking()
             .CountAsync(redemption => redemption.PromotionCode == promotionCode, cancellationToken);
-        var remainingCount = Math.Max(TryOutSpotPromotionCodes.LaunchFirst1000MaxRedemptions - claimedCount, 0);
+        var remainingCount = Math.Max(campaign.MaxRedemptions - claimedCount, 0);
 
         var activeGrantQuery = dbContext.ComplimentaryPlanGrants
             .AsNoTracking()
@@ -97,14 +134,140 @@ public sealed class LaunchPromotionStatusService(AppDbContext dbContext) : ILaun
 
         return new LaunchPromotionStatus(
             promotionCode,
+            campaign.Name,
             claimedCount,
             remainingCount,
-            TryOutSpotPromotionCodes.LaunchFirst1000MaxRedemptions,
+            campaign.MaxRedemptions,
+            campaign.GrantMonths,
             activeGrantCount,
             latestGrantEndsAt,
             normalizedLimit,
             normalizedOffset,
             recentClaims);
+    }
+
+    public async Task<PromotionCampaign> UpdateLaunchFounderOfferSettingsAsync(
+        string? name,
+        int maxRedemptions,
+        int grantMonths,
+        Guid adminUserId,
+        CancellationToken cancellationToken)
+    {
+        var campaign = await GetTrackedActiveLaunchFounderOfferCampaignAsync(cancellationToken);
+        var now = DateTime.UtcNow;
+
+        campaign.Name = NormalizeCampaignName(name);
+        campaign.MaxRedemptions = NormalizeMaxRedemptions(maxRedemptions);
+        campaign.GrantMonths = NormalizeGrantMonths(grantMonths);
+        campaign.UpdatedByUserId = adminUserId;
+        campaign.UpdatedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return campaign;
+    }
+
+    public async Task<PromotionCampaign> ResetLaunchFounderOfferAsync(
+        string? name,
+        int maxRedemptions,
+        int grantMonths,
+        Guid adminUserId,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var activeCampaigns = await dbContext.PromotionCampaigns
+            .Where(campaign => campaign.IsActive)
+            .ToArrayAsync(cancellationToken);
+        foreach (var activeCampaign in activeCampaigns)
+        {
+            activeCampaign.IsActive = false;
+            activeCampaign.UpdatedByUserId = adminUserId;
+            activeCampaign.UpdatedAt = now;
+        }
+
+        var campaign = new PromotionCampaign
+        {
+            Id = Guid.NewGuid(),
+            Code = CreateResetCampaignCode(now),
+            Name = NormalizeCampaignName(name),
+            MaxRedemptions = NormalizeMaxRedemptions(maxRedemptions),
+            GrantMonths = NormalizeGrantMonths(grantMonths),
+            IsActive = true,
+            CreatedByUserId = adminUserId,
+            UpdatedByUserId = adminUserId,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        dbContext.PromotionCampaigns.Add(campaign);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return campaign;
+    }
+
+    private async Task<PromotionCampaign> GetTrackedActiveLaunchFounderOfferCampaignAsync(CancellationToken cancellationToken)
+    {
+        var campaign = await dbContext.PromotionCampaigns
+            .Where(currentCampaign => currentCampaign.IsActive)
+            .OrderByDescending(currentCampaign => currentCampaign.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (campaign is not null)
+        {
+            return campaign;
+        }
+
+        return await CreateDefaultLaunchFounderOfferAsync(cancellationToken);
+    }
+
+    private async Task<PromotionCampaign> CreateDefaultLaunchFounderOfferAsync(CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var existingCampaign = await dbContext.PromotionCampaigns
+            .FirstOrDefaultAsync(campaign => campaign.Id == TryOutSpotPromotionCodes.LaunchFounderOfferCampaignId
+                || campaign.Code == TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths,
+                cancellationToken);
+        if (existingCampaign is not null)
+        {
+            existingCampaign.IsActive = true;
+            existingCampaign.UpdatedAt = now;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return existingCampaign;
+        }
+
+        var campaign = new PromotionCampaign
+        {
+            Id = TryOutSpotPromotionCodes.LaunchFounderOfferCampaignId,
+            Code = TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths,
+            Name = TryOutSpotPromotionCodes.LaunchFounderOfferName,
+            MaxRedemptions = TryOutSpotPromotionCodes.LaunchFirst1000MaxRedemptions,
+            GrantMonths = TryOutSpotPromotionCodes.LaunchFirst1000GrantMonths,
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        dbContext.PromotionCampaigns.Add(campaign);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return campaign;
+    }
+
+    private static string NormalizeCampaignName(string? name)
+    {
+        return string.IsNullOrWhiteSpace(name)
+            ? TryOutSpotPromotionCodes.LaunchFounderOfferName
+            : name.Trim()[..Math.Min(name.Trim().Length, 200)];
+    }
+
+    private static int NormalizeMaxRedemptions(int maxRedemptions)
+    {
+        return Math.Clamp(maxRedemptions, MinMaxRedemptions, MaxMaxRedemptions);
+    }
+
+    private static int NormalizeGrantMonths(int grantMonths)
+    {
+        return Math.Clamp(grantMonths, MinGrantMonths, MaxGrantMonths);
+    }
+
+    private static string CreateResetCampaignCode(DateTime now)
+    {
+        return $"launch_founder_offer_{now:yyyyMMddHHmmss}_{Guid.NewGuid().ToString("N")[..8]}";
     }
 
     private static string[] SplitPlanCodes(string planCodes)
@@ -138,9 +301,11 @@ public sealed class LaunchPromotionStatusService(AppDbContext dbContext) : ILaun
 
 public sealed record LaunchPromotionStatus(
     string PromotionCode,
+    string PromotionName,
     int ClaimedCount,
     int RemainingCount,
     int MaxClaims,
+    int GrantMonths,
     int ActiveGrantCount,
     DateTime? LatestGrantEndsAtUtc,
     int Limit,

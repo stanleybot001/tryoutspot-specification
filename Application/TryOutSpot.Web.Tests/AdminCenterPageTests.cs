@@ -76,6 +76,8 @@ public sealed class AdminCenterPageTests
         await AssertPageContainsAsync(client, "/admin", "Admin center");
         await AssertPageContainsAsync(client, "/admin/promotions", owner.Email!);
         await AssertPageContainsAsync(client, "/admin/promotions", "Claims remaining");
+        await AssertPageContainsAsync(client, "/admin/promotions", "Promotion settings");
+        await AssertPageContainsAsync(client, "/admin/promotions", "Reset promo counter");
         await AssertPageContainsAsync(client, "/admin/reports", "Admin UI reported pickup listing");
         await AssertPageContainsAsync(client, $"/admin/reports/{reportId}", "Review action");
         await AssertPageContainsAsync(client, "/admin/users", owner.Email!);
@@ -84,6 +86,20 @@ public sealed class AdminCenterPageTests
         await AssertPageContainsAsync(client, "/admin/teams?q=Admin%20UI%20Aces", "Admin UI Aces");
         await AssertPageContainsAsync(client, "/admin/player-listings", "Admin UI reported pickup listing");
         await AssertPageContainsAsync(client, "/admin/team-opportunities", "Admin UI reported tryout");
+
+        var promotionToken = await GetAntiForgeryTokenAsync(client, "/admin/promotions");
+        var promotionSettingsResponse = await client.PostAsync(
+            "/admin/promotions/settings",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", promotionToken),
+                new("Name", "Admin UI launch wave"),
+                new("MaxRedemptions", "7"),
+                new("GrantMonths", "3")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, promotionSettingsResponse.StatusCode);
+        Assert.Equal("/admin/promotions", promotionSettingsResponse.Headers.Location?.ToString());
 
         var antiForgeryToken = await GetAntiForgeryTokenAsync(client, $"/admin/reports/{reportId}");
         var response = await client.PostAsync(
@@ -105,6 +121,12 @@ public sealed class AdminCenterPageTests
         Assert.Equal("Reviewed from the admin center page.", report.AdminNotes);
         Assert.Equal(admin.Id, report.ReviewedByUserId);
         Assert.NotNull(report.ReviewedAt);
+
+        var activePromotion = await dbContext.PromotionCampaigns.SingleAsync(campaign => campaign.IsActive);
+        Assert.Equal("Admin UI launch wave", activePromotion.Name);
+        Assert.Equal(7, activePromotion.MaxRedemptions);
+        Assert.Equal(3, activePromotion.GrantMonths);
+        Assert.Equal(admin.Id, activePromotion.UpdatedByUserId);
     }
 
     [Fact]
