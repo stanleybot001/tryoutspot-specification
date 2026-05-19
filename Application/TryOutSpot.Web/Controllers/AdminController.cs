@@ -10,6 +10,7 @@ using TryOutSpot.Web.Identity;
 using TryOutSpot.Web.Listings;
 using TryOutSpot.Web.Models.Admin;
 using TryOutSpot.Web.Security;
+using TryOutSpot.Web.Services;
 
 namespace TryOutSpot.Web.Controllers;
 
@@ -20,7 +21,8 @@ namespace TryOutSpot.Web.Controllers;
 [AutoValidateAntiforgeryToken]
 public sealed class AdminController(
     AppDbContext dbContext,
-    UserManager<User> userManager) : Controller
+    UserManager<User> userManager,
+    ILaunchPromotionStatusService launchPromotionStatusService) : Controller
 {
     private const int DefaultPageSize = 25;
     private const int MaxPageSize = 100;
@@ -63,6 +65,44 @@ public sealed class AdminController(
             activePlayerListingCount,
             activeTeamOpportunityCount,
             recentReports.Select(ToReportListItem).ToArray()));
+    }
+
+    [HttpGet("promotions")]
+    public async Task<IActionResult> Promotions(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
+        var status = await launchPromotionStatusService.GetLaunchFounderOfferStatusAsync(
+            pageSize,
+            (page - 1) * pageSize,
+            cancellationToken);
+
+        return View(new AdminPromotionsPageModel
+        {
+            PromotionCode = status.PromotionCode,
+            ClaimedCount = status.ClaimedCount,
+            RemainingCount = status.RemainingCount,
+            MaxClaims = status.MaxClaims,
+            ActiveGrantCount = status.ActiveGrantCount,
+            LatestGrantEndsAtUtc = status.LatestGrantEndsAtUtc,
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = status.ClaimedCount,
+            TotalPages = CalculateTotalPages(status.ClaimedCount, pageSize),
+            RecentClaims = status.RecentClaims
+                .Select(claim => new AdminPromotionClaimItem(
+                    claim.UserId,
+                    claim.UserDisplayName,
+                    claim.UserEmail,
+                    claim.GrantedPlanCodes,
+                    claim.ActiveGrantCount,
+                    claim.LatestGrantEndsAtUtc,
+                    claim.RedeemedAtUtc))
+                .ToArray()
+        });
     }
 
     [HttpGet("reports")]

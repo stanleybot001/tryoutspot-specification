@@ -22,11 +22,15 @@ Implemented local billing grants so TryOutSpot can comp paid-plan access without
 - `POST /api/billing/promotions/launch-founder-offer/claim`
   - Authenticated verified users claim the two-month launch offer.
   - Maximum launch redemptions: 1000.
+- `GET /api/admin/billing/promotions/launch-founder-offer/status`
+  - Platform admin status for total claims, remaining slots, active grant count, latest grant end, and recent claim details.
 - `GET /api/admin/billing/grants`
 - `POST /api/admin/billing/grants`
 - `POST /api/admin/billing/grants/{grantId}/revoke`
 
 ## Admin UI
+
+Platform admins can open `/admin/promotions` to monitor the first-1000 launch offer and recent claims.
 
 Platform admins can open `/admin/users/{userId}` and manage complimentary access from the user's profile. The form supports:
 

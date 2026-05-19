@@ -1020,6 +1020,43 @@ Success response: `200 OK`
 
 Returns `409 Conflict` after the promotion reaches 1000 redemptions. A repeat claim by the same user returns `200 OK` with `claimed: false` and the existing grants.
 
+### `GET /api/admin/billing/promotions/launch-founder-offer/status`
+
+Returns platform-admin status for the first-1000 launch promotion.
+
+Query parameters:
+
+- `limit`: recent claim page size, max 100
+- `offset`: zero-based row offset
+
+Success response: `200 OK`
+
+```json
+{
+  "promotionCode": "launch_first_1000_two_months",
+  "claimedCount": 1,
+  "remainingCount": 999,
+  "maxClaims": 1000,
+  "activeGrantCount": 1,
+  "latestGrantEndsAt": "2026-07-19T04:00:00Z",
+  "limit": 25,
+  "offset": 0,
+  "recentClaims": [
+    {
+      "userId": "81f22c76-9960-4e35-919d-718bce4e7499",
+      "userDisplayName": "Taylor Morgan",
+      "userEmail": "player@example.com",
+      "grantedPlanCodes": ["premium_player"],
+      "activeGrantCount": 1,
+      "latestGrantEndsAt": "2026-07-19T04:00:00Z",
+      "redeemedAt": "2026-05-19T04:00:00Z"
+    }
+  ]
+}
+```
+
+The same status is available to platform admins in the web admin center at `/admin/promotions`.
+
 ### `POST /api/billing/checkout-session`
 
 Creates a Stripe Checkout session for a paid subscription plan. This starts checkout only; paid access is granted after Stripe webhook events update the local subscription.

@@ -1,0 +1,124 @@
+@model AdminPromotionsPageModel
+
+@{
+    ViewData["Title"] = "Admin Promotions";
+}
+
+<section class="account-page admin-page">
+    <div class="account-heading">
+        <p class="account-kicker">Platform admin</p>
+        <h1>Launch promotions</h1>
+        <p>Monitor founder offer usage and open the user profile for any claimed account.</p>
+    </div>
+
+    @await Html.PartialAsync("_AdminNav")
+
+    <section class="account-summary-strip admin-summary-grid">
+        <div>
+            <span>Claims used</span>
+            <strong>@Model.ClaimedCount</strong>
+        </div>
+        <div>
+            <span>Claims remaining</span>
+            <strong>@Model.RemainingCount</strong>
+        </div>
+        <div>
+            <span>Claim limit</span>
+            <strong>@Model.MaxClaims</strong>
+        </div>
+        <div>
+            <span>Active promo grants</span>
+            <strong>@Model.ActiveGrantCount</strong>
+        </div>
+        <div>
+            <span>Latest grant end</span>
+            <strong>@FormatDate(Model.LatestGrantEndsAtUtc)</strong>
+        </div>
+    </section>
+
+    <section class="form-section">
+        <div class="opportunity-row-head">
+            <div>
+                <h2>Launch founder offer</h2>
+                <p class="section-help">First 1000 eligible users get two free months when they claim the offer.</p>
+            </div>
+            <a class="btn btn-outline-primary btn-sm" href="/admin/users">Open users</a>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mt-2 small text-muted">
+            <span><strong class="text-body">Promotion code:</strong> @Model.PromotionCode</span>
+            <span><strong class="text-body">API:</strong> GET /api/admin/billing/promotions/launch-founder-offer/status</span>
+        </div>
+    </section>
+
+    <section class="form-section">
+        <div class="opportunity-row-head">
+            <h2>Recent claims</h2>
+            <span class="section-help">@Model.TotalCount total</span>
+        </div>
+
+        @if (Model.RecentClaims.Count == 0)
+        {
+            <p class="section-help">No users have claimed the launch founder offer yet.</p>
+        }
+        else
+        {
+            <div class="plan-list">
+                @foreach (var claim in Model.RecentClaims)
+                {
+                    <article class="plan-row plan-row-stack admin-list-row">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@claim.UserDisplayName</strong>
+                                <span>@claim.UserEmail</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                <span>@claim.RedeemedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</span>
+                                <span>@claim.ActiveGrantCount active grants</span>
+                                <span>Ends @FormatDate(claim.LatestGrantEndsAtUtc)</span>
+                            </div>
+                        </div>
+                        <div class="feature-code-list mt-2">
+                            @foreach (var planCode in claim.GrantedPlanCodes)
+                            {
+                                <span>@planCode</span>
+                            }
+                        </div>
+                        <div class="form-actions admin-row-actions mt-2">
+                            <a class="btn btn-outline-primary btn-sm" href="/admin/users/@claim.UserId">View user profile</a>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        @if (Model.TotalPages > 1)
+        {
+            <div class="form-actions mt-3">
+                @if (Model.Page > 1)
+                {
+                    <a class="btn btn-outline-secondary" href="@BuildPageUrl(Model.Page - 1)">Previous</a>
+                }
+                <span class="section-help">Page @Model.Page of @Model.TotalPages</span>
+                @if (Model.Page < Model.TotalPages)
+                {
+                    <a class="btn btn-outline-secondary" href="@BuildPageUrl(Model.Page + 1)">Next</a>
+                }
+            </div>
+        }
+    </section>
+</section>
+
+@functions {
+    private static string FormatDate(DateTime? dateTime)
+    {
+        return dateTime is null
+            ? "None"
+            : dateTime.Value.ToLocalTime().ToString("MMM d, yyyy");
+    }
+
+    private string BuildPageUrl(int page)
+    {
+        return $"/admin/promotions?page={page}&pageSize={Model.PageSize}";
+    }
+}

@@ -65,6 +65,7 @@ public sealed class AdminCenterPageTests
         var (teamId, opportunityId) = SeedTeamOpportunity(factory, teamOwner.Id, sportId, "Admin UI Aces", "Admin UI reported tryout");
         var reportId = SeedListingReport(factory, reporter.Id, playerListingId: playerListingId);
         SeedListingReport(factory, reporter.Id, opportunityId: opportunityId);
+        SeedLaunchPromotionClaim(factory, owner.Id);
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false
@@ -73,6 +74,8 @@ public sealed class AdminCenterPageTests
         await LoginWebUserAsync(client, admin.Email!);
 
         await AssertPageContainsAsync(client, "/admin", "Admin center");
+        await AssertPageContainsAsync(client, "/admin/promotions", owner.Email!);
+        await AssertPageContainsAsync(client, "/admin/promotions", "Claims remaining");
         await AssertPageContainsAsync(client, "/admin/reports", "Admin UI reported pickup listing");
         await AssertPageContainsAsync(client, $"/admin/reports/{reportId}", "Review action");
         await AssertPageContainsAsync(client, "/admin/users", owner.Email!);
@@ -484,5 +487,38 @@ public sealed class AdminCenterPageTests
         dbContext.ListingReports.Add(report);
         dbContext.SaveChanges();
         return report.Id;
+    }
+
+    private static void SeedLaunchPromotionClaim(TryOutSpotWebApplicationFactory factory, Guid userId)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+        var endsAt = now.AddMonths(TryOutSpotPromotionCodes.LaunchFirst1000GrantMonths);
+
+        dbContext.ComplimentaryPlanGrants.Add(new ComplimentaryPlanGrant
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            PlanType = TryOutSpotPlanCodes.PremiumPlayer,
+            ScopeType = TryOutSpotSubscriptionScopeTypes.Account,
+            StartsAt = now,
+            EndsAt = endsAt,
+            Source = TryOutSpotPromotionCodes.LaunchPromotionGrantSource,
+            PromotionCode = TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths,
+            Reason = "Launch promotion: first 1000 users receive two free months.",
+            GrantedByUserId = userId,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        dbContext.PromotionRedemptions.Add(new PromotionRedemption
+        {
+            Id = Guid.NewGuid(),
+            PromotionCode = TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths,
+            UserId = userId,
+            GrantedPlanCodes = TryOutSpotPlanCodes.PremiumPlayer,
+            RedeemedAt = now
+        });
+        dbContext.SaveChanges();
     }
 }

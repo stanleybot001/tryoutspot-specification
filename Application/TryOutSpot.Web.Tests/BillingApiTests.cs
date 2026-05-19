@@ -184,6 +184,40 @@ public sealed class BillingApiTests
     }
 
     [Fact]
+    public async Task AdminLaunchFounderOfferStatus_ReturnsClaimCountsAndRecentClaims()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync(
+            "launch-status-parent-team@example.com",
+            [TryOutSpotRoles.Parent, TryOutSpotRoles.TeamRepresentative]);
+        var userClient = await CreateAuthorizedClientAsync(factory, user.Email!);
+        var claimResponse = await userClient.PostAsync("/api/billing/promotions/launch-founder-offer/claim", null);
+        claimResponse.EnsureSuccessStatusCode();
+
+        var adminClient = await CreateAdminClientAsync(factory);
+        var response = await adminClient.GetAsync("/api/admin/billing/promotions/launch-founder-offer/status?limit=10");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var status = await response.Content.ReadFromJsonAsync<LaunchPromotionStatusResponse>();
+
+        Assert.NotNull(status);
+        Assert.Equal(TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths, status.PromotionCode);
+        Assert.Equal(1, status.ClaimedCount);
+        Assert.Equal(TryOutSpotPromotionCodes.LaunchFirst1000MaxRedemptions - 1, status.RemainingCount);
+        Assert.Equal(TryOutSpotPromotionCodes.LaunchFirst1000MaxRedemptions, status.MaxClaims);
+        Assert.Equal(2, status.ActiveGrantCount);
+        Assert.Single(status.RecentClaims);
+
+        var claim = status.RecentClaims.Single();
+        Assert.Equal(user.Id, claim.UserId);
+        Assert.Equal(user.Email, claim.UserEmail);
+        Assert.Equal(2, claim.ActiveGrantCount);
+        Assert.Contains(TryOutSpotPlanCodes.PremiumPlayer, claim.GrantedPlanCodes);
+        Assert.Contains(TryOutSpotPlanCodes.TeamBasic, claim.GrantedPlanCodes);
+        Assert.NotNull(claim.LatestGrantEndsAt);
+    }
+
+    [Fact]
     public async Task LaunchFounderOffer_SecondClaimReturnsExistingPromotionGrants()
     {
         await using var factory = CreateFactoryWithStripe();

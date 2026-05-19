@@ -4,6 +4,7 @@
 
 <nav class="admin-subnav" aria-label="Admin navigation">
     <a class="@(string.Equals(action, "Index", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin">Overview</a>
+    <a class="@(string.Equals(action, "Promotions", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin/promotions">Promotions</a>
     <a class="@(string.Equals(action, "Reports", StringComparison.OrdinalIgnoreCase) || string.Equals(action, "ReportDetail", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin/reports">Reports</a>
     <a class="@(string.Equals(action, "Users", StringComparison.OrdinalIgnoreCase) || string.Equals(action, "UserDetail", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin/users">Users</a>
     <a class="@(string.Equals(action, "Teams", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin/teams">Teams</a>

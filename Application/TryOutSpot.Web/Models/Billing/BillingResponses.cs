@@ -125,6 +125,32 @@ public sealed record PromotionClaimResponse(
     IReadOnlyCollection<ComplimentaryPlanGrantResponse> Grants);
 
 /// <summary>
+/// Platform admin status summary for the launch founder promotion.
+/// </summary>
+public sealed record LaunchPromotionStatusResponse(
+    string PromotionCode,
+    int ClaimedCount,
+    int RemainingCount,
+    int MaxClaims,
+    int ActiveGrantCount,
+    DateTime? LatestGrantEndsAt,
+    int Limit,
+    int Offset,
+    IReadOnlyCollection<LaunchPromotionClaimResponse> RecentClaims);
+
+/// <summary>
+/// Platform admin claim summary for a launch founder promotion redemption.
+/// </summary>
+public sealed record LaunchPromotionClaimResponse(
+    Guid UserId,
+    string UserDisplayName,
+    string UserEmail,
+    IReadOnlyCollection<string> GrantedPlanCodes,
+    int ActiveGrantCount,
+    DateTime? LatestGrantEndsAt,
+    DateTime RedeemedAt);
+
+/// <summary>
 /// Request to create a Stripe Checkout subscription session.
 /// </summary>
 public sealed record CreateCheckoutSessionRequest(

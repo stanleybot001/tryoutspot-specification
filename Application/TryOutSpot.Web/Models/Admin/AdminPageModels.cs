@@ -11,6 +11,40 @@ public sealed record AdminDashboardPageModel(
     int ActiveTeamOpportunityCount,
     IReadOnlyCollection<AdminReportListItem> RecentReports);
 
+public sealed class AdminPromotionsPageModel
+{
+    public string PromotionCode { get; set; } = string.Empty;
+
+    public int ClaimedCount { get; set; }
+
+    public int RemainingCount { get; set; }
+
+    public int MaxClaims { get; set; }
+
+    public int ActiveGrantCount { get; set; }
+
+    public DateTime? LatestGrantEndsAtUtc { get; set; }
+
+    public IReadOnlyCollection<AdminPromotionClaimItem> RecentClaims { get; set; } = [];
+
+    public int Page { get; set; }
+
+    public int PageSize { get; set; }
+
+    public int TotalCount { get; set; }
+
+    public int TotalPages { get; set; }
+}
+
+public sealed record AdminPromotionClaimItem(
+    Guid UserId,
+    string UserDisplayName,
+    string UserEmail,
+    IReadOnlyCollection<string> GrantedPlanCodes,
+    int ActiveGrantCount,
+    DateTime? LatestGrantEndsAtUtc,
+    DateTime RedeemedAtUtc);
+
 public sealed class AdminReportListPageModel
 {
     public IReadOnlyCollection<AdminReportListItem> Reports { get; set; } = [];

@@ -314,6 +314,7 @@ builder.Services.AddScoped<IDashboardActivityService, DashboardActivityService>(
 builder.Services.AddScoped<IZipRadiusSearchService, ZipRadiusSearchService>();
 builder.Services.AddScoped<IStripeBillingService, StripeBillingService>();
 builder.Services.AddScoped<IStripeSubscriptionSyncService, StripeSubscriptionSyncService>();
+builder.Services.AddScoped<ILaunchPromotionStatusService, LaunchPromotionStatusService>();
 builder.Services.AddScoped<IAccountTypeChangeWorkflowService, AccountTypeChangeWorkflowService>();
 builder.Services.AddScoped<IPdfStorageService, R2PdfStorageService>();
 builder.Services.AddScoped<IImageStorageService, R2ImageStorageService>();
