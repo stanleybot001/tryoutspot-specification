@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -222,9 +223,7 @@ if (googleAuthentication.IsConfigured)
         };
         options.Events.OnRemoteFailure = context =>
         {
-            context.HandleResponse();
-            context.Response.Redirect("/account/login?externalLoginStatus=failed");
-            return Task.CompletedTask;
+            return HandleExternalLoginRemoteFailureAsync(context, TryOutSpotSocialLoginProviders.Google);
         };
     });
 }
@@ -238,10 +237,6 @@ if (HasConfiguredValue(facebookAuthentication["AppId"]) && HasConfiguredValue(fa
         options.AppId = facebookAuthentication["AppId"]!;
         options.AppSecret = facebookAuthentication["AppSecret"]!;
         options.CallbackPath = facebookAuthentication["CallbackPath"] ?? "/signin-facebook";
-        options.Fields.Add("first_name");
-        options.Fields.Add("last_name");
-        options.Fields.Add("verified");
-        options.Fields.Add("is_verified");
         options.Events.OnCreatingTicket = context =>
         {
             if (context.User.TryGetProperty("first_name", out var firstName))
@@ -254,22 +249,11 @@ if (HasConfiguredValue(facebookAuthentication["AppId"]) && HasConfiguredValue(fa
                 context.Identity?.AddClaim(new Claim(ClaimTypes.Surname, lastName.GetString() ?? string.Empty));
             }
 
-            if (context.User.TryGetProperty("verified", out var verified))
-            {
-                context.Identity?.AddClaim(new Claim("urn:facebook:email_verified", verified.GetRawText().Trim('"')));
-            }
-            else if (context.User.TryGetProperty("is_verified", out var isVerified))
-            {
-                context.Identity?.AddClaim(new Claim("urn:facebook:email_verified", isVerified.GetRawText().Trim('"')));
-            }
-
             return Task.CompletedTask;
         };
         options.Events.OnRemoteFailure = context =>
         {
-            context.HandleResponse();
-            context.Response.Redirect("/account/login?externalLoginStatus=failed");
-            return Task.CompletedTask;
+            return HandleExternalLoginRemoteFailureAsync(context, TryOutSpotSocialLoginProviders.Facebook);
         };
     });
 }
@@ -461,6 +445,23 @@ static string SelectAuthenticationScheme(HttpContext context)
     return authorizationHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
         ? JwtBearerDefaults.AuthenticationScheme
         : TryOutSpotAuthenticationSchemes.WebCookie;
+}
+
+static Task HandleExternalLoginRemoteFailureAsync(RemoteFailureContext context, string provider)
+{
+    var logger = context.HttpContext.RequestServices
+        .GetRequiredService<ILoggerFactory>()
+        .CreateLogger("TryOutSpot.SocialLogin");
+    logger.LogWarning(
+        context.Failure,
+        "{Provider} social login failed during the remote authentication callback. FailureType={FailureType} FailureMessage={FailureMessage}",
+        provider,
+        context.Failure?.GetType().Name ?? "(none)",
+        context.Failure?.Message ?? "(none)");
+
+    context.HandleResponse();
+    context.Response.Redirect("/account/login?externalLoginStatus=failed");
+    return Task.CompletedTask;
 }
 
 public partial class Program;

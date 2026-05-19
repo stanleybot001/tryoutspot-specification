@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Authentication.Facebook;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -125,6 +126,22 @@ public sealed class AccountPageTests
         Assert.Contains("Facebook sign-in may not work inside this app", html);
         Assert.Contains("Open in Chrome", html);
         Assert.Contains("intent://", html);
+    }
+
+    [Fact]
+    public void FacebookConfiguration_DoesNotRequestVerificationProfileFields()
+    {
+        using var factory = CreateFactoryWithGoogleAndFacebookConfiguration();
+
+        var options = factory.Services
+            .GetRequiredService<IOptionsMonitor<FacebookOptions>>()
+            .Get(TryOutSpotSocialLoginProviders.Facebook);
+
+        Assert.Contains("email", options.Fields);
+        Assert.Contains("first_name", options.Fields);
+        Assert.Contains("last_name", options.Fields);
+        Assert.DoesNotContain("verified", options.Fields);
+        Assert.DoesNotContain("is_verified", options.Fields);
     }
 
     [Fact]
