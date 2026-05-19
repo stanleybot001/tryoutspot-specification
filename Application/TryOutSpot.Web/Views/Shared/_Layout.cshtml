@@ -1,10 +1,91 @@
 ﻿<!DOCTYPE html>
+@{
+    var rawTitle = (ViewData["SeoTitle"] as string) ?? (ViewData["Title"] as string) ?? "TryOutSpot";
+    var pageTitle = rawTitle.Contains("TryOutSpot", StringComparison.OrdinalIgnoreCase)
+        ? rawTitle
+        : $"{rawTitle} - TryOutSpot";
+    var metaDescription = ViewData["MetaDescription"] as string;
+    var robots = ViewData["Robots"] as string;
+    var requestBaseUrl = $"{Context.Request.Scheme}://{Context.Request.Host}{Context.Request.PathBase}";
+    var canonicalUrl = ViewData["CanonicalUrl"] as string;
+    var canonicalPath = ViewData["CanonicalPath"] as string;
+
+    if (string.IsNullOrWhiteSpace(canonicalUrl) && !string.IsNullOrWhiteSpace(canonicalPath))
+    {
+        if (Uri.IsWellFormedUriString(canonicalPath, UriKind.Absolute))
+        {
+            canonicalUrl = canonicalPath;
+        }
+        else
+        {
+            var resolvedCanonicalPath = Url.Content(canonicalPath);
+            canonicalUrl = resolvedCanonicalPath.StartsWith("/", StringComparison.Ordinal)
+                ? $"{requestBaseUrl}{resolvedCanonicalPath}"
+                : $"{requestBaseUrl}/{resolvedCanonicalPath}";
+        }
+    }
+    else if (!string.IsNullOrWhiteSpace(canonicalUrl) && !Uri.IsWellFormedUriString(canonicalUrl, UriKind.Absolute))
+    {
+        var resolvedCanonicalUrl = Url.Content(canonicalUrl);
+        canonicalUrl = resolvedCanonicalUrl.StartsWith("/", StringComparison.Ordinal)
+            ? $"{requestBaseUrl}{resolvedCanonicalUrl}"
+            : $"{requestBaseUrl}/{resolvedCanonicalUrl}";
+    }
+
+    var openGraphTitle = (ViewData["OpenGraphTitle"] as string) ?? pageTitle;
+    var openGraphDescription = (ViewData["OpenGraphDescription"] as string) ?? metaDescription;
+    var openGraphType = (ViewData["OpenGraphType"] as string) ?? "website";
+    var openGraphImageValue = (ViewData["OpenGraphImage"] as string) ?? "~/logo/MainLogoSized.png";
+    var openGraphImage = openGraphImageValue;
+    if (!Uri.IsWellFormedUriString(openGraphImageValue, UriKind.Absolute))
+    {
+        var resolvedOpenGraphImage = Url.Content(openGraphImageValue);
+        openGraphImage = resolvedOpenGraphImage.StartsWith("/", StringComparison.Ordinal)
+            ? $"{requestBaseUrl}{resolvedOpenGraphImage}"
+            : $"{requestBaseUrl}/{resolvedOpenGraphImage}";
+    }
+    var hasSocialMetadata = !string.IsNullOrWhiteSpace(openGraphDescription);
+}
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - TryOutSpot</title>
+    <title>@pageTitle</title>
+    @if (!string.IsNullOrWhiteSpace(metaDescription))
+    {
+        <meta name="description" content="@metaDescription" />
+    }
+    @if (!string.IsNullOrWhiteSpace(robots))
+    {
+        <meta name="robots" content="@robots" />
+    }
+    @if (!string.IsNullOrWhiteSpace(canonicalUrl))
+    {
+        <link rel="canonical" href="@canonicalUrl" />
+    }
+    @if (hasSocialMetadata)
+    {
+        <meta property="og:site_name" content="TryOutSpot" />
+        <meta property="og:title" content="@openGraphTitle" />
+        <meta property="og:description" content="@openGraphDescription" />
+        <meta property="og:type" content="@openGraphType" />
+        @if (!string.IsNullOrWhiteSpace(canonicalUrl))
+        {
+            <meta property="og:url" content="@canonicalUrl" />
+        }
+        <meta property="og:image" content="@openGraphImage" />
+        <meta property="og:image:alt" content="TryOutSpot logo" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="@openGraphTitle" />
+        <meta name="twitter:description" content="@openGraphDescription" />
+        <meta name="twitter:image" content="@openGraphImage" />
+    }
     <script type="importmap"></script>
+    <link rel="manifest" href="~/site.webmanifest" />
+    <link rel="apple-touch-icon" sizes="180x180" href="~/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="~/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="~/favicon-16x16.png" />
+    @await RenderSectionAsync("Head", required: false)
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/TryOutSpot.Web.styles.css" asp-append-version="true" />

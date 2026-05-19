@@ -1,5 +1,40 @@
 @{
-    ViewData["Title"] = "Home Page";
+    ViewData["Title"] = "Baseball and Softball Tryouts, Teams, and Player Profiles";
+    ViewData["SeoTitle"] = "TryOutSpot | Baseball and Softball Tryouts, Teams, and Player Profiles";
+    ViewData["MetaDescription"] = "Find baseball and softball tryouts, roster openings, team opportunities, and player profiles with TryOutSpot. Connect players, parents, coaches, and organizations in one trusted platform.";
+    ViewData["CanonicalPath"] = "/";
+    ViewData["Robots"] = "index,follow";
+    ViewData["OpenGraphType"] = "website";
+
+    var homePageUrl = $"{Context.Request.Scheme}://{Context.Request.Host}/";
+    var logoUrl = $"{Context.Request.Scheme}://{Context.Request.Host}{Url.Content("~/logo/MainLogoSized.png")}";
+    var websiteJsonLd = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
+    {
+        ["@context"] = "https://schema.org",
+        ["@type"] = "WebSite",
+        ["name"] = "TryOutSpot",
+        ["alternateName"] = "TryoutSpot",
+        ["url"] = homePageUrl,
+        ["description"] = ViewData["MetaDescription"]
+    });
+    var organizationJsonLd = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
+    {
+        ["@context"] = "https://schema.org",
+        ["@type"] = "Organization",
+        ["name"] = "TryOutSpot",
+        ["url"] = homePageUrl,
+        ["logo"] = logoUrl,
+        ["description"] = ViewData["MetaDescription"]
+    });
+}
+
+@section Head {
+    <script type="application/ld+json">
+        @Html.Raw(websiteJsonLd)
+    </script>
+    <script type="application/ld+json">
+        @Html.Raw(organizationJsonLd)
+    </script>
 }
 
 <div class="startpage-wrap">
@@ -20,13 +55,13 @@
             <div class="start-hero-main">
                 <div class="start-hero-copy">
                     <p class="start-kicker">Competitive Baseball and Softball</p>
-                    <h1>Play Up. Get Seen. Find Your Next Team.</h1>
+                    <h1>Baseball and Softball Tryouts, Teams, and Player Profiles</h1>
                     <p>
-                        Built for families who want high-level opportunities and for organizations
-                        looking to connect with serious athletes.
+                        Find tryouts, roster openings, and team opportunities built for families,
+                        coaches, academies, and organizations ready to connect.
                     </p>
                     <section class="start-selling-points" aria-label="Platform selling points">
-                        <h2>Why TryOutSpot</h2>
+                        <h2>Find Tryouts and Roster Openings Near You</h2>
                         <ul>
                             <li>List your tryout and reach serious local players.</li>
                             <li>Search for team spots by age group, level, and location.</li>
