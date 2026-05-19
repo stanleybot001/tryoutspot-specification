@@ -77,6 +77,7 @@ public sealed class AdminCenterPageTests
         await AssertPageContainsAsync(client, "/admin/promotions", owner.Email!);
         await AssertPageContainsAsync(client, "/admin/promotions", "Claims remaining");
         await AssertPageContainsAsync(client, "/admin/promotions", "Promotion settings");
+        await AssertPageContainsAsync(client, "/admin/promotions", "Offer visibility");
         await AssertPageContainsAsync(client, "/admin/promotions", "Reset promo counter");
         await AssertPageContainsAsync(client, "/admin/reports", "Admin UI reported pickup listing");
         await AssertPageContainsAsync(client, $"/admin/reports/{reportId}", "Review action");
@@ -94,6 +95,7 @@ public sealed class AdminCenterPageTests
             [
                 new("__RequestVerificationToken", promotionToken),
                 new("Name", "Admin UI launch wave"),
+                new("IsEnabled", "true"),
                 new("MaxRedemptions", "7"),
                 new("GrantMonths", "3")
             ]));

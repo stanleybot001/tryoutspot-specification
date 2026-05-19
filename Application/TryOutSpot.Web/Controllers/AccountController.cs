@@ -40,6 +40,7 @@ public sealed class AccountController(
     IStripeBillingService stripeBillingService,
     IStripeSubscriptionSyncService stripeSubscriptionSyncService,
     IAccountTypeChangeWorkflowService accountTypeChangeWorkflowService,
+    ILaunchPromotionStatusService launchPromotionStatusService,
     IOptions<GoogleAuthenticationOptions> googleOptions,
     IOptions<StripeBillingOptions> stripeOptions) : Controller
 {
@@ -911,6 +912,32 @@ public sealed class AccountController(
         TempData["StatusMessage"] = string.IsNullOrWhiteSpace(normalizationMessage)
             ? result.Message
             : $"{normalizationMessage} {result.Message}";
+        return RedirectToAction(nameof(Onboarding));
+    }
+
+    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [HttpPost("promotions/launch-founder-offer/claim")]
+    public async Task<IActionResult> ClaimLaunchFounderOfferPromotion(CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Onboarding)) });
+        }
+
+        if (!user.EmailConfirmed)
+        {
+            TempData["StatusMessage"] = "Verify your email address before claiming the founder offer.";
+            return RedirectToAction(nameof(Onboarding));
+        }
+
+        var roles = await GetCanonicalPublicRolesAsync(user);
+        var result = await launchPromotionStatusService.ClaimLaunchFounderOfferAsync(
+            user.Id,
+            roles,
+            cancellationToken);
+
+        TempData["StatusMessage"] = BuildLaunchPromotionClaimMessage(result);
         return RedirectToAction(nameof(Onboarding));
     }
 
@@ -6037,6 +6064,11 @@ public sealed class AccountController(
             || entitlements?.FeatureCodes.Contains(
                 TryOutSpotFeatureCodes.UnlimitedOpportunityPostings,
                 StringComparer.Ordinal) == true;
+        var launchPromotion = await BuildLaunchPromotionPageItemAsync(
+            user.Id,
+            roles,
+            user.EmailConfirmed,
+            cancellationToken);
 
         var steps = new List<OnboardingStepPageItem>
         {
@@ -6121,6 +6153,7 @@ public sealed class AccountController(
             AvailableAccountTypes = GetAccountTypeOptions(roles),
             RecommendedPlans = recommendedPlans,
             ShowRecommendedPlans = !hasCompletedPlanSelection,
+            LaunchPromotion = launchPromotion,
             FeatureCodes = entitlements?.FeatureCodes ?? [],
             ShowTryoutRegistrationList = hasPlayerOrParentRole,
             UpcomingTryoutRegistrations = upcomingTryoutRegistrations,
@@ -6128,6 +6161,78 @@ public sealed class AccountController(
             FavoriteOpportunities = favoriteOpportunities,
             RecentActivity = recentActivity,
             Steps = steps
+        };
+    }
+
+    private async Task<LaunchPromotionPageItem?> BuildLaunchPromotionPageItemAsync(
+        Guid userId,
+        IReadOnlyCollection<string> roles,
+        bool emailConfirmed,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var availability = await launchPromotionStatusService.GetLaunchFounderOfferAvailabilityAsync(
+                userId,
+                roles,
+                cancellationToken);
+            return ToLaunchPromotionPageItem(availability, emailConfirmed);
+        }
+        catch (PostgresException exception) when (IsUndefinedTableException(exception))
+        {
+            return null;
+        }
+    }
+
+    private static LaunchPromotionPageItem? ToLaunchPromotionPageItem(
+        LaunchPromotionAvailability availability,
+        bool emailConfirmed)
+    {
+        if (!availability.IsEnabled)
+        {
+            return null;
+        }
+
+        if (!availability.IsEligibleForCurrentAccountType && !availability.HasAlreadyClaimed)
+        {
+            return null;
+        }
+
+        if ((availability.IsExhausted || availability.HasActiveAccessForEligiblePlans)
+            && !availability.HasAlreadyClaimed)
+        {
+            return null;
+        }
+
+        var planNames = availability.EligiblePlanCodes
+            .Select(planCode => TryOutSpotBillingCatalog.GetPlan(planCode)?.Name ?? planCode)
+            .ToArray();
+        var canClaim = availability.CanClaim && emailConfirmed;
+
+        return new LaunchPromotionPageItem(
+            availability.PromotionName,
+            availability.GrantMonths,
+            availability.RemainingCount,
+            canClaim,
+            !emailConfirmed && availability.CanClaim,
+            availability.HasAlreadyClaimed,
+            availability.ExistingClaimEndsAtUtc,
+            planNames);
+    }
+
+    private static string BuildLaunchPromotionClaimMessage(LaunchPromotionClaimResult result)
+    {
+        return result.Status switch
+        {
+            LaunchPromotionClaimResultStatus.Claimed => result.EndsAt is null
+                ? "Founder offer applied. Your complimentary access is active."
+                : $"Founder offer applied. Your complimentary access is active through {result.EndsAt.Value.ToLocalTime():MMM d, yyyy}.",
+            LaunchPromotionClaimResultStatus.AlreadyClaimed => "Founder offer already claimed for this account.",
+            LaunchPromotionClaimResultStatus.NoEligibleAccountType => "Choose a parent/player or team representative account type before claiming the founder offer.",
+            LaunchPromotionClaimResultStatus.PromotionDisabled => "The founder offer is not active right now.",
+            LaunchPromotionClaimResultStatus.PromotionExhausted => "The founder offer has no claims remaining.",
+            LaunchPromotionClaimResultStatus.AlreadyHasAccess => "Your account already has active access for the founder offer plans.",
+            _ => "The founder offer could not be applied. Please try again."
         };
     }
 

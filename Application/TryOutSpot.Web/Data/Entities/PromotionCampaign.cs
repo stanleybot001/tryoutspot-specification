@@ -14,6 +14,8 @@ public partial class PromotionCampaign
 
     public bool IsActive { get; set; }
 
+    public bool IsEnabled { get; set; } = true;
+
     public Guid? CreatedByUserId { get; set; }
 
     public Guid? UpdatedByUserId { get; set; }

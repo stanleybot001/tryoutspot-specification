@@ -125,11 +125,31 @@ public sealed record PromotionClaimResponse(
     IReadOnlyCollection<ComplimentaryPlanGrantResponse> Grants);
 
 /// <summary>
+/// Authenticated user-facing availability summary for the launch founder promotion.
+/// </summary>
+public sealed record LaunchPromotionAvailabilityResponse(
+    string PromotionCode,
+    string PromotionName,
+    bool IsEnabled,
+    bool IsEligibleForCurrentAccountType,
+    bool CanClaim,
+    bool HasAlreadyClaimed,
+    bool IsExhausted,
+    bool HasActiveAccessForEligiblePlans,
+    int ClaimedCount,
+    int RemainingCount,
+    int MaxClaims,
+    int GrantMonths,
+    DateTime? ExistingClaimEndsAt,
+    IReadOnlyCollection<string> EligiblePlanCodes);
+
+/// <summary>
 /// Platform admin status summary for the launch founder promotion.
 /// </summary>
 public sealed record LaunchPromotionStatusResponse(
     string PromotionCode,
     string PromotionName,
+    bool IsEnabled,
     int ClaimedCount,
     int RemainingCount,
     int MaxClaims,
@@ -146,7 +166,8 @@ public sealed record LaunchPromotionStatusResponse(
 public sealed record LaunchPromotionSettingsRequest(
     string? Name,
     int MaxRedemptions,
-    int GrantMonths);
+    int GrantMonths,
+    bool IsEnabled = true);
 
 /// <summary>
 /// Platform admin claim summary for a launch founder promotion redemption.

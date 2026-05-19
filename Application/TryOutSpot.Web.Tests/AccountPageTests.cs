@@ -316,6 +316,95 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task Onboarding_LaunchPromotionClaim_AppearsAfterAccountTypeSelection()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("web-onboarding-launch-promo@example.com", []);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        await LoginWebUserAsync(client, user.Email!);
+        var onboardingResponse = await client.GetAsync("/account/onboarding");
+
+        Assert.Equal(HttpStatusCode.OK, onboardingResponse.StatusCode);
+        var html = await onboardingResponse.Content.ReadAsStringAsync();
+        Assert.Contains("name=\"playerParentRole\"", html);
+        Assert.DoesNotContain("Claim free months", html);
+
+        var accountTypeToken = await GetAntiForgeryTokenAsync(client, "/account/onboarding");
+        var accountTypeResponse = await client.PostAsync(
+            "/account/onboarding/account-types",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", accountTypeToken),
+                new("playerParentRole", TryOutSpotRoles.Parent),
+                new("teamRole", string.Empty)
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, accountTypeResponse.StatusCode);
+        Assert.Equal("/account/onboarding", accountTypeResponse.Headers.Location?.ToString());
+
+        var claimPageResponse = await client.GetAsync("/account/onboarding");
+        Assert.Equal(HttpStatusCode.OK, claimPageResponse.StatusCode);
+        var claimPageHtml = await claimPageResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Claim free months", claimPageHtml);
+
+        var claimToken = await GetAntiForgeryTokenAsync(client, "/account/onboarding");
+        var claimResponse = await client.PostAsync(
+            "/account/promotions/launch-founder-offer/claim",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", claimToken)
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, claimResponse.StatusCode);
+        Assert.Equal("/account/onboarding", claimResponse.Headers.Location?.ToString());
+
+        var claimedPageResponse = await client.GetAsync("/account/onboarding");
+        Assert.Equal(HttpStatusCode.OK, claimedPageResponse.StatusCode);
+        var claimedPageHtml = await claimedPageResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Founder offer applied.", claimedPageHtml);
+        Assert.Contains("Founder offer claimed.", claimedPageHtml);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(1, await dbContext.PromotionRedemptions.CountAsync(redemption => redemption.UserId == user.Id));
+        Assert.Equal(1, await dbContext.ComplimentaryPlanGrants.CountAsync(grant =>
+            grant.UserId == user.Id
+            && grant.PlanType == TryOutSpotPlanCodes.PremiumPlayer
+            && grant.PromotionCode == TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths));
+    }
+
+    [Fact]
+    public async Task Onboarding_HidesLaunchPromotionWhenDisabled()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("web-onboarding-launch-disabled@example.com", [TryOutSpotRoles.Parent]);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var campaign = await dbContext.PromotionCampaigns.SingleAsync(campaign => campaign.IsActive);
+            campaign.IsEnabled = false;
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        await LoginWebUserAsync(client, user.Email!);
+        var response = await client.GetAsync("/account/onboarding");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("Claim free months", html);
+        Assert.DoesNotContain("Founder offer", html);
+    }
+
+    [Fact]
     public async Task Onboarding_WithCompletedTeamOrganizationDetails_UsesEverydayDashboardCopy()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();

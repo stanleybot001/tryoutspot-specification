@@ -17,6 +17,8 @@ public sealed class AdminPromotionsPageModel
 
     public string PromotionName { get; set; } = string.Empty;
 
+    public bool IsEnabled { get; set; }
+
     public int ClaimedCount { get; set; }
 
     public int RemainingCount { get; set; }
@@ -44,6 +46,8 @@ public sealed class AdminPromotionSettingsForm
 {
     [MaxLength(200)]
     public string? Name { get; set; }
+
+    public bool IsEnabled { get; set; } = true;
 
     [Range(1, 100000)]
     public int MaxRedemptions { get; set; }

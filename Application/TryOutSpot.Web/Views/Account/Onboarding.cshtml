@@ -188,6 +188,48 @@
                 </form>
             </section>
         }
+
+        @if (Model.LaunchPromotion is { } launchPromotion)
+        {
+            <section class="form-section" id="founder-offer">
+                <div class="opportunity-row-head">
+                    <div>
+                        <h2>@launchPromotion.PromotionName</h2>
+                        <p class="section-help">
+                            @launchPromotion.GrantMonths free month(s)
+                            @if (launchPromotion.PlanNames.Count > 0)
+                            {
+                                <span>for @string.Join(" and ", launchPromotion.PlanNames)</span>
+                            }
+                        </p>
+                    </div>
+                    <span class="section-help">@launchPromotion.RemainingCount claims remaining</span>
+                </div>
+
+                @if (launchPromotion.HasAlreadyClaimed)
+                {
+                    <p class="section-help">
+                        Founder offer claimed.
+                        @if (launchPromotion.ExistingClaimEndsAtUtc is not null)
+                        {
+                            <span>Complimentary access is active through @FormatPromoDate(launchPromotion.ExistingClaimEndsAtUtc).</span>
+                        }
+                    </p>
+                }
+                else if (launchPromotion.RequiresEmailConfirmation)
+                {
+                    <div class="form-actions">
+                        <a class="btn btn-outline-primary" href="/account/settings">Verify email to claim</a>
+                    </div>
+                }
+                else if (launchPromotion.CanClaim)
+                {
+                    <form asp-action="ClaimLaunchFounderOfferPromotion" asp-controller="Account" method="post" class="form-actions">
+                        <button type="submit" class="btn btn-primary">Claim free months</button>
+                    </form>
+                }
+            </section>
+        }
     </div>
 
     @if (Model.RecentActivity is not null)
@@ -363,6 +405,13 @@
     private static string FormatMonthlyAmount(decimal monthlyAmount)
     {
         return monthlyAmount <= 0 ? "Free" : $"{monthlyAmount:C0}/mo";
+    }
+
+    private static string FormatPromoDate(DateTime? value)
+    {
+        return value.HasValue
+            ? value.Value.ToLocalTime().ToString("MMM d, yyyy")
+            : "not set";
     }
 
     private bool TryGetStepOpenUrl(string stepCode, out string url)

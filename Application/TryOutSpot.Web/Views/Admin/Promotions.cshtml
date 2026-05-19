@@ -20,6 +20,10 @@
 
     <section class="account-summary-strip admin-summary-grid">
         <div>
+            <span>Status</span>
+            <strong>@(Model.IsEnabled ? "Enabled" : "Disabled")</strong>
+        </div>
+        <div>
             <span>Claims used</span>
             <strong>@Model.ClaimedCount</strong>
         </div>
@@ -49,7 +53,10 @@
         <div class="opportunity-row-head">
             <div>
                 <h2>@Model.PromotionName</h2>
-                <p class="section-help">@Model.MaxClaims eligible users get @Model.GrantMonths free month(s) when they claim the offer.</p>
+                <p class="section-help">
+                    @(Model.IsEnabled ? "Enabled" : "Disabled"):
+                    @Model.MaxClaims eligible users get @Model.GrantMonths free month(s) when they claim the offer.
+                </p>
             </div>
             <a class="btn btn-outline-primary btn-sm" href="/admin/users">Open users</a>
         </div>
@@ -70,6 +77,14 @@
 
         <form asp-action="UpdatePromotionSettings" asp-controller="Admin" method="post" class="stacked-form">
             <div class="form-grid two-column">
+                <div>
+                    <label class="form-label" for="promotion-enabled">Offer visibility</label>
+                    <label class="form-check">
+                        <input class="form-check-input" id="promotion-enabled" name="IsEnabled" type="checkbox" value="true" @(Model.IsEnabled ? "checked" : null) />
+                        <span>Enable the user-facing claim button and API claims</span>
+                    </label>
+                    <input type="hidden" name="IsEnabled" value="false" />
+                </div>
                 <div>
                     <label class="form-label" for="promotion-name">Name</label>
                     <input id="promotion-name" class="form-control" name="Name" maxlength="200" value="@Model.PromotionName" />

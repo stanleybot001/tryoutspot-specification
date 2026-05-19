@@ -84,6 +84,7 @@ public sealed class AdminController(
         {
             PromotionCode = status.PromotionCode,
             PromotionName = status.PromotionName,
+            IsEnabled = status.IsEnabled,
             ClaimedCount = status.ClaimedCount,
             RemainingCount = status.RemainingCount,
             MaxClaims = status.MaxClaims,
@@ -126,6 +127,7 @@ public sealed class AdminController(
             form.Name,
             form.MaxRedemptions,
             form.GrantMonths,
+            form.IsEnabled,
             adminUserId,
             cancellationToken);
 
@@ -152,6 +154,7 @@ public sealed class AdminController(
             form.Name,
             form.MaxRedemptions,
             form.GrantMonths,
+            form.IsEnabled,
             adminUserId,
             cancellationToken);
 

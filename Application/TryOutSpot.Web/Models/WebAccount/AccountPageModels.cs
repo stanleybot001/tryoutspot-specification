@@ -207,6 +207,8 @@ public sealed class OnboardingPageModel
 
     public bool ShowRecommendedPlans { get; set; } = true;
 
+    public LaunchPromotionPageItem? LaunchPromotion { get; set; }
+
     public IReadOnlyCollection<OnboardingStepPageItem> Steps { get; set; } = [];
 
     public IReadOnlyCollection<string> FeatureCodes { get; set; } = [];
@@ -1961,6 +1963,16 @@ public sealed record AccountTypeSelectionItem(
     string Description,
     bool IsCommonFirstChoice,
     bool IsSelected);
+
+public sealed record LaunchPromotionPageItem(
+    string PromotionName,
+    int GrantMonths,
+    int RemainingCount,
+    bool CanClaim,
+    bool RequiresEmailConfirmation,
+    bool HasAlreadyClaimed,
+    DateTime? ExistingClaimEndsAtUtc,
+    IReadOnlyCollection<string> PlanNames);
 
 public sealed record OnboardingStepPageItem(
     string Code,

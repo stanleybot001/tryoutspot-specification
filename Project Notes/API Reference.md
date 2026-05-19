@@ -975,6 +975,31 @@ Success response: `200 OK`
 
 Complimentary grants are local TryOutSpot entitlements. They do not create, update, or cancel Stripe subscriptions.
 
+### `GET /api/billing/promotions/launch-founder-offer/status`
+
+Returns the authenticated user's launch founder offer availability. Requires verified email. The dashboard uses the same campaign state server-side to decide whether to show the claim button after account type selection.
+
+Success response: `200 OK`
+
+```json
+{
+  "promotionCode": "launch_first_1000_two_months",
+  "promotionName": "Launch founder offer",
+  "isEnabled": true,
+  "isEligibleForCurrentAccountType": true,
+  "canClaim": true,
+  "hasAlreadyClaimed": false,
+  "isExhausted": false,
+  "hasActiveAccessForEligiblePlans": false,
+  "claimedCount": 1,
+  "remainingCount": 999,
+  "maxClaims": 1000,
+  "grantMonths": 2,
+  "existingClaimEndsAt": null,
+  "eligiblePlanCodes": ["premium_player"]
+}
+```
+
 ### `POST /api/billing/promotions/launch-founder-offer/claim`
 
 Claims the active launch founder offer for the authenticated user. Requires verified email. The default launch offer grants two free months to the first 1000 claiming users, and platform admins can adjust the active campaign limit and duration from `/admin/promotions`. Claims use local complimentary grants rather than Stripe subscriptions.
@@ -1018,7 +1043,7 @@ Success response: `200 OK`
 }
 ```
 
-Returns `409 Conflict` after the active campaign reaches its configured redemption limit. A repeat claim by the same user for the same active campaign returns `200 OK` with `claimed: false` and the existing grants.
+Returns `409 Conflict` when the campaign is disabled or after the active campaign reaches its configured redemption limit. A repeat claim by the same user for the same active campaign returns `200 OK` with `claimed: false` and the existing grants.
 
 ### `GET /api/admin/billing/promotions/launch-founder-offer/status`
 
@@ -1035,6 +1060,7 @@ Success response: `200 OK`
 {
   "promotionCode": "launch_first_1000_two_months",
   "promotionName": "Launch founder offer",
+  "isEnabled": true,
   "claimedCount": 1,
   "remainingCount": 999,
   "maxClaims": 1000,
@@ -1061,13 +1087,14 @@ The same status is available to platform admins in the web admin center at `/adm
 
 ### `POST /api/admin/billing/promotions/launch-founder-offer/settings`
 
-Updates the active launch promotion name, claim limit, and free-month duration for future claims. Requires `PlatformAdmin`.
+Updates the active launch promotion name, enabled flag, claim limit, and free-month duration for future claims. Requires `PlatformAdmin`.
 
 Request:
 
 ```json
 {
   "name": "Launch founder offer",
+  "isEnabled": true,
   "maxRedemptions": 1000,
   "grantMonths": 2
 }

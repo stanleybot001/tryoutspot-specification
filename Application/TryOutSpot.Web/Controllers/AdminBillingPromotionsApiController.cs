@@ -32,6 +32,7 @@ public sealed class AdminBillingPromotionsApiController(
         return Ok(new LaunchPromotionStatusResponse(
             status.PromotionCode,
             status.PromotionName,
+            status.IsEnabled,
             status.ClaimedCount,
             status.RemainingCount,
             status.MaxClaims,
@@ -73,6 +74,7 @@ public sealed class AdminBillingPromotionsApiController(
             request.Name,
             request.MaxRedemptions,
             request.GrantMonths,
+            request.IsEnabled,
             adminUserId,
             cancellationToken);
 
@@ -102,6 +104,7 @@ public sealed class AdminBillingPromotionsApiController(
             request.Name,
             request.MaxRedemptions,
             request.GrantMonths,
+            request.IsEnabled,
             adminUserId,
             cancellationToken);
 

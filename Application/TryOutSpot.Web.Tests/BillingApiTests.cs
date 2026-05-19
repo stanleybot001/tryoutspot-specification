@@ -203,6 +203,7 @@ public sealed class BillingApiTests
         Assert.NotNull(status);
         Assert.Equal(TryOutSpotPromotionCodes.LaunchFirst1000TwoMonths, status.PromotionCode);
         Assert.Equal(TryOutSpotPromotionCodes.LaunchFounderOfferName, status.PromotionName);
+        Assert.True(status.IsEnabled);
         Assert.Equal(1, status.ClaimedCount);
         Assert.Equal(TryOutSpotPromotionCodes.LaunchFirst1000MaxRedemptions - 1, status.RemainingCount);
         Assert.Equal(TryOutSpotPromotionCodes.LaunchFirst1000MaxRedemptions, status.MaxClaims);
@@ -233,6 +234,7 @@ public sealed class BillingApiTests
         var settings = await settingsResponse.Content.ReadFromJsonAsync<LaunchPromotionStatusResponse>();
         Assert.NotNull(settings);
         Assert.Equal("Spring beta offer", settings.PromotionName);
+        Assert.True(settings.IsEnabled);
         Assert.Equal(1, settings.MaxClaims);
         Assert.Equal(4, settings.GrantMonths);
 
@@ -258,6 +260,42 @@ public sealed class BillingApiTests
     }
 
     [Fact]
+    public async Task LaunchFounderOffer_DisabledCampaignBlocksAvailabilityAndClaims()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var adminClient = await CreateAdminClientAsync(factory);
+
+        var settingsResponse = await adminClient.PostAsJsonAsync(
+            "/api/admin/billing/promotions/launch-founder-offer/settings",
+            new LaunchPromotionSettingsRequest("Paused launch offer", 1000, 2, false));
+
+        Assert.Equal(HttpStatusCode.OK, settingsResponse.StatusCode);
+        var settings = await settingsResponse.Content.ReadFromJsonAsync<LaunchPromotionStatusResponse>();
+        Assert.NotNull(settings);
+        Assert.False(settings.IsEnabled);
+
+        var user = await factory.CreateUserAsync("launch-disabled-parent@example.com", [TryOutSpotRoles.Parent]);
+        var userClient = await CreateAuthorizedClientAsync(factory, user.Email!);
+        var availabilityResponse = await userClient.GetAsync("/api/billing/promotions/launch-founder-offer/status");
+
+        Assert.Equal(HttpStatusCode.OK, availabilityResponse.StatusCode);
+        var availability = await availabilityResponse.Content.ReadFromJsonAsync<LaunchPromotionAvailabilityResponse>();
+        Assert.NotNull(availability);
+        Assert.False(availability.IsEnabled);
+        Assert.True(availability.IsEligibleForCurrentAccountType);
+        Assert.False(availability.CanClaim);
+
+        var claimResponse = await userClient.PostAsync("/api/billing/promotions/launch-founder-offer/claim", null);
+
+        Assert.Equal(HttpStatusCode.Conflict, claimResponse.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(0, await dbContext.PromotionRedemptions.CountAsync(redemption => redemption.UserId == user.Id));
+        Assert.Equal(0, await dbContext.ComplimentaryPlanGrants.CountAsync(grant => grant.UserId == user.Id));
+    }
+
+    [Fact]
     public async Task AdminLaunchFounderOfferReset_StartsFreshCampaignCounter()
     {
         await using var factory = CreateFactoryWithStripe();
@@ -279,6 +317,7 @@ public sealed class BillingApiTests
         Assert.NotNull(resetStatus);
         Assert.NotEqual(firstClaim.PromotionCode, resetStatus.PromotionCode);
         Assert.Equal("Second launch wave", resetStatus.PromotionName);
+        Assert.True(resetStatus.IsEnabled);
         Assert.Equal(0, resetStatus.ClaimedCount);
         Assert.Equal(5, resetStatus.RemainingCount);
         Assert.Equal(5, resetStatus.MaxClaims);

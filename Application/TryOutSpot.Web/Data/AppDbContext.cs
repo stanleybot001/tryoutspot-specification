@@ -453,6 +453,7 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.GrantMonths).HasDefaultValue(TryOutSpotPromotionCodes.LaunchFirst1000GrantMonths);
             entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.IsEnabled).HasDefaultValue(true);
             entity.Property(e => e.MaxRedemptions).HasDefaultValue(TryOutSpotPromotionCodes.LaunchFirst1000MaxRedemptions);
             entity.Property(e => e.Name).HasMaxLength(200);
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
@@ -475,6 +476,7 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
                 MaxRedemptions = TryOutSpotPromotionCodes.LaunchFirst1000MaxRedemptions,
                 GrantMonths = TryOutSpotPromotionCodes.LaunchFirst1000GrantMonths,
                 IsActive = true,
+                IsEnabled = true,
                 CreatedAt = new DateTime(2026, 5, 19, 0, 0, 0, DateTimeKind.Utc),
                 UpdatedAt = new DateTime(2026, 5, 19, 0, 0, 0, DateTimeKind.Utc)
             });

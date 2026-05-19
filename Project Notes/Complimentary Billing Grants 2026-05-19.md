@@ -9,12 +9,14 @@ Implemented local billing grants so TryOutSpot can comp paid-plan access without
 - Revoked or expired grants no longer contribute features.
 - The first-1000 launch offer uses local grants for two months instead of Stripe coupons, so users can receive the startup promo without forcing immediate payment setup.
 - The launch offer is campaign-backed. Admins can update the active campaign limit/duration or reset to a fresh campaign code for a later promo wave.
+- The launch offer has an admin-controlled enabled flag. Disabled campaigns remain visible to admins for history, but user-facing availability and claim attempts are blocked.
+- The user-facing dashboard offer appears only after the account has a parent/player or team role, so the claim can grant the right plan family.
 - Admin user profiles include grant/revoke controls for account-scoped paid-plan access.
 
 ## Data
 
 - `PromotionCampaigns`
-  - Stores the active launch promotion campaign code, name, claim limit, free-month duration, active flag, and admin audit fields.
+  - Stores the active launch promotion campaign code, name, enabled flag, claim limit, free-month duration, active flag, and admin audit fields.
 - `ComplimentaryPlanGrants`
   - Stores user, plan, scope, start/end window, source, optional promotion code, admin reason, and revoke audit fields.
 - `PromotionRedemptions`
@@ -24,11 +26,13 @@ Implemented local billing grants so TryOutSpot can comp paid-plan access without
 
 - `POST /api/billing/promotions/launch-founder-offer/claim`
   - Authenticated verified users claim the two-month launch offer.
-  - Maximum launch redemptions: 1000.
+  - Claims are accepted only when the active campaign is enabled and has remaining redemptions.
+- `GET /api/billing/promotions/launch-founder-offer/status`
+  - Authenticated verified users can see whether the launch offer is enabled, eligible, already claimed, exhausted, or claimable for their current account type.
 - `GET /api/admin/billing/promotions/launch-founder-offer/status`
   - Platform admin status for total claims, remaining slots, active grant count, latest grant end, and recent claim details.
 - `POST /api/admin/billing/promotions/launch-founder-offer/settings`
-  - Updates the active campaign name, claim limit, and free-month duration for future claims.
+  - Updates the active campaign name, enabled flag, claim limit, and free-month duration for future claims.
 - `POST /api/admin/billing/promotions/launch-founder-offer/reset`
   - Starts a new active campaign code and resets the claim counter without revoking existing grants.
 - `GET /api/admin/billing/grants`
@@ -37,7 +41,7 @@ Implemented local billing grants so TryOutSpot can comp paid-plan access without
 
 ## Admin UI
 
-Platform admins can open `/admin/promotions` to monitor the launch offer, update claim limit/duration, or reset the campaign counter for a later promo wave.
+Platform admins can open `/admin/promotions` to monitor the launch offer, enable/disable user claims, update claim limit/duration, or reset the campaign counter for a later promo wave.
 
 Platform admins can open `/admin/users/{userId}` and manage complimentary access from the user's profile. The form supports:
 
