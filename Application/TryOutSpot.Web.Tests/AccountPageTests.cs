@@ -128,6 +128,66 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task LoginPost_ForPasswordlessGoogleAccount_ShowsProviderGuidance()
+    {
+        await using var factory = CreateFactoryWithGoogleConfiguration();
+        var email = $"passwordless-google-{Guid.NewGuid():N}@example.com";
+        await CreateSocialOnlyUserAsync(factory, email, TryOutSpotSocialLoginProviders.Google);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/login");
+
+        var response = await client.PostAsync(
+            "/account/login",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("Email", email),
+                new("Password", "Forgot2026"),
+                new("RememberMe", "true")
+            ]));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("This account was created with Google", html);
+        Assert.Contains("Use Continue with Google", html);
+        Assert.Contains("Forgot password", html);
+    }
+
+    [Fact]
+    public async Task RegisterPost_ForExistingPasswordlessGoogleAccount_ShowsProviderGuidance()
+    {
+        await using var factory = CreateFactoryWithGoogleConfiguration();
+        var email = $"duplicate-google-{Guid.NewGuid():N}@example.com";
+        await CreateSocialOnlyUserAsync(factory, email, TryOutSpotSocialLoginProviders.Google);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/register");
+
+        var response = await client.PostAsync(
+            "/account/register",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("Email", email),
+                new("Password", "Tryout2026"),
+                new("ConfirmPassword", "Tryout2026"),
+                new("FirstName", "Morgan"),
+                new("LastName", "Taylor"),
+                new("AccountTypes", TryOutSpotRoles.Parent)
+            ]));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("An account already exists for this email and uses Google sign-in", html);
+        Assert.Contains("Use Continue with Google", html);
+    }
+
+    [Fact]
     public async Task LoginAndRecoveryPages_RenderRequiredFields()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -149,6 +209,7 @@ public sealed class AccountPageTests
         Assert.Contains("name=\"Password\"", loginHtml);
         Assert.Contains("Forgot password?", loginHtml);
         Assert.Contains("name=\"Email\"", forgotPasswordHtml);
+        Assert.Contains("add an email/password sign-in to an account created with Google or Facebook", forgotPasswordHtml);
         Assert.Contains("name=\"NewPassword\"", resetPasswordHtml);
         Assert.Contains("name=\"ConfirmNewPassword\"", resetPasswordHtml);
     }
@@ -2108,6 +2169,42 @@ public sealed class AccountPageTests
         });
 
         await dbContext.SaveChangesAsync();
+    }
+
+    private static async Task<User> CreateSocialOnlyUserAsync(
+        WebApplicationFactory<Program> factory,
+        string email,
+        string provider)
+    {
+        using var scope = factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+        var now = DateTime.UtcNow;
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true,
+            FirstName = "Social",
+            LastName = "Only",
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true,
+            LockoutEnabled = true
+        };
+
+        var createResult = await userManager.CreateAsync(user);
+        Assert.True(createResult.Succeeded, string.Join("; ", createResult.Errors.Select(error => error.Description)));
+
+        var roleResult = await userManager.AddToRoleAsync(user, TryOutSpotRoles.Parent);
+        Assert.True(roleResult.Succeeded, string.Join("; ", roleResult.Errors.Select(error => error.Description)));
+
+        var loginResult = await userManager.AddLoginAsync(
+            user,
+            new UserLoginInfo(provider, $"{provider.ToLowerInvariant()}-{Guid.NewGuid():N}", provider));
+        Assert.True(loginResult.Succeeded, string.Join("; ", loginResult.Errors.Select(error => error.Description)));
+
+        return user;
     }
 
     private static WebApplicationFactory<Program> CreateFactoryWithGoogleConfiguration()

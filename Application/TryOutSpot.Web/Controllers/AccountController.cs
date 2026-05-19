@@ -230,6 +230,15 @@ public sealed class AccountController(
 
         var now = DateTime.UtcNow;
         var email = model.Email.Trim();
+        var existingUser = await userManager.FindByEmailAsync(email);
+        if (existingUser is not null)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                await BuildExistingAccountRegistrationMessageAsync(existingUser));
+            return View(PrepareRegisterModel(model));
+        }
+
         var user = new User
         {
             Id = Guid.NewGuid(),
@@ -343,6 +352,15 @@ public sealed class AccountController(
         if (user is not { IsActive: true })
         {
             ModelState.AddModelError(string.Empty, "Invalid login attempt.");
+            return View(model);
+        }
+
+        var passwordlessSocialAccount = await GetPasswordlessSocialAccountInfoAsync(user);
+        if (passwordlessSocialAccount is not null)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                BuildPasswordlessSocialLoginMessage(passwordlessSocialAccount.ProviderNames));
             return View(model);
         }
 
@@ -4816,6 +4834,58 @@ public sealed class AccountController(
         model.AppleIsConfigured = availability.AppleIsConfigured;
     }
 
+    private async Task<string> BuildExistingAccountRegistrationMessageAsync(User user)
+    {
+        var passwordlessSocialAccount = await GetPasswordlessSocialAccountInfoAsync(user);
+        if (passwordlessSocialAccount is not null)
+        {
+            var providers = FormatProviderList(passwordlessSocialAccount.ProviderNames);
+            return $"An account already exists for this email and uses {providers} sign-in. " +
+                $"Use Continue with {providers} below, or use Forgot password to add an email/password sign-in.";
+        }
+
+        return "An account with this email already exists. Sign in instead, or use Forgot password if you need to reset your password.";
+    }
+
+    private async Task<PasswordlessSocialAccountInfo?> GetPasswordlessSocialAccountInfoAsync(User user)
+    {
+        if (await userManager.HasPasswordAsync(user))
+        {
+            return null;
+        }
+
+        var providerNames = (await userManager.GetLoginsAsync(user))
+            .Select(login => TryOutSpotSocialLoginProviders.Normalize(login.LoginProvider))
+            .Where(provider => provider is not null)
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(GetProviderDisplayName)
+            .OrderBy(providerName => providerName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return providerNames.Length == 0
+            ? null
+            : new PasswordlessSocialAccountInfo(providerNames);
+    }
+
+    private static string BuildPasswordlessSocialLoginMessage(IReadOnlyList<string> providerNames)
+    {
+        var providers = FormatProviderList(providerNames);
+        return $"This account was created with {providers}. " +
+            $"Use Continue with {providers} below, or use Forgot password to add an email/password sign-in.";
+    }
+
+    private static string FormatProviderList(IReadOnlyList<string> providerNames)
+    {
+        return providerNames.Count switch
+        {
+            0 => "social sign-in",
+            1 => providerNames[0],
+            2 => $"{providerNames[0]} or {providerNames[1]}",
+            _ => $"{string.Join(", ", providerNames.Take(providerNames.Count - 1))}, or {providerNames[^1]}"
+        };
+    }
+
     private async Task<ExternalProviderAvailability> GetExternalProviderAvailabilityAsync()
     {
         var schemeProvider = HttpContext.RequestServices.GetRequiredService<IAuthenticationSchemeProvider>();
@@ -4944,6 +5014,9 @@ public sealed class AccountController(
     private sealed record ExternalLoginBrowserDetection(
         string BrowserDisplayName,
         bool IsAndroid);
+
+    private sealed record PasswordlessSocialAccountInfo(
+        IReadOnlyList<string> ProviderNames);
 
     private async Task<SocialRegistrationPageModel> PrepareSocialRegistrationModelAsync(
         SocialRegistrationPageModel model,
