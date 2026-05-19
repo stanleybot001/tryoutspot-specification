@@ -96,6 +96,21 @@ public sealed class LoginPageModel
     public bool AppleIsConfigured { get; set; }
 }
 
+public sealed class ExternalLoginBrowserWarningPageModel
+{
+    public string Provider { get; set; } = string.Empty;
+
+    public string ProviderDisplayName { get; set; } = string.Empty;
+
+    public string BrowserDisplayName { get; set; } = "this app's browser";
+
+    public string ContinueInBrowserUrl { get; set; } = string.Empty;
+
+    public string EmailFallbackUrl { get; set; } = "/account/login";
+
+    public string? AndroidChromeIntentUrl { get; set; }
+}
+
 public sealed class ForgotPasswordPageModel
 {
     [Required]

@@ -70,15 +70,15 @@
     <div class="social-login-actions">
         @if (Model.GoogleIsConfigured)
         {
-            <a class="btn btn-outline-dark" asp-action="ExternalLogin" asp-controller="Account" asp-route-provider="Google" asp-route-returnUrl="@Model.ReturnUrl">Continue with Google</a>
+            <a class="btn btn-outline-dark" asp-action="ExternalLogin" asp-controller="Account" asp-route-provider="Google" asp-route-returnUrl="@Model.ReturnUrl" asp-route-source="login">Continue with Google</a>
         }
         @if (Model.FacebookIsConfigured)
         {
-            <a class="btn btn-outline-dark" asp-action="ExternalLogin" asp-controller="Account" asp-route-provider="Facebook" asp-route-returnUrl="@Model.ReturnUrl">Continue with Facebook</a>
+            <a class="btn btn-outline-dark" asp-action="ExternalLogin" asp-controller="Account" asp-route-provider="Facebook" asp-route-returnUrl="@Model.ReturnUrl" asp-route-source="login">Continue with Facebook</a>
         }
         @if (Model.AppleIsConfigured)
         {
-            <a class="btn btn-outline-dark" asp-action="ExternalLogin" asp-controller="Account" asp-route-provider="Apple" asp-route-returnUrl="@Model.ReturnUrl">Continue with Apple</a>
+            <a class="btn btn-outline-dark" asp-action="ExternalLogin" asp-controller="Account" asp-route-provider="Apple" asp-route-returnUrl="@Model.ReturnUrl" asp-route-source="login">Continue with Apple</a>
         }
         @if (!Model.GoogleIsConfigured && !Model.FacebookIsConfigured && !Model.AppleIsConfigured)
         {

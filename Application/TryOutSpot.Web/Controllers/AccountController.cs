@@ -92,6 +92,32 @@ public sealed class AccountController(
         "image/webp",
         "image/svg+xml"
     ];
+    private static readonly (string Token, string BrowserDisplayName)[] InAppBrowserSignatures =
+    [
+        ("TwitterAndroid", "the X app browser"),
+        ("Twitter for iPhone", "the X app browser"),
+        ("Twitter", "the X app browser"),
+        ("FBAN/Messenger", "the Messenger app browser"),
+        ("MessengerForiOS", "the Messenger app browser"),
+        ("FB_IAB/MESSENGER", "the Messenger app browser"),
+        ("Instagram", "the Instagram app browser"),
+        ("FB_IAB", "the Facebook app browser"),
+        ("FBAN", "the Facebook app browser"),
+        ("FBAV", "the Facebook app browser"),
+        ("FBIOS", "the Facebook app browser"),
+        ("FB4A", "the Facebook app browser"),
+        ("TikTok", "the TikTok app browser"),
+        ("BytedanceWebview", "the TikTok app browser"),
+        ("musical_ly", "the TikTok app browser"),
+        ("LinkedInApp", "the LinkedIn app browser"),
+        ("LinkedIn", "the LinkedIn app browser"),
+        ("Pinterest", "the Pinterest app browser"),
+        ("Snapchat", "the Snapchat app browser"),
+        ("Discord", "the Discord app browser"),
+        ("Reddit", "the Reddit app browser"),
+        ("Line/", "the LINE app browser"),
+        ("MicroMessenger", "the WeChat app browser")
+    ];
     private readonly GoogleAuthenticationOptions googleAuthentication = googleOptions.Value;
     private readonly StripeBillingOptions stripeBillingOptions = stripeOptions.Value;
     private static readonly string[] PlayerRelationshipOptions = ["Parent", "Guardian", "Self", "Coach", "Other"];
@@ -470,7 +496,10 @@ public sealed class AccountController(
     }
 
     [HttpGet("external-login")]
-    public IActionResult ExternalLogin([FromQuery] string provider, [FromQuery] string? returnUrl = null)
+    public async Task<IActionResult> ExternalLogin(
+        [FromQuery] string provider,
+        [FromQuery] string? returnUrl = null,
+        [FromQuery] string? source = null)
     {
         var normalizedProvider = TryOutSpotSocialLoginProviders.Normalize(provider);
         if (normalizedProvider is null)
@@ -479,10 +508,29 @@ public sealed class AccountController(
             return RedirectToAction(nameof(Login));
         }
 
-        if (normalizedProvider == TryOutSpotSocialLoginProviders.Google && !googleAuthentication.IsConfigured)
+        var availability = await GetExternalProviderAvailabilityAsync();
+        if (!IsExternalProviderConfigured(normalizedProvider, availability))
         {
-            TempData["StatusMessage"] = "Google login is not configured yet.";
+            TempData["StatusMessage"] = $"{GetProviderDisplayName(normalizedProvider)} login is not configured yet.";
             return RedirectToAction(nameof(Login));
+        }
+
+        var inAppBrowser = DetectBlockedExternalLoginBrowser(normalizedProvider, Request.Headers.UserAgent.ToString());
+        if (inAppBrowser is not null)
+        {
+            var fallbackPath = GetExternalLoginFallbackPath(source, returnUrl);
+            var fallbackUrl = BuildAbsoluteUrl(fallbackPath);
+            return View("ExternalLoginBrowserWarning", new ExternalLoginBrowserWarningPageModel
+            {
+                Provider = normalizedProvider,
+                ProviderDisplayName = GetProviderDisplayName(normalizedProvider),
+                BrowserDisplayName = inAppBrowser.BrowserDisplayName,
+                ContinueInBrowserUrl = fallbackUrl,
+                EmailFallbackUrl = fallbackPath,
+                AndroidChromeIntentUrl = inAppBrowser.IsAndroid
+                    ? BuildAndroidChromeIntentUrl(fallbackUrl)
+                    : null
+            });
         }
 
         var properties = new AuthenticationProperties
@@ -4782,10 +4830,120 @@ public sealed class AccountController(
             configuredProviders.Contains(TryOutSpotSocialLoginProviders.Apple));
     }
 
+    private static bool IsExternalProviderConfigured(
+        string provider,
+        ExternalProviderAvailability availability)
+    {
+        return provider switch
+        {
+            TryOutSpotSocialLoginProviders.Google => availability.GoogleIsConfigured,
+            TryOutSpotSocialLoginProviders.Facebook => availability.FacebookIsConfigured,
+            TryOutSpotSocialLoginProviders.Apple => availability.AppleIsConfigured,
+            _ => false
+        };
+    }
+
+    private string GetExternalLoginFallbackPath(string? source, string? returnUrl)
+    {
+        object? routeValues = string.IsNullOrWhiteSpace(returnUrl)
+            ? null
+            : new { returnUrl };
+        return string.Equals(source, "register", StringComparison.OrdinalIgnoreCase)
+            ? Url.Action(nameof(Register), routeValues) ?? "/account/register"
+            : Url.Action(nameof(Login), routeValues) ?? "/account/login";
+    }
+
+    private string BuildAbsoluteUrl(string pathAndQuery)
+    {
+        var baseUri = new Uri($"{Request.Scheme}://{Request.Host}{Request.PathBase}/");
+        return new Uri(baseUri, pathAndQuery.TrimStart('/')).ToString();
+    }
+
+    private static string? BuildAndroidChromeIntentUrl(string absoluteUrl)
+    {
+        return Uri.TryCreate(absoluteUrl, UriKind.Absolute, out var uri)
+            ? $"intent://{uri.Authority}{uri.PathAndQuery}#Intent;scheme={uri.Scheme};package=com.android.chrome;end"
+            : null;
+    }
+
+    private static ExternalLoginBrowserDetection? DetectBlockedExternalLoginBrowser(
+        string provider,
+        string? userAgent)
+    {
+        if (!ProviderRequiresSystemBrowser(provider)
+            || string.IsNullOrWhiteSpace(userAgent)
+            || !IsMobileUserAgent(userAgent))
+        {
+            return null;
+        }
+
+        foreach (var signature in InAppBrowserSignatures)
+        {
+            if (userAgent.Contains(signature.Token, StringComparison.OrdinalIgnoreCase))
+            {
+                return new ExternalLoginBrowserDetection(
+                    signature.BrowserDisplayName,
+                    IsAndroidUserAgent(userAgent));
+            }
+        }
+
+        if (IsAndroidWebViewUserAgent(userAgent) || IsIosWebViewUserAgent(userAgent))
+        {
+            return new ExternalLoginBrowserDetection(
+                "this app's built-in browser",
+                IsAndroidUserAgent(userAgent));
+        }
+
+        return null;
+    }
+
+    private static bool ProviderRequiresSystemBrowser(string provider)
+    {
+        return provider is TryOutSpotSocialLoginProviders.Google
+            or TryOutSpotSocialLoginProviders.Facebook;
+    }
+
+    private static bool IsMobileUserAgent(string userAgent)
+    {
+        return userAgent.Contains("Mobile", StringComparison.OrdinalIgnoreCase)
+            || userAgent.Contains("Android", StringComparison.OrdinalIgnoreCase)
+            || userAgent.Contains("iPhone", StringComparison.OrdinalIgnoreCase)
+            || userAgent.Contains("iPad", StringComparison.OrdinalIgnoreCase)
+            || userAgent.Contains("iPod", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAndroidUserAgent(string userAgent)
+    {
+        return userAgent.Contains("Android", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAndroidWebViewUserAgent(string userAgent)
+    {
+        return userAgent.Contains("; wv", StringComparison.OrdinalIgnoreCase)
+            || (userAgent.Contains("Version/4.0", StringComparison.OrdinalIgnoreCase)
+                && userAgent.Contains("Android", StringComparison.OrdinalIgnoreCase)
+                && userAgent.Contains("Chrome/", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsIosWebViewUserAgent(string userAgent)
+    {
+        return userAgent.Contains("AppleWebKit", StringComparison.OrdinalIgnoreCase)
+            && userAgent.Contains("Mobile", StringComparison.OrdinalIgnoreCase)
+            && !userAgent.Contains("Safari/", StringComparison.OrdinalIgnoreCase)
+            && !userAgent.Contains("CriOS", StringComparison.OrdinalIgnoreCase)
+            && !userAgent.Contains("FxiOS", StringComparison.OrdinalIgnoreCase)
+            && !userAgent.Contains("EdgiOS", StringComparison.OrdinalIgnoreCase)
+            && !userAgent.Contains("OPiOS", StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed record ExternalProviderAvailability(
         bool GoogleIsConfigured,
         bool FacebookIsConfigured,
         bool AppleIsConfigured);
+
+    private sealed record ExternalLoginBrowserDetection(
+        string BrowserDisplayName,
+        bool IsAndroid);
 
     private async Task<SocialRegistrationPageModel> PrepareSocialRegistrationModelAsync(
         SocialRegistrationPageModel model,

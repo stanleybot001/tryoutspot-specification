@@ -488,6 +488,24 @@ body.splash-page {
   margin: 0;
 }
 
+.browser-warning-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.browser-warning-copy {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.browser-warning-copy .form-control {
+  font-size: 0.92rem;
+}
+
+.browser-warning-actions {
+  margin-top: 0.25rem;
+}
+
 .social-profile-summary,
 .account-summary-strip {
   display: grid;

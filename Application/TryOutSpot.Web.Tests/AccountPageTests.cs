@@ -64,6 +64,70 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task ExternalLogin_WithMobileSafari_StartsGoogleChallenge()
+    {
+        await using var factory = CreateFactoryWithGoogleConfiguration();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        client.DefaultRequestHeaders.TryAddWithoutValidation(
+            "User-Agent",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1");
+
+        var response = await client.GetAsync("/account/external-login?provider=Google&source=login");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.StartsWith(
+            "https://accounts.google.com/",
+            response.Headers.Location?.ToString(),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExternalLogin_WithTwitterInAppBrowser_ShowsGoogleBrowserWarning()
+    {
+        await using var factory = CreateFactoryWithGoogleConfiguration();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        client.DefaultRequestHeaders.TryAddWithoutValidation(
+            "User-Agent",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Twitter for iPhone");
+
+        var response = await client.GetAsync("/account/external-login?provider=Google&source=register");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Open TryOutSpot in your browser to continue", html);
+        Assert.Contains("Google sign-in may not work inside the X app browser", html);
+        Assert.Contains("/account/register", html);
+        Assert.DoesNotContain("accounts.google.com", html);
+    }
+
+    [Fact]
+    public async Task ExternalLogin_WithAndroidWebView_ShowsFacebookBrowserWarning()
+    {
+        await using var factory = CreateFactoryWithGoogleAndFacebookConfiguration();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        client.DefaultRequestHeaders.TryAddWithoutValidation(
+            "User-Agent",
+            "Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/UP1A.231005.007; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/125.0.0.0 Mobile Safari/537.36");
+
+        var response = await client.GetAsync("/account/external-login?provider=Facebook&source=login");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Facebook sign-in may not work inside this app", html);
+        Assert.Contains("Open in Chrome", html);
+        Assert.Contains("intent://", html);
+    }
+
+    [Fact]
     public async Task LoginAndRecoveryPages_RenderRequiredFields()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -2069,6 +2133,50 @@ public sealed class AccountPageTests
                             options.ClientId = "test-google-client-id.apps.googleusercontent.com";
                             options.ClientSecret = "test-google-client-secret";
                             options.CallbackPath = "/signin-google";
+                        });
+                    services.PostConfigure<GoogleAuthenticationOptions>(options =>
+                    {
+                        options.ClientId = "test-google-client-id.apps.googleusercontent.com";
+                        options.ClientSecret = "test-google-client-secret";
+                        options.CallbackPath = "/signin-google";
+                    });
+                });
+            });
+    }
+
+    private static WebApplicationFactory<Program> CreateFactoryWithGoogleAndFacebookConfiguration()
+    {
+        return new TryOutSpotWebApplicationFactory()
+            .WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureAppConfiguration((_, configuration) =>
+                {
+                    configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["Authentication:Google:ClientId"] = "test-google-client-id.apps.googleusercontent.com",
+                        ["Authentication:Google:ClientSecret"] = "test-google-client-secret",
+                        ["Authentication:Google:CallbackPath"] = "/signin-google",
+                        ["Authentication:Facebook:AppId"] = "test-facebook-app-id",
+                        ["Authentication:Facebook:AppSecret"] = "test-facebook-app-secret",
+                        ["Authentication:Facebook:CallbackPath"] = "/signin-facebook"
+                    });
+                });
+                builder.ConfigureServices(services =>
+                {
+                    services.AddAuthentication()
+                        .AddGoogle(TryOutSpotSocialLoginProviders.Google, options =>
+                        {
+                            options.SignInScheme = IdentityConstants.ExternalScheme;
+                            options.ClientId = "test-google-client-id.apps.googleusercontent.com";
+                            options.ClientSecret = "test-google-client-secret";
+                            options.CallbackPath = "/signin-google";
+                        })
+                        .AddFacebook(TryOutSpotSocialLoginProviders.Facebook, options =>
+                        {
+                            options.SignInScheme = IdentityConstants.ExternalScheme;
+                            options.AppId = "test-facebook-app-id";
+                            options.AppSecret = "test-facebook-app-secret";
+                            options.CallbackPath = "/signin-facebook";
                         });
                     services.PostConfigure<GoogleAuthenticationOptions>(options =>
                     {

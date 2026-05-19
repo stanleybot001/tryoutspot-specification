@@ -1,0 +1,36 @@
+@model ExternalLoginBrowserWarningPageModel
+
+@{
+    ViewData["Title"] = "Open in Browser";
+}
+
+<section class="account-page compact">
+    <div class="account-heading">
+        <p class="account-kicker">Browser required</p>
+        <h1>Open TryOutSpot in your browser to continue.</h1>
+        <p>
+            @Model.ProviderDisplayName sign-in may not work inside @Model.BrowserDisplayName.
+            Open TryOutSpot in Safari, Chrome, or your phone's default browser, then tap Continue with @Model.ProviderDisplayName again.
+        </p>
+    </div>
+
+    <div class="account-notice browser-warning-panel">
+        <h2>Use a secure browser</h2>
+        <p class="section-help">
+            Some mobile apps open links in their own built-in browser. Google and Facebook can block social sign-in there to protect your account.
+        </p>
+
+        <div class="browser-warning-copy">
+            <label class="form-label" for="browser-url">Open this link in Safari or Chrome</label>
+            <input id="browser-url" class="form-control" type="text" readonly value="@Model.ContinueInBrowserUrl" />
+        </div>
+
+        <div class="form-actions browser-warning-actions">
+            @if (!string.IsNullOrWhiteSpace(Model.AndroidChromeIntentUrl))
+            {
+                <a class="btn btn-primary" href="@Model.AndroidChromeIntentUrl">Open in Chrome</a>
+            }
+            <a class="btn btn-outline-primary" href="@Model.EmailFallbackUrl">Continue with email instead</a>
+        </div>
+    </div>
+</section>
