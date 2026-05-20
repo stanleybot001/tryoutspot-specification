@@ -318,7 +318,7 @@ public sealed class AddPlayerProfilePageModel
     public bool CanManage { get; set; } = true;
 
     [Display(Name = "Allow this player to appear in search")]
-    public bool IsSearchable { get; set; } = true;
+    public bool IsSearchable { get; set; }
 
     [Required]
     [MaxLength(40)]
@@ -348,6 +348,10 @@ public sealed class AddPlayerProfilePageModel
     public string? CurrentProfileImageUrl { get; set; }
 
     public bool EnhancedProfileVisibleToTeams { get; set; }
+
+    public bool IsParentOrGuardianAccount { get; set; }
+
+    public bool IsSelfPlayerAccount { get; set; }
 
     [MaxLength(500)]
     [Display(Name = "Highlight video link 1")]
@@ -473,6 +477,8 @@ public sealed class AddPlayerProfilePageModel
 public sealed class ManagePlayerProfilesPageModel
 {
     public IReadOnlyCollection<PlayerProfileSummaryPageModel> Profiles { get; set; } = [];
+
+    public bool IsParentOrGuardianAccount { get; set; }
 }
 
 public sealed class PlayerProfileSummaryPageModel

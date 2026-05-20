@@ -1063,6 +1063,7 @@ public sealed class AccountController(
                 City = user.City,
                 State = user.State,
                 ZipCode = user.ZipCode,
+                IsSearchable = false,
                 DateOfBirth = DateTime.UtcNow.Date.AddYears(-12)
             },
             cancellationToken);
@@ -5543,12 +5544,12 @@ public sealed class AccountController(
             .Where(listing => listing.IsSearchable)
             .Where(listing => listing.ExpiresAt == null || listing.ExpiresAt > now)
             .Where(listing =>
-                listing.Player == null
-                || (listing.Player.IsActive
+                listing.Player != null
+                && listing.Player.IsActive
                     && listing.Player.IsSearchable
                     && (listing.Player.ContactVisibility == publicVisibility
                         || (canViewCoachOnlyPlayerProfiles
-                            && listing.Player.ContactVisibility == coachOnlyVisibility))));
+                            && listing.Player.ContactVisibility == coachOnlyVisibility)));
 
         if (!string.IsNullOrWhiteSpace(normalizedListingType))
         {
@@ -6225,6 +6226,8 @@ public sealed class AccountController(
         var roles = await GetCanonicalPublicRolesAsync(user);
         var entitlements = await entitlementService.GetEntitlementsAsync(user.Id, cancellationToken);
         var hasPlayerOrParentRole = HasAnyRole(roles, TryOutSpotRoles.Parent, TryOutSpotRoles.Player);
+        var hasParentRole = HasAnyRole(roles, TryOutSpotRoles.Parent);
+        var hasSelfPlayerRole = HasAnyRole(roles, TryOutSpotRoles.Player);
         var hasTeamOrOrganizationRole = roles.Any(TryOutSpotRoles.IsTeamBundleRole);
         var upcomingTryoutRegistrations = hasPlayerOrParentRole
             ? await GetOnboardingTryoutRegistrationsAsync(user.Id, cancellationToken)
@@ -6319,10 +6322,16 @@ public sealed class AccountController(
 
         if (hasPlayerOrParentRole)
         {
+            var playerProfileStepTitle = hasParentRole && !hasSelfPlayerRole
+                ? "Add child/player profile"
+                : "Complete player profile";
+            var playerProfileStepDescription = hasParentRole && !hasSelfPlayerRole
+                ? "Add the player's name, birth date, sports, and visibility. This is not your parent/guardian account profile."
+                : "Add your player profile before registering for tryouts.";
             steps.Add(new OnboardingStepPageItem(
                 "add_player_profile",
-                "Add player profile",
-                "Create a player profile before registering for tryouts.",
+                playerProfileStepTitle,
+                playerProfileStepDescription,
                 false,
                 hasLinkedPlayers));
             if (hasPlayerListingManagementAccess)
@@ -6783,6 +6792,9 @@ public sealed class AccountController(
         AddPlayerProfilePageModel model,
         CancellationToken cancellationToken)
     {
+        var roles = await GetCanonicalPublicRolesAsync(user);
+        model.IsParentOrGuardianAccount = HasAnyRole(roles, TryOutSpotRoles.Parent);
+        model.IsSelfPlayerAccount = HasAnyRole(roles, TryOutSpotRoles.Player);
         model.EnhancedProfileVisibleToTeams = await entitlementService.HasFeatureAsync(
             user.Id,
             TryOutSpotFeatureCodes.EnhancedPlayerProfile,
@@ -6929,7 +6941,9 @@ public sealed class AccountController(
 
         return new ManagePlayerProfilesPageModel
         {
-            Profiles = profiles
+            Profiles = profiles,
+            IsParentOrGuardianAccount = (await GetCanonicalPublicRolesAsync(user))
+                .Contains(TryOutSpotRoles.Parent, StringComparer.OrdinalIgnoreCase)
         };
     }
 
@@ -7265,7 +7279,7 @@ public sealed class AccountController(
             {
                 ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
                 Currency = "USD",
-                IsSearchable = true,
+                IsSearchable = false,
                 IsPublished = true,
                 VisibleSocialLinkKeys = GetDefaultVisibleSocialLinkKeys().ToList(),
                 City = user.City,
@@ -7356,6 +7370,11 @@ public sealed class AccountController(
         if (listingTypeOption.RequiresPlayerSelection && player is null)
         {
             ModelState.AddModelError(nameof(model.PlayerId), "Choose a player profile for this listing type.");
+        }
+
+        if (model.IsSearchable && player is null)
+        {
+            ModelState.AddModelError(nameof(model.IsSearchable), "Choose a player profile before making this listing searchable.");
         }
 
         if (model.SportId.HasValue)
@@ -10355,13 +10374,13 @@ public sealed class AccountController(
             new(
                 TryOutSpotRoles.Parent,
                 "Parent or guardian",
-                "Role for managing player profiles and registrations. Subscription level controls unlocked tools.",
+                "Adult account for managing one or more player profiles and registrations. The account holder is not shown in player search.",
                 true,
                 selected.Contains(TryOutSpotRoles.Parent)),
             new(
                 TryOutSpotRoles.Player,
                 "Player",
-                "Role for player profile and discovery workflows. Subscription level controls unlocked tools.",
+                "Use when the player is creating their own account for profile and discovery workflows.",
                 true,
                 selected.Contains(TryOutSpotRoles.Player)),
             new(

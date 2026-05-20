@@ -116,10 +116,27 @@ public sealed class FavoritesApiTests
             .Single();
 
         var listingId = Guid.NewGuid();
+        var playerId = Guid.NewGuid();
+        dbContext.Players.Add(new Player
+        {
+            Id = playerId,
+            FirstName = "Favorite",
+            LastName = "Catcher",
+            DateOfBirth = now.AddYears(-14).Date,
+            City = "McPherson",
+            State = "KS",
+            ZipCode = "67460",
+            ContactVisibility = "VerifiedCoachesOnly",
+            IsSearchable = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        });
         dbContext.PlayerListings.Add(new PlayerListing
         {
             Id = listingId,
             UserId = ownerUserId,
+            PlayerId = playerId,
             SportId = sportId,
             ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
             Title = title,

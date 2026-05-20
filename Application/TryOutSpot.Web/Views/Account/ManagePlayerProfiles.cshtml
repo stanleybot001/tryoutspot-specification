@@ -2,13 +2,20 @@
 
 @{
     ViewData["Title"] = "Manage Player Profiles";
+    var headingTitle = Model.IsParentOrGuardianAccount
+        ? "Manage child/player profiles."
+        : "Manage your player profiles.";
+    var headingDescription = Model.IsParentOrGuardianAccount
+        ? "These are the player profiles tied to your parent/guardian account. Your adult account holder profile stays separate."
+        : "Edit, deactivate, and add players from one place.";
+    var addButtonLabel = Model.IsParentOrGuardianAccount ? "Add another child/player" : "Add another player";
 }
 
 <section class="account-page">
     <div class="account-heading">
         <p class="account-kicker">Player profiles</p>
-        <h1>Manage your player profiles.</h1>
-        <p>Edit, deactivate, and add players from one place.</p>
+        <h1>@headingTitle</h1>
+        <p>@headingDescription</p>
     </div>
 
     @if (TempData["StatusMessage"] is string statusMessage)
@@ -18,13 +25,13 @@
 
     <section class="form-section">
         <div class="form-actions mb-2">
-            <a class="btn btn-primary" href="/account/onboarding/add-player-profile?createNew=true">Add another player</a>
+            <a class="btn btn-primary" href="/account/onboarding/add-player-profile?createNew=true">@addButtonLabel</a>
             <a class="btn btn-outline-secondary" href="/account/onboarding">Back to dashboard</a>
         </div>
 
         @if (Model.Profiles.Count == 0)
         {
-            <p class="section-help">No managed players yet. Add your first player profile to continue onboarding.</p>
+            <p class="section-help">No managed players yet. Add the first player profile to continue onboarding.</p>
         }
         else
         {
@@ -35,10 +42,10 @@
                         <div class="opportunity-row-head">
                             <div>
                                 <strong>@profile.FullName</strong>
-                                <span>@profile.Relationship</span>
+                                <span>@FormatRelationship(profile.Relationship)</span>
                             </div>
                             <div class="team-metric-inline">
-                                <span>@(profile.IsSearchable ? "Searchable" : "Hidden from search")</span>
+                                <span>@(profile.IsSearchable ? "Player searchable" : "Hidden from player search")</span>
                                 <span>@FormatContactVisibility(profile.ContactVisibility)</span>
                             </div>
                         </div>
@@ -99,6 +106,19 @@
             "Public" => "Contact public",
             "VerifiedCoachesOnly" => "Contact for verified coaches",
             _ => "Contact limited"
+        };
+    }
+
+    private static string FormatRelationship(string? value)
+    {
+        return value switch
+        {
+            "Parent" => "You are the parent",
+            "Guardian" => "You are the guardian",
+            "Self" => "Self-managed player",
+            "Coach" => "You are the coach",
+            "Other" => "Managed by this account",
+            _ => string.IsNullOrWhiteSpace(value) ? "Managed by this account" : value
         };
     }
 }

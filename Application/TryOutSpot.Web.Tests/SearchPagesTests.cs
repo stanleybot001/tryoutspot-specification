@@ -105,6 +105,7 @@ public sealed class SearchPagesTests
         Assert.Contains("Public searchable player", html);
         Assert.Contains("Coach-only searchable player", html);
         Assert.DoesNotContain("Hidden profile player", html);
+        Assert.DoesNotContain("Unlinked parent listing", html);
         Assert.Contains("Birthday:", html);
         Assert.Contains("Apr 5, 2011", html);
         Assert.Contains("Public Academy", html);
@@ -170,12 +171,16 @@ public sealed class SearchPagesTests
             .Where(sport => sport.IsActive && sport.Name == "Softball")
             .Select(sport => sport.Id)
             .Single();
+        var regularPlayer = CreatePlayer("Regular", "Catcher", true, "VerifiedCoachesOnly", now);
+        var priorityPlayer = CreatePlayer("Priority", "Pitcher", true, "VerifiedCoachesOnly", now);
 
+        dbContext.Players.AddRange(regularPlayer, priorityPlayer);
         dbContext.PlayerListings.AddRange(
             new PlayerListing
             {
                 Id = Guid.NewGuid(),
                 UserId = regularOwnerId,
+                PlayerId = regularPlayer.Id,
                 SportId = sportId,
                 ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
                 Title = "Regular catcher available",
@@ -194,6 +199,7 @@ public sealed class SearchPagesTests
             {
                 Id = Guid.NewGuid(),
                 UserId = priorityOwnerId,
+                PlayerId = priorityPlayer.Id,
                 SportId = sportId,
                 ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
                 Title = "Priority pitcher available",
@@ -231,7 +237,25 @@ public sealed class SearchPagesTests
         dbContext.PlayerListings.AddRange(
             CreatePlayerListing(ownerId, publicPlayer.Id, sportId, "Public searchable player", now),
             CreatePlayerListing(ownerId, coachOnlyPlayer.Id, sportId, "Coach-only searchable player", now),
-            CreatePlayerListing(ownerId, hiddenPlayer.Id, sportId, "Hidden profile player", now));
+            CreatePlayerListing(ownerId, hiddenPlayer.Id, sportId, "Hidden profile player", now),
+            new PlayerListing
+            {
+                Id = Guid.NewGuid(),
+                UserId = ownerId,
+                SportId = sportId,
+                ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
+                Title = "Unlinked parent listing",
+                Description = "This parent-owned listing is not tied to a player profile.",
+                City = "McPherson",
+                State = "KS",
+                ZipCode = "67460",
+                IsPublished = true,
+                IsSearchable = true,
+                PublishedAt = now,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
         dbContext.SaveChanges();
     }
 

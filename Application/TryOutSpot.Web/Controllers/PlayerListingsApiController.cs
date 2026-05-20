@@ -31,7 +31,7 @@ public sealed class PlayerListingsApiController(
     private const int FreeCoachMaxPlayerSearchRadiusMiles = 120;
 
     /// <summary>
-    /// Searches published and searchable parent/player listings.
+    /// Searches published and searchable listings tied to active player profiles.
     /// </summary>
     [AllowAnonymous]
     [HttpGet("search")]
@@ -169,12 +169,12 @@ public sealed class PlayerListingsApiController(
             .Where(listing => listing.IsSearchable)
             .Where(listing => listing.ExpiresAt == null || listing.ExpiresAt > now)
             .Where(listing =>
-                listing.Player == null
-                || (listing.Player.IsActive
+                listing.Player != null
+                && listing.Player.IsActive
                     && listing.Player.IsSearchable
                     && (listing.Player.ContactVisibility == publicVisibility
                         || (canViewCoachOnlyPlayerProfiles
-                            && listing.Player.ContactVisibility == coachOnlyVisibility))));
+                            && listing.Player.ContactVisibility == coachOnlyVisibility)));
 
         if (normalizedListingType is not null)
         {
@@ -263,7 +263,9 @@ public sealed class PlayerListingsApiController(
                 || (listing.Description != null && listing.Description.ToLower().Contains(search))
                 || (listing.City != null && listing.City.ToLower().Contains(search))
                 || (listing.State != null && listing.State.ToLower().Contains(search))
-                || (listing.ZipCode != null && listing.ZipCode.Contains(search)));
+                || (listing.ZipCode != null && listing.ZipCode.Contains(search))
+                || (listing.Player != null && listing.Player.FirstName.ToLower().Contains(search))
+                || (listing.Player != null && listing.Player.LastName.ToLower().Contains(search)));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -278,6 +280,8 @@ public sealed class PlayerListingsApiController(
                 .OrderByDescending(listing =>
                     (listing.Title.ToLower().Contains(search) ? 5 : 0)
                     + (listing.Description != null && listing.Description.ToLower().Contains(search) ? 3 : 0)
+                    + (listing.Player != null && listing.Player.LastName.ToLower().Contains(search) ? 3 : 0)
+                    + (listing.Player != null && listing.Player.FirstName.ToLower().Contains(search) ? 3 : 0)
                     + (listing.City != null && listing.City.ToLower().Contains(search) ? 2 : 0)
                     + (listing.State != null && listing.State.ToLower().Contains(search) ? 1 : 0)
                     + (listing.ZipCode != null && listing.ZipCode.Contains(search) ? 1 : 0))
@@ -451,6 +455,21 @@ public sealed class PlayerListingsApiController(
         }
 
         var normalizedListingType = NormalizeListingType(request.ListingType, nameof(request.ListingType));
+        if (RequiresPlayerProfile(normalizedListingType) && !request.PlayerId.HasValue)
+        {
+            ModelState.AddModelError(nameof(request.PlayerId), "Choose a player profile for this listing type.");
+        }
+
+        if (RequiresSportSelection(normalizedListingType) && !request.SportId.HasValue)
+        {
+            ModelState.AddModelError(nameof(request.SportId), "Choose a sport for this listing type.");
+        }
+
+        if (request.IsSearchable && !request.PlayerId.HasValue)
+        {
+            ModelState.AddModelError(nameof(request.IsSearchable), "Choose a player profile before making this listing searchable.");
+        }
+
         if (request.ExpiresAt.HasValue && request.ExpiresAt.Value <= DateTime.UtcNow)
         {
             ModelState.AddModelError(nameof(request.ExpiresAt), "Expiration must be in the future.");
@@ -463,7 +482,8 @@ public sealed class PlayerListingsApiController(
                 .AnyAsync(
                     relationship => relationship.UserId == userId
                         && relationship.PlayerId == request.PlayerId.Value
-                        && relationship.CanManage,
+                        && relationship.CanManage
+                        && relationship.Player.IsActive,
                     cancellationToken);
 
             if (!canManagePlayer)
@@ -500,7 +520,9 @@ public sealed class PlayerListingsApiController(
         var player = request.PlayerId.HasValue
             ? await dbContext.Players
                 .AsNoTracking()
-                .SingleOrDefaultAsync(currentPlayer => currentPlayer.Id == request.PlayerId.Value, cancellationToken)
+                .SingleOrDefaultAsync(
+                    currentPlayer => currentPlayer.Id == request.PlayerId.Value && currentPlayer.IsActive,
+                    cancellationToken)
             : null;
 
         var normalizedZipCode = NormalizeOptional(request.ZipCode) ?? player?.ZipCode ?? user.ZipCode;
@@ -576,6 +598,21 @@ public sealed class PlayerListingsApiController(
         }
 
         var normalizedListingType = NormalizeListingType(request.ListingType, nameof(request.ListingType));
+        if (RequiresPlayerProfile(normalizedListingType) && !request.PlayerId.HasValue)
+        {
+            ModelState.AddModelError(nameof(request.PlayerId), "Choose a player profile for this listing type.");
+        }
+
+        if (RequiresSportSelection(normalizedListingType) && !request.SportId.HasValue)
+        {
+            ModelState.AddModelError(nameof(request.SportId), "Choose a sport for this listing type.");
+        }
+
+        if (request.IsSearchable && !request.PlayerId.HasValue)
+        {
+            ModelState.AddModelError(nameof(request.IsSearchable), "Choose a player profile before making this listing searchable.");
+        }
+
         if (request.ExpiresAt.HasValue && request.ExpiresAt.Value <= DateTime.UtcNow)
         {
             ModelState.AddModelError(nameof(request.ExpiresAt), "Expiration must be in the future.");
@@ -588,7 +625,8 @@ public sealed class PlayerListingsApiController(
                 .AnyAsync(
                     relationship => relationship.UserId == userId
                         && relationship.PlayerId == request.PlayerId.Value
-                        && relationship.CanManage,
+                        && relationship.CanManage
+                        && relationship.Player.IsActive,
                     cancellationToken);
 
             if (!canManagePlayer)
@@ -624,7 +662,9 @@ public sealed class PlayerListingsApiController(
         var player = request.PlayerId.HasValue
             ? await dbContext.Players
                 .AsNoTracking()
-                .SingleOrDefaultAsync(currentPlayer => currentPlayer.Id == request.PlayerId.Value, cancellationToken)
+                .SingleOrDefaultAsync(
+                    currentPlayer => currentPlayer.Id == request.PlayerId.Value && currentPlayer.IsActive,
+                    cancellationToken)
             : null;
 
         var normalizedZipCode = NormalizeOptional(request.ZipCode) ?? player?.ZipCode ?? owner.ZipCode;
@@ -838,6 +878,22 @@ public sealed class PlayerListingsApiController(
         }
 
         return normalized;
+    }
+
+    private static bool RequiresPlayerProfile(string? listingType)
+    {
+        return listingType is TryOutSpotPlayerListingTypes.PickupPlayer
+            or TryOutSpotPlayerListingTypes.LookingForTeam
+            or TryOutSpotPlayerListingTypes.PrivateLessons
+            or TryOutSpotPlayerListingTypes.TrainingPartner;
+    }
+
+    private static bool RequiresSportSelection(string? listingType)
+    {
+        return listingType is TryOutSpotPlayerListingTypes.PickupPlayer
+            or TryOutSpotPlayerListingTypes.LookingForTeam
+            or TryOutSpotPlayerListingTypes.PrivateLessons
+            or TryOutSpotPlayerListingTypes.TrainingPartner;
     }
 
     private bool TryGetCurrentUserId(out Guid userId)

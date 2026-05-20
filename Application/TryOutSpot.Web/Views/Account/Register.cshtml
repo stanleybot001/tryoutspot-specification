@@ -64,15 +64,16 @@
         </section>
 
         <section class="form-section">
-            <h2>Your name</h2>
+            <h2>Account holder name</h2>
+            <p class="section-help">If you are a parent or guardian, enter your own name here. Player and child details are added after signup in a separate player profile.</p>
             <div class="form-grid two-column">
                 <div class="form-field">
-                    <label asp-for="FirstName" class="form-label">First name <span class="required-marker">*</span></label>
+                    <label asp-for="FirstName" class="form-label">Account holder first name <span class="required-marker">*</span></label>
                     <input asp-for="FirstName" class="form-control" autocomplete="given-name" />
                     <span asp-validation-for="FirstName" class="text-danger"></span>
                 </div>
                 <div class="form-field">
-                    <label asp-for="LastName" class="form-label">Last name <span class="required-marker">*</span></label>
+                    <label asp-for="LastName" class="form-label">Account holder last name <span class="required-marker">*</span></label>
                     <input asp-for="LastName" class="form-control" autocomplete="family-name" />
                     <span asp-validation-for="LastName" class="text-danger"></span>
                 </div>
@@ -81,7 +82,7 @@
 
         <section class="form-section">
             <h2>Account type <span class="required-marker">*</span></h2>
-            <p class="section-help">Pick every role that fits. For example, a parent can also be a coach.</p>
+            <p class="section-help">Pick every role that fits. Parent or guardian accounts manage player profiles; they do not create a searchable player profile for the adult account holder.</p>
             <div class="account-type-grid">
                 @foreach (var accountType in Model.AvailableAccountTypes)
                 {
@@ -98,8 +99,8 @@
         </section>
 
         <section class="form-section">
-            <h2>Optional profile details</h2>
-            <p class="section-help">These help us prepare future player, parent, and team workflows without slowing down signup.</p>
+            <h2>Optional account holder details</h2>
+            <p class="section-help">These belong to the account holder. Player and child details are entered later on the player profile screen.</p>
             <div class="form-grid three-column">
                 <div class="form-field">
                     <label asp-for="PhoneNumber" class="form-label">Phone number</label>
@@ -107,7 +108,7 @@
                     <span asp-validation-for="PhoneNumber" class="text-danger"></span>
                 </div>
                 <div class="form-field">
-                    <label asp-for="DateOfBirth" class="form-label">Date of birth</label>
+                    <label asp-for="DateOfBirth" class="form-label">Account holder date of birth</label>
                     <input asp-for="DateOfBirth" class="form-control" />
                     <span asp-validation-for="DateOfBirth" class="text-danger"></span>
                 </div>

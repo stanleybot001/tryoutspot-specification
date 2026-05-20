@@ -48,6 +48,7 @@ public sealed class PlayerListingsApiTests
         await using var factory = new TryOutSpotWebApplicationFactory();
         var user = await factory.CreateUserAsync("listing-parent@example.com", [TryOutSpotRoles.Parent]);
         var sportId = GetActiveSportId(factory, "Softball");
+        var playerId = SeedManagedPlayer(factory, user.Id);
         var authorizedClient = await CreateAuthorizedClientAsync(factory, user.Email!);
 
         var createResponse = await authorizedClient.PostAsJsonAsync(
@@ -55,6 +56,7 @@ public sealed class PlayerListingsApiTests
             new CreatePlayerListingRequest
             {
                 ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
+                PlayerId = playerId,
                 Title = "Guest pitcher available for weekend events",
                 Description = "Looking for 12U-14U weekend tournament pickup opportunities.",
                 SportId = sportId,
@@ -87,6 +89,46 @@ public sealed class PlayerListingsApiTests
     }
 
     [Fact]
+    public async Task Search_DoesNotReturnListingsWithoutPlayerProfile()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("listing-unlinked-parent@example.com", [TryOutSpotRoles.Parent]);
+        SeedUnlinkedSearchablePlayerListing(factory, user.Id, "Parent account gear listing");
+
+        var publicClient = factory.CreateClient();
+        var searchResponse = await publicClient.GetAsync("/api/player-listings/search?q=parent");
+
+        Assert.Equal(HttpStatusCode.OK, searchResponse.StatusCode);
+        var searchListings = await searchResponse.Content.ReadFromJsonAsync<PlayerListingListResponse>();
+        Assert.NotNull(searchListings);
+        Assert.Empty(searchListings.Listings);
+    }
+
+    [Fact]
+    public async Task Create_SearchableListingWithoutPlayerProfile_ReturnsBadRequest()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("listing-unlinked-searchable-create@example.com", [TryOutSpotRoles.Parent]);
+        var authorizedClient = await CreateAuthorizedClientAsync(factory, user.Email!);
+
+        var response = await authorizedClient.PostAsJsonAsync(
+            "/api/player-listings",
+            new CreatePlayerListingRequest
+            {
+                ListingType = TryOutSpotPlayerListingTypes.UsedEquipment,
+                Title = "Unlinked searchable listing",
+                Description = "Should require a player before search visibility.",
+                City = "McPherson",
+                State = "KS",
+                ZipCode = "67460",
+                IsPublished = true,
+                IsSearchable = true
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task CoachWithoutPlayerRole_CannotCreatePlayerListing()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -113,13 +155,17 @@ public sealed class PlayerListingsApiTests
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
         var user = await factory.CreateUserAsync("listing-draft@example.com", [TryOutSpotRoles.Parent]);
+        var sportId = GetActiveSportId(factory, "Softball");
+        var playerId = SeedManagedPlayer(factory, user.Id);
         var authorizedClient = await CreateAuthorizedClientAsync(factory, user.Email!);
 
         var createResponse = await authorizedClient.PostAsJsonAsync(
             "/api/player-listings",
             new CreatePlayerListingRequest
             {
-                ListingType = TryOutSpotPlayerListingTypes.UsedEquipment,
+                ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
+                PlayerId = playerId,
+                SportId = sportId,
                 Title = "Used catcher gear set",
                 Description = "Quality used set, includes chest protector and shin guards.",
                 City = "McPherson",
@@ -202,6 +248,9 @@ public sealed class PlayerListingsApiTests
             });
 
         var user = await factory.CreateUserAsync("listing-radius@example.com", [TryOutSpotRoles.Parent]);
+        var sportId = GetActiveSportId(factory, "Softball");
+        var localPlayerId = SeedManagedPlayer(factory, user.Id, firstName: "Local", lastName: "Catcher", city: "McPherson", state: "KS", zipCode: "67460");
+        var distantPlayerId = SeedManagedPlayer(factory, user.Id, firstName: "Far", lastName: "Infielder", city: "Oklahoma City", state: "OK", zipCode: "73102");
         var authorizedClient = await CreateAuthorizedClientAsync(factory, user.Email!);
 
         var localCreateResponse = await authorizedClient.PostAsJsonAsync(
@@ -209,6 +258,8 @@ public sealed class PlayerListingsApiTests
             new CreatePlayerListingRequest
             {
                 ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
+                PlayerId = localPlayerId,
+                SportId = sportId,
                 Title = "Local catcher available",
                 Description = "Within the metro area.",
                 City = "McPherson",
@@ -224,6 +275,8 @@ public sealed class PlayerListingsApiTests
             new CreatePlayerListingRequest
             {
                 ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
+                PlayerId = distantPlayerId,
+                SportId = sportId,
                 Title = "Far away infielder available",
                 Description = "Outside the radius test range.",
                 City = "Oklahoma City",
@@ -342,6 +395,76 @@ public sealed class PlayerListingsApiTests
             UpdatedAt = now,
             IsActive = true
         };
+    }
+
+    private static Guid SeedManagedPlayer(
+        TryOutSpotWebApplicationFactory factory,
+        Guid ownerId,
+        string firstName = "Alex",
+        string lastName = "Rivera",
+        string city = "McPherson",
+        string state = "KS",
+        string zipCode = "67460")
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+        var player = new Player
+        {
+            Id = Guid.NewGuid(),
+            FirstName = firstName,
+            LastName = lastName,
+            DateOfBirth = now.AddYears(-14).Date,
+            City = city,
+            State = state,
+            ZipCode = zipCode,
+            ContactVisibility = "Public",
+            IsSearchable = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        };
+
+        dbContext.Players.Add(player);
+        dbContext.UserPlayerRelationships.Add(new UserPlayerRelationship
+        {
+            Id = Guid.NewGuid(),
+            UserId = ownerId,
+            PlayerId = player.Id,
+            Relationship = "Parent",
+            CanManage = true,
+            CreatedAt = now
+        });
+        dbContext.SaveChanges();
+        return player.Id;
+    }
+
+    private static void SeedUnlinkedSearchablePlayerListing(
+        TryOutSpotWebApplicationFactory factory,
+        Guid ownerId,
+        string title)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+        dbContext.PlayerListings.Add(new PlayerListing
+        {
+            Id = Guid.NewGuid(),
+            UserId = ownerId,
+            ListingType = TryOutSpotPlayerListingTypes.UsedEquipment,
+            Title = title,
+            Description = "This listing is not tied to a player profile.",
+            City = "McPherson",
+            State = "KS",
+            ZipCode = "67460",
+            IsPublished = true,
+            IsSearchable = true,
+            PublishedAt = now,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        });
+        dbContext.SaveChanges();
     }
 
     private static async Task<HttpClient> CreateAuthorizedClientAsync(

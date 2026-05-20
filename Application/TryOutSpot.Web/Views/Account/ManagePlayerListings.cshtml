@@ -6,9 +6,9 @@
 
 <section class="account-page">
     <div class="account-heading">
-        <p class="account-kicker">Player and parent listings</p>
+        <p class="account-kicker">Player listings</p>
         <h1>Manage your player marketplace listings.</h1>
-        <p>Create and manage pickup player, looking for team, equipment, private lesson, and training partner listings.</p>
+        <p>Create and manage pickup player, looking for team, equipment, private lesson, and training partner listings. Player search only includes listings tied to active player profiles.</p>
     </div>
 
     @if (TempData["StatusMessage"] is string statusMessage)
@@ -33,7 +33,7 @@
         }
         else
         {
-            <p class="section-help">No managed player profiles yet. You can still post equipment listings now, and add player profiles anytime.</p>
+            <p class="section-help">No managed player profiles yet. Add a player profile before creating searchable player listings.</p>
         }
     </section>
 
@@ -41,7 +41,7 @@
         <h2>Listings</h2>
         @if (Model.Listings.Count == 0)
         {
-            <p class="section-help">No active listings yet. Create your first listing to start showing up in discovery.</p>
+            <p class="section-help">No active listings yet. Create your first player-linked listing to appear in player search.</p>
         }
         else
         {

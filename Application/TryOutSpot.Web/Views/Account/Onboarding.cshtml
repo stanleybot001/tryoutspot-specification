@@ -13,6 +13,8 @@
     var visibleSteps = Model.Steps
         .Where(step => !step.IsComplete || !hiddenWhenCompleteStepCodes.Contains(step.Code))
         .ToArray();
+    var isParentOrGuardianAccount = Model.AccountTypes.Contains(TryOutSpotRoles.Parent, StringComparer.OrdinalIgnoreCase);
+    var isSelfPlayerAccount = Model.AccountTypes.Contains(TryOutSpotRoles.Player, StringComparer.OrdinalIgnoreCase);
     var accountMenuSteps = visibleSteps
         .Where(step => IsAccountSetupStep(step.Code))
         .ToArray();
@@ -28,7 +30,7 @@
     var menuGroups = new[]
     {
         new { Title = "Account setup", Steps = accountMenuSteps },
-        new { Title = "Player dashboard", Steps = playerMenuSteps },
+        new { Title = isParentOrGuardianAccount && !isSelfPlayerAccount ? "Child/player profiles" : "Player dashboard", Steps = playerMenuSteps },
         new { Title = "Team dashboard", Steps = teamMenuSteps },
         new { Title = "Saved items", Steps = savedMenuSteps }
     }
@@ -41,9 +43,13 @@
     var pageKicker = hasCompletedTeamOrganizationDetails ? "Dashboard" : "Setup";
     var pageHeading = hasCompletedTeamOrganizationDetails
         ? $"{Model.FirstName}, manage your TryOutSpot activity."
+        : isParentOrGuardianAccount && !isSelfPlayerAccount
+            ? $"{Model.FirstName}, finish your parent/guardian setup."
         : $"{Model.FirstName}, finish the pieces that matter.";
     var pageIntro = hasCompletedTeamOrganizationDetails
         ? "Keep team details, listings, favorites, and account settings ready for everyday work."
+        : isParentOrGuardianAccount && !isSelfPlayerAccount
+            ? "This is your parent/guardian account. Add a separate player profile for each child or player you manage; your account holder details are not shown in player search."
         : "TryOutSpot keeps signup light. These items help tailor the next screens for players, parents, coaches, and organization staff.";
 }
 

@@ -2,10 +2,16 @@
 
 @{
     var isEditMode = Model.IsEditMode && Model.PlayerId.HasValue;
-    var headingTitle = isEditMode ? "Edit player profile" : "Add player profile";
+    var headingTitle = isEditMode
+        ? "Edit player profile"
+        : Model.IsParentOrGuardianAccount
+            ? "Add a child/player profile"
+            : "Add player profile";
     var headingDescription = isEditMode
-        ? "Update player profile details, visibility, sports, and recruiting links."
-        : "Create a player profile so you can start registering for tryouts and opportunities.";
+        ? "Update the player's details, visibility, sports, and recruiting links."
+        : Model.IsParentOrGuardianAccount
+            ? "Enter the player's information here. This is not your parent/guardian account profile."
+            : "Create a player profile so you can start registering for tryouts and opportunities.";
     var submitLabel = isEditMode ? "Save player changes" : "Save player profile";
     var formAction = isEditMode
         ? Url.Action("EditPlayerProfile", "Account", new { playerId = Model.PlayerId!.Value })
@@ -39,6 +45,13 @@
             <input asp-for="ProfileImageUrl" type="hidden" />
             <input asp-for="EnhancedProfileVisibleToTeams" type="hidden" />
 
+            @if (Model.IsParentOrGuardianAccount)
+            {
+                <div class="account-alert">
+                    Parent/guardian account: use this form for the child or player you manage. Your account holder details stay separate and are not shown in player search.
+                </div>
+            }
+
             @if (!Model.EnhancedProfileVisibleToTeams)
             {
                 <div class="section-help mb-3">
@@ -47,8 +60,8 @@
             }
 
             <fieldset class="form-fieldset">
-                <legend>Personal information</legend>
-                <p class="section-help">Start with the player identity and account relationship.</p>
+                <legend>Player identity</legend>
+                <p class="section-help">Start with the player's name, birth date, and your relationship to that player.</p>
                 <div class="form-grid two-column">
                     <div class="form-field">
                         <label asp-for="FirstName" class="form-label">Player first name <span class="required-marker">*</span></label>
@@ -66,7 +79,7 @@
                         <span asp-validation-for="DateOfBirth" class="text-danger"></span>
                     </div>
                     <div class="form-field">
-                        <label asp-for="Relationship" class="form-label">Relationship <span class="required-marker">*</span></label>
+                        <label asp-for="Relationship" class="form-label">Your relationship to this player <span class="required-marker">*</span></label>
                         <select asp-for="Relationship" class="form-select">
                             @foreach (var relationshipOption in Model.AvailableRelationshipOptions)
                             {
@@ -120,8 +133,9 @@
                 </div>
                 <label class="sms-consent-option" for="IsSearchable">
                     <input asp-for="IsSearchable" class="form-check-input" />
-                    <span>Allow this player profile to appear in search results.</span>
+                    <span>Allow this player profile to appear in player search results.</span>
                 </label>
+                <p class="section-help">Leave this off until the profile clearly belongs to the player, not the parent or guardian account holder.</p>
             </fieldset>
 
             <fieldset class="form-fieldset">

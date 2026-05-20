@@ -426,7 +426,8 @@ public sealed class AccountPageTests
         Assert.True(
             html.IndexOf("Dashboard menu", StringComparison.Ordinal) < html.IndexOf("What's new", StringComparison.Ordinal),
             "Dashboard menu should render before the What's new feed.");
-        Assert.Contains("Player dashboard", html);
+        Assert.Contains("Child/player profiles", html);
+        Assert.Contains("finish your parent/guardian setup", html);
         Assert.DoesNotContain("Setup checklist", html);
         Assert.DoesNotContain("Available features", html);
         Assert.DoesNotContain("name=\"playerParentRole\"", html);
@@ -1049,7 +1050,8 @@ public sealed class AccountPageTests
 
         Assert.Equal(HttpStatusCode.OK, createResponse.StatusCode);
         var createHtml = await createResponse.Content.ReadAsStringAsync();
-        Assert.Contains("Add player profile", createHtml);
+        Assert.Contains("Add a child/player profile", createHtml);
+        Assert.Contains("not your parent/guardian account profile", createHtml);
         AssertPlayerProfileSections(createHtml);
 
         var playerId = Guid.NewGuid();
@@ -1900,7 +1902,7 @@ public sealed class AccountPageTests
 
     private static void AssertPlayerProfileSections(string html)
     {
-        Assert.Contains("<legend>Personal information</legend>", html);
+        Assert.Contains("<legend>Player identity</legend>", html);
         Assert.Contains("<legend>Contact, location, and visibility</legend>", html);
         Assert.Contains("<legend>School and team</legend>", html);
         Assert.Contains("<legend>Baseball and softball details</legend>", html);
