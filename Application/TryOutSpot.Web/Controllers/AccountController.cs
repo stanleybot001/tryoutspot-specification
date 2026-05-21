@@ -11247,10 +11247,15 @@ public sealed class AccountController(
         var subscriptions = await dbContext.Subscriptions
             .AsNoTracking()
             .Where(subscription => subscription.UserId == userId)
-            .Where(subscription => TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status))
+            .Select(subscription => new
+            {
+                subscription.PlanType,
+                subscription.Status
+            })
             .ToArrayAsync(cancellationToken);
 
-        foreach (var subscription in subscriptions)
+        foreach (var subscription in subscriptions
+            .Where(subscription => TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status)))
         {
             var normalizedPlanCode = TryOutSpotBillingCatalog.NormalizePlanCode(subscription.PlanType);
             if (normalizedPlanCode is null)

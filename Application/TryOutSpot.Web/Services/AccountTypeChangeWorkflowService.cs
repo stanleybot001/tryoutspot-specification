@@ -234,21 +234,30 @@ public sealed class AccountTypeChangeWorkflowService(
         var subscriptions = await dbContext.Subscriptions
             .AsNoTracking()
             .Where(subscription => subscription.UserId == userId)
-            .Where(subscription => TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status))
+            .Select(subscription => new
+            {
+                subscription.PlanType,
+                subscription.Status,
+                subscription.CancelAtPeriodEnd,
+                subscription.CurrentPeriodEnd
+            })
             .ToArrayAsync(cancellationToken);
 
-        var relevant = subscriptions.Where(subscription =>
-        {
-            var planCode = TryOutSpotBillingCatalog.NormalizePlanCode(subscription.PlanType);
-            return bundleType switch
+        var relevant = subscriptions
+            .Where(subscription => TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status))
+            .Where(subscription =>
             {
-                BundleType.Team => planCode is TryOutSpotPlanCodes.TeamBasic
-                    or TryOutSpotPlanCodes.TeamProfessional
-                    or TryOutSpotPlanCodes.EnterpriseOrganization,
-                BundleType.PlayerParent => planCode is TryOutSpotPlanCodes.PremiumPlayer,
-                _ => false
-            };
-        }).ToArray();
+                var planCode = TryOutSpotBillingCatalog.NormalizePlanCode(subscription.PlanType);
+                return bundleType switch
+                {
+                    BundleType.Team => planCode is TryOutSpotPlanCodes.TeamBasic
+                        or TryOutSpotPlanCodes.TeamProfessional
+                        or TryOutSpotPlanCodes.EnterpriseOrganization,
+                    BundleType.PlayerParent => planCode is TryOutSpotPlanCodes.PremiumPlayer,
+                    _ => false
+                };
+            })
+            .ToArray();
 
         if (relevant.Length == 0)
         {

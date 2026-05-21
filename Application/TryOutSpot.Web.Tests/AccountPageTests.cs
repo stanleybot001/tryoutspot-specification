@@ -1081,6 +1081,41 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task SettingsPost_RemoveTeamRepresentativeWithoutPaidMembership_UpdatesCurrentUser()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync(
+            "settings-remove-team-rep@example.com",
+            [TryOutSpotRoles.Parent, TryOutSpotRoles.TeamRepresentative]);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var accountTypesToken = await GetAntiForgeryTokenAsync(client, "/account/settings");
+        var accountTypesResponse = await client.PostAsync(
+            "/account/settings/account-types",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", accountTypesToken),
+                new("accountTypes", TryOutSpotRoles.Parent)
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, accountTypesResponse.StatusCode);
+        Assert.Equal("/account/settings", accountTypesResponse.Headers.Location?.ToString());
+
+        using var scope = factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+        var updatedUser = await userManager.FindByIdAsync(user.Id.ToString());
+        Assert.NotNull(updatedUser);
+
+        var roles = await userManager.GetRolesAsync(updatedUser);
+        Assert.Contains(TryOutSpotRoles.Parent, roles);
+        Assert.DoesNotContain(TryOutSpotRoles.TeamRepresentative, roles);
+    }
+
+    [Fact]
     public async Task SettingsPost_DashboardActivityPreferences_UpdateCurrentUser()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
