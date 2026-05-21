@@ -85,16 +85,13 @@
         <section class="form-section dashboard-menu-section">
             <h2>Dashboard menu</h2>
             <p class="section-help">Use these shortcuts to manage the areas tied to your account.</p>
-            @if (Model.AccountTypes.Any(TryOutSpotRoles.IsTeamBundleRole))
-            {
-                <div class="coach-hub-dashboard-link">
-                    <div>
-                        <strong>Coach Getting Started Hub</strong>
-                        <span>Follow the short path for team setup, tryout listings, registration sheets, and pickup player listings.</span>
-                    </div>
-                    <a class="btn btn-sm btn-primary" href="/account/onboarding/coach-getting-started">Open hub</a>
+            <div class="coach-hub-dashboard-link">
+                <div>
+                    <strong>Coach Getting Started Hub</strong>
+                    <span>Follow the short path for team setup, tryout listings, registration sheets, and pickup player listings.</span>
                 </div>
-            }
+                <a class="btn btn-sm btn-primary" href="/account/onboarding/coach-getting-started">Open hub</a>
+            </div>
             @if (menuGroups.Length == 0)
             {
                 <p class="section-help">No dashboard actions are available yet.</p>

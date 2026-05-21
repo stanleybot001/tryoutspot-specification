@@ -435,6 +435,8 @@ public sealed class AccountPageTests
         Assert.Contains("Recommended plan options", html);
         Assert.Contains("href=\"/account/onboarding/add-player-profile\"", html);
         Assert.Contains("href=\"/account/onboarding/choose-plan\"", html);
+        Assert.Contains("Coach Getting Started Hub", html);
+        Assert.Contains("href=\"/account/onboarding/coach-getting-started\"", html);
     }
 
     [Fact]
@@ -458,6 +460,26 @@ public sealed class AccountPageTests
         Assert.Contains("href=\"/account/onboarding/choose-plan\"", html);
         Assert.Contains("Coach Getting Started Hub", html);
         Assert.Contains("href=\"/account/onboarding/coach-getting-started\"", html);
+    }
+
+    [Fact]
+    public async Task CoachGettingStarted_WithParentAccount_GuidesUserToTeamRole()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        await factory.CreateUserAsync("coach-hub-parent@example.com", [TryOutSpotRoles.Parent]);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        await LoginWebUserAsync(client, "coach-hub-parent@example.com");
+        var response = await client.GetAsync("/account/onboarding/coach-getting-started");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Choose team role", html);
+        Assert.Contains("Select Team representative so coach tools appear.", html);
+        Assert.Contains("href=\"/account/settings\"", html);
     }
 
     [Fact]
