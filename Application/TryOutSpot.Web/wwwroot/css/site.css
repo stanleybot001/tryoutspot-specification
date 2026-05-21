@@ -2094,7 +2094,7 @@ body.splash-page {
   color: var(--sp-text);
   font-size: clamp(1.7rem, 2.8vw, 2.55rem);
   line-height: 1.06;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   max-width: 18ch;
 }
 
@@ -2132,12 +2132,14 @@ body.splash-page {
 
 .start-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.55rem;
-  margin-top: 0.8rem;
+  margin-top: 1rem;
 }
 
 .start-btn-primary,
-.start-btn-secondary {
+.start-btn-secondary,
+.start-btn-tertiary {
   min-height: 35px;
   border-radius: 999px;
   font-size: 0.88rem;
@@ -2166,6 +2168,18 @@ body.splash-page {
 .start-btn-secondary:hover {
   color: #fff;
   border-color: #7090be;
+}
+
+.start-btn-tertiary {
+  border: 1px solid rgba(132, 182, 231, 0.45);
+  color: #dce9ff;
+  background: rgba(6, 15, 28, 0.28);
+}
+
+.start-btn-tertiary:hover {
+  color: #ffffff;
+  border-color: rgba(190, 216, 249, 0.72);
+  background: rgba(17, 33, 58, 0.74);
 }
 
 .start-feature-panel {
@@ -2201,6 +2215,61 @@ body.splash-page {
   margin-top: 0.4rem !important;
   color: #ffbf8a !important;
   font-weight: 700;
+}
+
+.start-next-panel {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.start-next-panel h2 {
+  margin-bottom: 0;
+}
+
+.start-next-actions {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.start-next-link {
+  display: grid;
+  gap: 0.08rem;
+  border: 1px solid rgba(79, 111, 157, 0.72);
+  border-radius: 8px;
+  background: rgba(7, 17, 33, 0.72);
+  color: #dce9ff;
+  padding: 0.65rem 0.72rem;
+  text-decoration: none;
+}
+
+.start-next-link:hover,
+.start-next-link:focus {
+  border-color: rgba(132, 182, 231, 0.86);
+  color: #ffffff;
+  background: rgba(15, 35, 61, 0.9);
+}
+
+.start-next-link span,
+.start-next-link small {
+  color: #aac0df;
+  font-size: 0.8rem;
+}
+
+.start-next-link strong {
+  color: #ffffff;
+  font-size: 1.05rem;
+  line-height: 1.2;
+}
+
+.start-next-primary {
+  border-color: rgba(255, 127, 30, 0.92);
+  background: linear-gradient(120deg, rgba(255, 106, 0, 0.96), rgba(255, 138, 35, 0.9));
+}
+
+.start-next-primary span,
+.start-next-primary small,
+.start-next-primary strong {
+  color: #ffffff;
 }
 
 .start-hero-rail {

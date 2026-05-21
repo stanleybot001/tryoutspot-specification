@@ -45,10 +45,9 @@
         <div class="start-hero-card">
             <header class="start-hero-topbar">
                 <nav aria-label="Hero navigation">
-                    <a asp-controller="Account" asp-action="Login">Find Tryouts</a>
-                    <a asp-controller="Account" asp-action="Register">Create Profile</a>
-                    <a asp-controller="Account" asp-action="Register">Teams</a>
-                    <a href="/plans-and-features">Plans</a>
+                    <a asp-controller="Account" asp-action="Register">Sign up</a>
+                    <a asp-controller="Account" asp-action="Login">Log in</a>
+                    <a asp-controller="Home" asp-action="PlansAndFeatures">Learn more</a>
                 </nav>
             </header>
 
@@ -70,16 +69,31 @@
                         </ul>
                     </section>
                     <div class="start-actions">
-                        <a class="btn start-btn-primary" asp-controller="Account" asp-action="Login">Find Tryouts</a>
-                        <a class="btn start-btn-secondary" asp-controller="Account" asp-action="Register">Create Profile</a>
+                        <a class="btn start-btn-primary" asp-controller="Account" asp-action="Register">Sign up free</a>
+                        <a class="btn start-btn-secondary" asp-controller="Account" asp-action="Login">Log in</a>
+                        <a class="btn start-btn-tertiary" asp-controller="Home" asp-action="PlansAndFeatures">Learn more</a>
                     </div>
                 </div>
-                <aside class="start-feature-panel" aria-label="Launch spotlight">
-                    <p class="start-feature-kicker">Launch Spotlight</p>
-                    <h2>Be First to List a Tryout</h2>
-                    <p>Teams, academies, and organizations can create profiles for upcoming openings.</p>
-                    <p>Use clear dates, age groups, levels, and locations.</p>
-                    <p class="start-feature-alert">Real listings as teams join.</p>
+                <aside class="start-feature-panel start-next-panel" aria-labelledby="start-next-title">
+                    <p class="start-feature-kicker">Start Here</p>
+                    <h2 id="start-next-title">What do you want to do next?</h2>
+                    <div class="start-next-actions">
+                        <a class="start-next-link start-next-primary" asp-controller="Account" asp-action="Register">
+                            <span>New here?</span>
+                            <strong>Sign up</strong>
+                            <small>Create a player, parent, or team account.</small>
+                        </a>
+                        <a class="start-next-link" asp-controller="Account" asp-action="Login">
+                            <span>Already have an account?</span>
+                            <strong>Log in</strong>
+                            <small>Go to your dashboard and keep moving.</small>
+                        </a>
+                        <a class="start-next-link" asp-controller="Home" asp-action="PlansAndFeatures">
+                            <span>Still deciding?</span>
+                            <strong>Learn more</strong>
+                            <small>Compare features for players and teams.</small>
+                        </a>
+                    </div>
                 </aside>
             </div>
 
