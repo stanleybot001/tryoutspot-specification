@@ -710,6 +710,59 @@ public sealed class ManagedTeamOpportunitySummaryPageModel
     public IReadOnlyCollection<string> Sports { get; set; } = [];
 }
 
+public sealed class CoachGettingStartedPageModel
+{
+    public string FirstName { get; set; } = string.Empty;
+
+    public bool HasTeamRepresentativeRole { get; set; }
+
+    public bool HasTeamBasicOrHigherPlan { get; set; }
+
+    public bool CanPostOpportunities { get; set; }
+
+    public bool CanConfigureTryoutRegistration { get; set; }
+
+    public string TeamPlanLabel { get; set; } = "No team plan";
+
+    public ManagedTeamOpportunitySummaryPageModel? PrimaryTeam { get; set; }
+
+    public CoachGettingStartedOpportunityPageItem? LatestTryout { get; set; }
+
+    public CoachGettingStartedOpportunityPageItem? LatestPickupPlayerListing { get; set; }
+
+    public IReadOnlyCollection<ManagedTeamOpportunitySummaryPageModel> Teams { get; set; } = [];
+
+    public IReadOnlyCollection<CoachGettingStartedStepPageItem> Steps { get; set; } = [];
+}
+
+public sealed record CoachGettingStartedStepPageItem(
+    int Number,
+    string Title,
+    string Description,
+    string StatusLabel,
+    bool IsComplete,
+    bool IsAvailable,
+    string? ActionLabel,
+    string? ActionUrl,
+    IReadOnlyCollection<string> Details,
+    IReadOnlyCollection<CoachGettingStartedStepLinkPageItem> SecondaryLinks);
+
+public sealed record CoachGettingStartedStepLinkPageItem(
+    string Label,
+    string Url,
+    bool IsAvailable = true);
+
+public sealed record CoachGettingStartedOpportunityPageItem(
+    Guid TeamId,
+    Guid OpportunityId,
+    string Title,
+    string Type,
+    bool IsPublished,
+    bool RegistrationRequired,
+    bool HasPdfFlyer,
+    int RegistrationCount,
+    DateTime UpdatedAt);
+
 public sealed class TeamOpportunityListPageModel
 {
     public ManagedTeamOpportunitySummaryPageModel Team { get; set; } = new();

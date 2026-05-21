@@ -1,0 +1,150 @@
+@model CoachGettingStartedPageModel
+
+@{
+    ViewData["Title"] = "Coach Getting Started";
+}
+
+<section class="account-page coach-hub-page">
+    <div class="account-heading">
+        <p class="account-kicker">Coach launch path</p>
+        <h1>@Model.FirstName, get your first listings live.</h1>
+        <p>Use this short path to set up the team account, publish a tryout, turn on registration, print tryout-day sheets, and post pickup player needs.</p>
+    </div>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    <section class="account-summary-strip coach-hub-summary">
+        <div>
+            <span>Team role</span>
+            <strong>@(Model.HasTeamRepresentativeRole ? "Selected" : "Needed")</strong>
+        </div>
+        <div>
+            <span>Team plan</span>
+            <strong>@Model.TeamPlanLabel</strong>
+        </div>
+        <div>
+            <span>Primary team</span>
+            <strong>@(Model.PrimaryTeam?.TeamName ?? "Not added")</strong>
+        </div>
+        <div>
+            <span>Registration tools</span>
+            <strong>@(Model.CanConfigureTryoutRegistration ? "Ready" : "Needs Basic")</strong>
+        </div>
+    </section>
+
+    <section class="form-section coach-hub-path">
+        <div class="section-heading-row">
+            <div>
+                <h2>Coach Getting Started Hub</h2>
+                <p class="section-help">Each step opens the page where that work actually happens. Locked steps open after the earlier setup is finished.</p>
+            </div>
+            <a class="btn btn-outline-secondary" href="/account/onboarding">Dashboard</a>
+        </div>
+
+        <div class="coach-step-list">
+            @foreach (var step in Model.Steps)
+            {
+                <article class="coach-step-card @GetStepClass(step)">
+                    <div class="coach-step-number" aria-hidden="true">@step.Number</div>
+                    <div class="coach-step-main">
+                        <div class="coach-step-heading">
+                            <div>
+                                <h3>@step.Title</h3>
+                                <p>@step.Description</p>
+                            </div>
+                            <span class="coach-step-state @GetStepClass(step)">@step.StatusLabel</span>
+                        </div>
+
+                        @if (step.Details.Count > 0)
+                        {
+                            <ul class="coach-step-details">
+                                @foreach (var detail in step.Details)
+                                {
+                                    <li>@detail</li>
+                                }
+                            </ul>
+                        }
+
+                        <div class="coach-step-actions">
+                            @if (!string.IsNullOrWhiteSpace(step.ActionUrl) && step.IsAvailable)
+                            {
+                                <a class="btn btn-primary" href="@step.ActionUrl">@step.ActionLabel</a>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(step.ActionLabel))
+                            {
+                                <span class="btn btn-outline-secondary disabled" aria-disabled="true">@step.ActionLabel</span>
+                            }
+
+                            @foreach (var link in step.SecondaryLinks)
+                            {
+                                if (link.IsAvailable)
+                                {
+                                    var opensNewWindow = ShouldOpenInNewWindow(link.Url);
+                                    if (opensNewWindow)
+                                    {
+                                        <a class="btn btn-outline-primary" href="@link.Url" target="_blank" rel="noopener">@link.Label</a>
+                                    }
+                                    else
+                                    {
+                                        <a class="btn btn-outline-primary" href="@link.Url">@link.Label</a>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="btn btn-outline-secondary disabled" aria-disabled="true">@link.Label</span>
+                                }
+                            }
+                        </div>
+                    </div>
+                </article>
+            }
+        </div>
+    </section>
+
+    @if (Model.Teams.Count > 1)
+    {
+        <section class="form-section">
+            <h2>Managed teams</h2>
+            <p class="section-help">The checklist starts with @(Model.PrimaryTeam?.TeamName). Open another team if this listing belongs elsewhere.</p>
+            <div class="coach-team-list">
+                @foreach (var team in Model.Teams)
+                {
+                    <article class="coach-team-row">
+                        <div>
+                            <strong>@team.TeamName</strong>
+                            @if (!string.IsNullOrWhiteSpace(team.OrganizationName))
+                            {
+                                <span>@team.OrganizationName</span>
+                            }
+                        </div>
+                        <div class="form-actions">
+                            <a class="btn btn-sm btn-outline-primary" href="/account/onboarding/team-opportunities/@team.TeamId">Open listings</a>
+                            <a class="btn btn-sm btn-outline-secondary" href="/account/onboarding/team-opportunities/@team.TeamId/new?type=tryout">New tryout</a>
+                            <a class="btn btn-sm btn-outline-secondary" href="/account/onboarding/team-opportunities/@team.TeamId/new?type=pickup_player">New pickup</a>
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+</section>
+
+@functions {
+    private static string GetStepClass(CoachGettingStartedStepPageItem step)
+    {
+        if (step.IsComplete)
+        {
+            return "complete";
+        }
+
+        return step.IsAvailable ? "ready" : "locked";
+    }
+
+    private static bool ShouldOpenInNewWindow(string url)
+    {
+        return url.Contains("/registrations/", StringComparison.OrdinalIgnoreCase);
+    }
+}

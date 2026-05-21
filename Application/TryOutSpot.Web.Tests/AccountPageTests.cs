@@ -456,6 +456,140 @@ public sealed class AccountPageTests
         Assert.DoesNotContain("Available features", html);
         Assert.Contains("href=\"/account/onboarding/add-team-or-organization\"", html);
         Assert.Contains("href=\"/account/onboarding/choose-plan\"", html);
+        Assert.Contains("Coach Getting Started Hub", html);
+        Assert.Contains("href=\"/account/onboarding/coach-getting-started\"", html);
+    }
+
+    [Fact]
+    public async Task CoachGettingStarted_RequiresWebCookieAndGuidesCoachToBasicPlan()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        await factory.CreateUserAsync("coach-hub-new@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var anonymousResponse = await client.GetAsync("/account/onboarding/coach-getting-started");
+        Assert.Equal(HttpStatusCode.Redirect, anonymousResponse.StatusCode);
+        Assert.Contains("/account/login", anonymousResponse.Headers.Location?.ToString());
+
+        await LoginWebUserAsync(client, "coach-hub-new@example.com");
+        var response = await client.GetAsync("/account/onboarding/coach-getting-started");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Coach Getting Started Hub", html);
+        Assert.Contains("Choose Basic Team", html);
+        Assert.Contains("href=\"/account/onboarding/choose-plan\"", html);
+        Assert.Contains("Create tryout listing", html);
+        Assert.Contains("Locked", html);
+    }
+
+    [Fact]
+    public async Task CoachGettingStarted_WithTeamAndTryout_LinksToListingAndPrintPages()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("coach-hub-ready@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.TeamBasic, "active");
+
+        Guid teamId;
+        Guid tryoutId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var sportId = await dbContext.Sports
+                .Where(sport => sport.IsActive && sport.Name == "Baseball")
+                .Select(sport => sport.Id)
+                .SingleAsync();
+            var now = DateTime.UtcNow;
+            teamId = Guid.NewGuid();
+            tryoutId = Guid.NewGuid();
+
+            dbContext.Teams.Add(new Team
+            {
+                Id = teamId,
+                Name = "Coach Hub Aces 14U",
+                TeamLevel = "14U",
+                GeographicScope = "Regional",
+                City = "McPherson",
+                State = "KS",
+                ZipCode = "67460",
+                IsSearchable = true,
+                IsContactInfoVisible = true,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+            dbContext.UserTeamRoles.Add(new UserTeamRole
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                TeamId = teamId,
+                Role = TryOutSpotRoles.TeamRepresentative,
+                StartDate = now,
+                IsActive = true,
+                CreatedAt = now
+            });
+            dbContext.TeamSports.Add(new TeamSport
+            {
+                Id = Guid.NewGuid(),
+                TeamId = teamId,
+                SportId = sportId,
+                IsActive = true,
+                CreatedAt = now
+            });
+            dbContext.Opportunities.Add(new Opportunity
+            {
+                Id = tryoutId,
+                TeamId = teamId,
+                SportId = sportId,
+                Type = "tryout",
+                Title = "Coach hub fall tryout",
+                RegistrationRequired = true,
+                RegistrationFee = 25m,
+                EventDate = now.AddDays(21),
+                ListingStartDate = now.Date,
+                ListingEndDate = now.AddDays(35).Date,
+                City = "McPherson",
+                State = "KS",
+                ZipCode = "67460",
+                UploadedPdfObjectKey = "coach-hub/fall-tryout.pdf",
+                UploadedPdfFileName = "fall-tryout.pdf",
+                IsPublished = true,
+                PublishedAt = now,
+                ExpiresAt = now.AddDays(35),
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var response = await client.GetAsync("/account/onboarding/coach-getting-started");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Coach Hub Aces 14U", html);
+        Assert.Contains("PDF flyer is attached.", html);
+        Assert.Contains("Registration is turned on.", html);
+        Assert.Contains($"href=\"/account/onboarding/team-opportunities/{teamId}/{tryoutId}/edit\"", html);
+        Assert.Contains($"href=\"/account/onboarding/team-opportunities/{teamId}/{tryoutId}/registrations/check-in\"", html);
+        Assert.Contains($"href=\"/account/onboarding/team-opportunities/{teamId}/{tryoutId}/registrations/evaluation\"", html);
+        Assert.Contains($"href=\"/account/onboarding/team-opportunities/{teamId}/new?type=pickup_player\"", html);
+
+        var pickupCreateResponse = await client.GetAsync($"/account/onboarding/team-opportunities/{teamId}/new?type=pickup_player");
+        Assert.Equal(HttpStatusCode.OK, pickupCreateResponse.StatusCode);
+        var pickupCreateHtml = await pickupCreateResponse.Content.ReadAsStringAsync();
+        Assert.Matches(
+            "<option[^>]*(selected=\"selected\"[^>]*value=\"pickup_player\"|value=\"pickup_player\"[^>]*selected=\"selected\")",
+            pickupCreateHtml);
     }
 
     [Fact]

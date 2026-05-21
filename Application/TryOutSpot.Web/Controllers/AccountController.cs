@@ -865,6 +865,19 @@ public sealed class AccountController(
     }
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [HttpGet("onboarding/coach-getting-started")]
+    public async Task<IActionResult> CoachGettingStarted(CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(CoachGettingStarted)) });
+        }
+
+        return View(await BuildCoachGettingStartedPageModelAsync(user, cancellationToken));
+    }
+
+    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
     [HttpPost("onboarding/recent-activity/reset")]
     public async Task<IActionResult> ResetDashboardActivityWindow(CancellationToken cancellationToken)
     {
@@ -2372,14 +2385,17 @@ public sealed class AccountController(
         AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
         Policy = TryOutSpotAuthorizationPolicies.ManageTeamProfile)]
     [HttpGet("onboarding/team-opportunities/{teamId:guid}/new")]
-    public async Task<IActionResult> CreateTeamOpportunity(Guid teamId, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> CreateTeamOpportunity(
+        Guid teamId,
+        [FromQuery] string? type = null,
+        CancellationToken cancellationToken = default)
     {
         var user = await GetCurrentWebUserAsync();
         if (user is null)
         {
             return RedirectToAction(nameof(Login), new
             {
-                returnUrl = Url.Action(nameof(CreateTeamOpportunity), new { teamId })
+                returnUrl = Url.Action(nameof(CreateTeamOpportunity), new { teamId, type })
             });
         }
 
@@ -2394,6 +2410,11 @@ public sealed class AccountController(
         {
             TempData["StatusMessage"] = "Your current membership does not include opportunity posting.";
             return RedirectToAction(nameof(TeamOpportunities), new { teamId });
+        }
+
+        if (TryNormalizeTeamOpportunityType(type, out var normalizedType))
+        {
+            model.Type = normalizedType;
         }
 
         return View("EditTeamOpportunity", model);
@@ -6217,6 +6238,18 @@ public sealed class AccountController(
         };
     }
 
+    private static bool TryNormalizeTeamOpportunityType(string? value, out string normalizedType)
+    {
+        var normalizedValue = NormalizeOptional(value)?
+            .Replace("-", "_", StringComparison.Ordinal)
+            .Replace(" ", "_", StringComparison.Ordinal)
+            .ToLowerInvariant();
+
+        normalizedType = TeamOpportunityTypeOptions.FirstOrDefault(option =>
+            string.Equals(option, normalizedValue, StringComparison.OrdinalIgnoreCase)) ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(normalizedType);
+    }
+
     private async Task<OnboardingPageModel> BuildOnboardingPageModelAsync(
         User user,
         int activityPage,
@@ -6402,6 +6435,424 @@ public sealed class AccountController(
             RecentActivity = recentActivity,
             Steps = steps
         };
+    }
+
+    private async Task<CoachGettingStartedPageModel> BuildCoachGettingStartedPageModelAsync(
+        User user,
+        CancellationToken cancellationToken)
+    {
+        var roles = await GetCanonicalPublicRolesAsync(user);
+        var entitlements = await entitlementService.GetEntitlementsAsync(user.Id, cancellationToken);
+        var activePlanCodes = entitlements?.ActivePlanCodes ?? [];
+        var hasTeamRepresentativeRole = roles.Any(TryOutSpotRoles.IsTeamBundleRole);
+        var hasTeamBasicOrHigherPlan = HasActiveTeamBasicOrHigherPlan(activePlanCodes);
+        var canConfigureTryoutRegistration = await CanConfigureTryoutRegistrationAsync(user.Id, cancellationToken);
+
+        var teamDashboard = hasTeamRepresentativeRole
+            ? await BuildTeamOpportunityDashboardPageModelAsync(user, cancellationToken)
+            : null;
+        var teams = teamDashboard?.Teams.OrderBy(team => team.TeamName).ToArray()
+            ?? [];
+        var primaryTeam = teams.FirstOrDefault();
+        var teamIds = teams.Select(team => team.TeamId).ToArray();
+
+        var latestTryout = await GetLatestCoachGettingStartedOpportunityAsync(
+            teamIds,
+            "tryout",
+            cancellationToken);
+        var latestPickupPlayerListing = await GetLatestCoachGettingStartedOpportunityAsync(
+            teamIds,
+            "pickup_player",
+            cancellationToken);
+
+        var teamPlanLabel = ResolveCoachTeamPlanLabel(activePlanCodes);
+        var canPostOpportunities = teamDashboard?.CanPostOpportunities == true;
+        var steps = BuildCoachGettingStartedSteps(
+            roles,
+            hasTeamRepresentativeRole,
+            hasTeamBasicOrHigherPlan,
+            canPostOpportunities,
+            canConfigureTryoutRegistration,
+            primaryTeam,
+            latestTryout,
+            latestPickupPlayerListing);
+
+        return new CoachGettingStartedPageModel
+        {
+            FirstName = user.FirstName,
+            HasTeamRepresentativeRole = hasTeamRepresentativeRole,
+            HasTeamBasicOrHigherPlan = hasTeamBasicOrHigherPlan,
+            CanPostOpportunities = canPostOpportunities,
+            CanConfigureTryoutRegistration = canConfigureTryoutRegistration,
+            TeamPlanLabel = teamPlanLabel,
+            PrimaryTeam = primaryTeam,
+            LatestTryout = latestTryout,
+            LatestPickupPlayerListing = latestPickupPlayerListing,
+            Teams = teams,
+            Steps = steps
+        };
+    }
+
+    private async Task<CoachGettingStartedOpportunityPageItem?> GetLatestCoachGettingStartedOpportunityAsync(
+        IReadOnlyCollection<Guid> teamIds,
+        string type,
+        CancellationToken cancellationToken)
+    {
+        if (teamIds.Count == 0)
+        {
+            return null;
+        }
+
+        var opportunity = await dbContext.Opportunities
+            .AsNoTracking()
+            .Where(currentOpportunity => teamIds.Contains(currentOpportunity.TeamId))
+            .Where(currentOpportunity => currentOpportunity.IsActive)
+            .Where(currentOpportunity => currentOpportunity.Type == type)
+            .OrderByDescending(currentOpportunity => currentOpportunity.UpdatedAt)
+            .Select(currentOpportunity => new
+            {
+                currentOpportunity.TeamId,
+                OpportunityId = currentOpportunity.Id,
+                currentOpportunity.Title,
+                currentOpportunity.Type,
+                currentOpportunity.IsPublished,
+                currentOpportunity.RegistrationRequired,
+                HasPdfFlyer = currentOpportunity.PdfUrl != null
+                    && currentOpportunity.PdfUrl != string.Empty
+                    || currentOpportunity.UploadedPdfObjectKey != null
+                    && currentOpportunity.UploadedPdfObjectKey != string.Empty,
+                RegistrationCount = currentOpportunity.Registrations.Count,
+                currentOpportunity.UpdatedAt
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return opportunity is null
+            ? null
+            : new CoachGettingStartedOpportunityPageItem(
+                opportunity.TeamId,
+                opportunity.OpportunityId,
+                opportunity.Title,
+                opportunity.Type,
+                opportunity.IsPublished,
+                opportunity.RegistrationRequired,
+                opportunity.HasPdfFlyer,
+                opportunity.RegistrationCount,
+                opportunity.UpdatedAt);
+    }
+
+    private static IReadOnlyCollection<CoachGettingStartedStepPageItem> BuildCoachGettingStartedSteps(
+        IReadOnlyCollection<string> roles,
+        bool hasTeamRepresentativeRole,
+        bool hasTeamBasicOrHigherPlan,
+        bool canPostOpportunities,
+        bool canConfigureTryoutRegistration,
+        ManagedTeamOpportunitySummaryPageModel? primaryTeam,
+        CoachGettingStartedOpportunityPageItem? latestTryout,
+        CoachGettingStartedOpportunityPageItem? latestPickupPlayerListing)
+    {
+        var accountTypeUrl = roles.Count == 0
+            ? "/account/onboarding#onboarding-account-types"
+            : "/account/settings";
+        var hasTeamProfile = primaryTeam is not null;
+        var foundationComplete = hasTeamRepresentativeRole
+            && hasTeamBasicOrHigherPlan
+            && hasTeamProfile;
+        var createTryoutUrl = primaryTeam is null
+            ? null
+            : BuildCreateTeamOpportunityPath(primaryTeam.TeamId, "tryout");
+        var createPickupUrl = primaryTeam is null
+            ? null
+            : BuildCreateTeamOpportunityPath(primaryTeam.TeamId, "pickup_player");
+        var tryoutEditUrl = latestTryout is null
+            ? null
+            : BuildEditTeamOpportunityPath(latestTryout.TeamId, latestTryout.OpportunityId);
+        var pickupEditUrl = latestPickupPlayerListing is null
+            ? null
+            : BuildEditTeamOpportunityPath(
+                latestPickupPlayerListing.TeamId,
+                latestPickupPlayerListing.OpportunityId);
+        var teamWorkspaceUrl = primaryTeam is null
+            ? "/account/onboarding/team-opportunities"
+            : BuildTeamOpportunitiesPath(primaryTeam.TeamId);
+
+        var steps = new List<CoachGettingStartedStepPageItem>
+        {
+            BuildCoachFoundationStep(
+                accountTypeUrl,
+                hasTeamRepresentativeRole,
+                hasTeamBasicOrHigherPlan,
+                primaryTeam,
+                teamWorkspaceUrl),
+            BuildCoachTryoutListingStep(
+                foundationComplete,
+                canPostOpportunities,
+                latestTryout,
+                createTryoutUrl,
+                tryoutEditUrl,
+                teamWorkspaceUrl),
+            BuildCoachTryoutDayStep(
+                foundationComplete,
+                canConfigureTryoutRegistration,
+                latestTryout,
+                teamWorkspaceUrl),
+            BuildCoachPickupPlayerStep(
+                foundationComplete,
+                canPostOpportunities,
+                latestPickupPlayerListing,
+                createPickupUrl,
+                pickupEditUrl,
+                teamWorkspaceUrl)
+        };
+
+        return steps;
+    }
+
+    private static CoachGettingStartedStepPageItem BuildCoachFoundationStep(
+        string accountTypeUrl,
+        bool hasTeamRepresentativeRole,
+        bool hasTeamBasicOrHigherPlan,
+        ManagedTeamOpportunitySummaryPageModel? primaryTeam,
+        string teamWorkspaceUrl)
+    {
+        var hasTeamProfile = primaryTeam is not null;
+        var isComplete = hasTeamRepresentativeRole && hasTeamBasicOrHigherPlan && hasTeamProfile;
+        string actionLabel;
+        string actionUrl;
+
+        if (!hasTeamRepresentativeRole)
+        {
+            actionLabel = "Choose team role";
+            actionUrl = accountTypeUrl;
+        }
+        else if (!hasTeamBasicOrHigherPlan)
+        {
+            actionLabel = "Choose Basic Team";
+            actionUrl = "/account/onboarding/choose-plan";
+        }
+        else if (!hasTeamProfile)
+        {
+            actionLabel = "Add team profile";
+            actionUrl = "/account/onboarding/add-team-or-organization";
+        }
+        else
+        {
+            actionLabel = "Open team workspace";
+            actionUrl = teamWorkspaceUrl;
+        }
+
+        var details = new[]
+        {
+            hasTeamRepresentativeRole
+                ? "Team representative role is selected."
+                : "Select Team representative so coach tools appear.",
+            hasTeamBasicOrHigherPlan
+                ? "Basic Team or higher is active for registration tools."
+                : "Choose Basic Team or higher before turning on tryout registration.",
+            hasTeamProfile
+                ? $"Team profile ready: {primaryTeam!.TeamName}."
+                : "Add the team profile players will see on listings."
+        };
+
+        return new CoachGettingStartedStepPageItem(
+            1,
+            "Start the coach account",
+            "Set the account role, plan, and team profile before creating listings.",
+            isComplete ? "Complete" : "Next",
+            isComplete,
+            true,
+            actionLabel,
+            actionUrl,
+            details,
+            []);
+    }
+
+    private static CoachGettingStartedStepPageItem BuildCoachTryoutListingStep(
+        bool foundationComplete,
+        bool canPostOpportunities,
+        CoachGettingStartedOpportunityPageItem? latestTryout,
+        string? createTryoutUrl,
+        string? tryoutEditUrl,
+        string teamWorkspaceUrl)
+    {
+        var isAvailable = foundationComplete && canPostOpportunities;
+        var isComplete = latestTryout is not null
+            && latestTryout.IsPublished
+            && latestTryout.RegistrationRequired
+            && latestTryout.HasPdfFlyer;
+        var actionUrl = latestTryout is null ? createTryoutUrl : tryoutEditUrl;
+        var actionLabel = latestTryout is null ? "Create tryout listing" : "Edit tryout listing";
+        string[] details = latestTryout is null
+            ?
+            [
+                "Create the tryout listing with age group, dates, location, and contact details.",
+                "Add a PDF flyer and enable registration from the same listing form.",
+                "Publish when the listing is ready for players."
+            ]
+            :
+            [
+                $"Latest tryout: {latestTryout.Title}.",
+                latestTryout.HasPdfFlyer ? "PDF flyer is attached." : "PDF flyer still needs to be added.",
+                latestTryout.RegistrationRequired ? "Registration is turned on." : "Registration still needs to be turned on.",
+                latestTryout.IsPublished ? "Listing is published." : "Listing is still unpublished."
+            ];
+        CoachGettingStartedStepLinkPageItem[] secondaryLinks = latestTryout is null
+            ? [new CoachGettingStartedStepLinkPageItem("Open team listings", teamWorkspaceUrl, isAvailable)]
+            : new[]
+            {
+                new CoachGettingStartedStepLinkPageItem("Open team listings", teamWorkspaceUrl),
+                new CoachGettingStartedStepLinkPageItem(
+                    "View public page",
+                    $"/opportunities/{latestTryout.OpportunityId}",
+                    latestTryout.IsPublished)
+            };
+
+        return new CoachGettingStartedStepPageItem(
+            2,
+            "Post a tryout listing",
+            "Create the public tryout page, attach the flyer, turn on registration, and publish.",
+            isComplete ? "Complete" : isAvailable ? "Next" : "Locked",
+            isComplete,
+            isAvailable,
+            actionLabel,
+            actionUrl,
+            details,
+            secondaryLinks);
+    }
+
+    private static CoachGettingStartedStepPageItem BuildCoachTryoutDayStep(
+        bool foundationComplete,
+        bool canConfigureTryoutRegistration,
+        CoachGettingStartedOpportunityPageItem? latestTryout,
+        string teamWorkspaceUrl)
+    {
+        var isAvailable = foundationComplete && latestTryout is not null;
+        var checkInUrl = latestTryout is null
+            ? null
+            : BuildTeamOpportunityRegistrationPath(latestTryout.TeamId, latestTryout.OpportunityId, "check-in");
+        var evaluationUrl = latestTryout is null
+            ? null
+            : BuildTeamOpportunityRegistrationPath(latestTryout.TeamId, latestTryout.OpportunityId, "evaluation");
+        string[] details = latestTryout is null
+            ?
+            [
+                "Create a tryout listing first.",
+                "Printable sheets become available from the tryout listing workspace."
+            ]
+            :
+            [
+                $"{latestTryout.RegistrationCount} player registration(s) are on the latest tryout.",
+                canConfigureTryoutRegistration
+                    ? "Check-in and coach evaluation sheets are ready to print."
+                    : "Upgrade to Basic Team or higher before collecting registrations."
+            ];
+        CoachGettingStartedStepLinkPageItem[] secondaryLinks = evaluationUrl is null
+            ? []
+            : new[]
+            {
+                new CoachGettingStartedStepLinkPageItem("Print coach sheet", evaluationUrl),
+                new CoachGettingStartedStepLinkPageItem("Open registrations", teamWorkspaceUrl)
+            };
+
+        return new CoachGettingStartedStepPageItem(
+            3,
+            "Run tryout day",
+            "Use printable check-in and coach evaluation sheets when players arrive.",
+            isAvailable ? "Ready" : "Locked",
+            false,
+            isAvailable,
+            "Print check-in sheet",
+            checkInUrl,
+            details,
+            secondaryLinks);
+    }
+
+    private static CoachGettingStartedStepPageItem BuildCoachPickupPlayerStep(
+        bool foundationComplete,
+        bool canPostOpportunities,
+        CoachGettingStartedOpportunityPageItem? latestPickupPlayerListing,
+        string? createPickupUrl,
+        string? pickupEditUrl,
+        string teamWorkspaceUrl)
+    {
+        var isAvailable = foundationComplete && canPostOpportunities;
+        var isComplete = latestPickupPlayerListing?.IsPublished == true;
+        var actionUrl = latestPickupPlayerListing is null ? createPickupUrl : pickupEditUrl;
+        var actionLabel = latestPickupPlayerListing is null ? "Create pickup listing" : "Edit pickup listing";
+        string[] details = latestPickupPlayerListing is null
+            ?
+            [
+                "Create a pickup player opportunity when the roster needs short-term help.",
+                "Use the same team listing workspace and select Pickup player as the type."
+            ]
+            :
+            [
+                $"Latest pickup listing: {latestPickupPlayerListing.Title}.",
+                latestPickupPlayerListing.IsPublished ? "Pickup listing is published." : "Pickup listing is still unpublished."
+            ];
+
+        return new CoachGettingStartedStepPageItem(
+            4,
+            "Post a pickup player listing",
+            "Create a short-term roster need after the team and tryout workflow are in place.",
+            isComplete ? "Complete" : isAvailable ? "Next" : "Locked",
+            isComplete,
+            isAvailable,
+            actionLabel,
+            actionUrl,
+            details,
+            [new CoachGettingStartedStepLinkPageItem("Open team listings", teamWorkspaceUrl, isAvailable)]);
+    }
+
+    private static bool HasActiveTeamBasicOrHigherPlan(IReadOnlyCollection<string> activePlanCodes)
+    {
+        return activePlanCodes.Contains(TryOutSpotPlanCodes.TeamBasic, StringComparer.Ordinal)
+            || activePlanCodes.Contains(TryOutSpotPlanCodes.TeamProfessional, StringComparer.Ordinal)
+            || activePlanCodes.Contains(TryOutSpotPlanCodes.EnterpriseOrganization, StringComparer.Ordinal);
+    }
+
+    private static string ResolveCoachTeamPlanLabel(IReadOnlyCollection<string> activePlanCodes)
+    {
+        if (activePlanCodes.Contains(TryOutSpotPlanCodes.EnterpriseOrganization, StringComparer.Ordinal))
+        {
+            return "Enterprise Organization";
+        }
+
+        if (activePlanCodes.Contains(TryOutSpotPlanCodes.TeamProfessional, StringComparer.Ordinal))
+        {
+            return "Professional Team";
+        }
+
+        if (activePlanCodes.Contains(TryOutSpotPlanCodes.TeamBasic, StringComparer.Ordinal))
+        {
+            return "Basic Team";
+        }
+
+        return activePlanCodes.Contains(TryOutSpotPlanCodes.FreeCoach, StringComparer.Ordinal)
+            ? "Free Coach"
+            : "No team plan";
+    }
+
+    private static string BuildTeamOpportunitiesPath(Guid teamId)
+    {
+        return $"/account/onboarding/team-opportunities/{teamId}";
+    }
+
+    private static string BuildCreateTeamOpportunityPath(Guid teamId, string type)
+    {
+        return $"/account/onboarding/team-opportunities/{teamId}/new?type={type}";
+    }
+
+    private static string BuildEditTeamOpportunityPath(Guid teamId, Guid opportunityId)
+    {
+        return $"/account/onboarding/team-opportunities/{teamId}/{opportunityId}/edit";
+    }
+
+    private static string BuildTeamOpportunityRegistrationPath(
+        Guid teamId,
+        Guid opportunityId,
+        string sheetType)
+    {
+        return $"/account/onboarding/team-opportunities/{teamId}/{opportunityId}/registrations/{sheetType}";
     }
 
     private async Task<LaunchPromotionPageItem?> BuildLaunchPromotionPageItemAsync(

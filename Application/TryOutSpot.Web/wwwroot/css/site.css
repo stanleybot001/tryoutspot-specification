@@ -690,6 +690,171 @@ body.splash-page {
   text-align: right;
 }
 
+.coach-hub-dashboard-link {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.85rem;
+  align-items: center;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  padding: 0.9rem;
+}
+
+.coach-hub-dashboard-link strong,
+.coach-hub-dashboard-link span {
+  display: block;
+}
+
+.coach-hub-dashboard-link span {
+  color: #475569;
+}
+
+.coach-hub-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.coach-hub-summary {
+  margin-bottom: 0;
+}
+
+.coach-hub-path {
+  display: grid;
+  gap: 1rem;
+}
+
+.coach-step-list,
+.coach-team-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.coach-step-card {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 0.9rem;
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 1rem;
+}
+
+.coach-step-card.complete {
+  border-color: #9fd4c0;
+  background: #f2fbf7;
+}
+
+.coach-step-card.ready {
+  border-color: #bfdbfe;
+  background: #f8fbff;
+}
+
+.coach-step-card.locked {
+  background: #f8fafc;
+}
+
+.coach-step-number {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  color: #0f172a;
+  background: #ffffff;
+  font-weight: 750;
+}
+
+.coach-step-card.complete .coach-step-number {
+  border-color: #55a984;
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.coach-step-card.ready .coach-step-number {
+  border-color: #60a5fa;
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.coach-step-main {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.coach-step-heading {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.9rem;
+  align-items: start;
+}
+
+.coach-step-heading h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1.1rem;
+}
+
+.coach-step-heading p {
+  color: #475569;
+  margin: 0;
+}
+
+.coach-step-state {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  color: #334155;
+  background: #ffffff;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.coach-step-state.complete {
+  border-color: #86efac;
+  color: #166534;
+  background: #dcfce7;
+}
+
+.coach-step-state.ready {
+  border-color: #93c5fd;
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.coach-step-details {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: #475569;
+}
+
+.coach-step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.coach-team-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.85rem;
+  align-items: center;
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0.9rem;
+}
+
+.coach-team-row strong,
+.coach-team-row span {
+  display: block;
+}
+
+.coach-team-row span {
+  color: #64748b;
+}
+
 .section-heading-row {
   display: flex;
   justify-content: space-between;
@@ -1707,6 +1872,10 @@ body.splash-page {
   .onboarding-layout,
   .dashboard-menu-grid,
   .dashboard-menu-card,
+  .coach-hub-dashboard-link,
+  .coach-step-card,
+  .coach-step-heading,
+  .coach-team-row,
   .recent-activity-row,
   .step-row,
   .plan-row,
@@ -1722,6 +1891,15 @@ body.splash-page {
     justify-items: start;
     justify-content: flex-start;
     text-align: left;
+  }
+
+  .coach-step-state {
+    width: fit-content;
+  }
+
+  .coach-step-actions,
+  .coach-team-row .form-actions {
+    justify-content: flex-start;
   }
 
   .section-heading-row {
