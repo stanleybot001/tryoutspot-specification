@@ -14,18 +14,6 @@
 
     <section class="form-section">
         <h2>Account Type To Plan Matrix</h2>
-        <div class="plan-team-free-callout">
-            <div>
-                <p class="plan-team-free-eyebrow">Team representatives</p>
-                <h3>Free Coach is the free team tier.</h3>
-                <p>
-                    Coaches and managers can use Free Coach before upgrading to Team Basic, Team Professional, or
-                    Enterprise Organization. It includes one tryout listing every six months, shareable listing links,
-                    flyer attachments, and basic player search.
-                </p>
-            </div>
-            <a class="btn btn-primary" asp-controller="Account" asp-action="Register">Create team account</a>
-        </div>
         <div class="plan-access-mobile" aria-label="Account type plan eligibility">
             @foreach (var row in Model.AccountTypePlanAccess)
             {
@@ -37,7 +25,7 @@
                         </div>
                         @if (row.FreeCoach)
                         {
-                            <span class="plan-access-free-badge">Free tier, upgradeable</span>
+                            <span class="plan-access-free-badge">Free Team/Coach</span>
                         }
                     </div>
                     @if (row.FreeCoach)

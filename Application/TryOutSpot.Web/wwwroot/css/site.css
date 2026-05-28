@@ -1134,40 +1134,6 @@ body.splash-page {
   white-space: nowrap;
 }
 
-.plan-team-free-callout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 1rem;
-  align-items: center;
-  border-left: 5px solid #1f8a5f;
-  background: #eef8f4;
-  border-radius: 8px;
-  padding: 0.95rem 1rem;
-  margin-bottom: 1rem;
-}
-
-.plan-team-free-callout h3,
-.plan-team-free-callout p {
-  margin: 0;
-}
-
-.plan-team-free-callout h3 {
-  color: #0f172a;
-  font-size: 1.18rem;
-  margin-bottom: 0.25rem;
-}
-
-.plan-team-free-callout p {
-  color: #334155;
-}
-
-.plan-team-free-eyebrow {
-  color: #17654b !important;
-  font-size: 0.78rem;
-  font-weight: 750;
-  text-transform: uppercase;
-}
-
 .plan-access-mobile {
   display: none;
 }
@@ -2107,17 +2073,8 @@ body.splash-page {
 }
 
 @media (max-width: 700px) {
-  .plan-team-free-callout,
   .plan-access-card-head {
     grid-template-columns: 1fr;
-  }
-
-  .plan-team-free-callout {
-    align-items: stretch;
-  }
-
-  .plan-team-free-callout .btn {
-    width: 100%;
   }
 
   .plans-matrix-scroll {
