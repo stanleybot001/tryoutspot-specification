@@ -51,3 +51,24 @@ The backup set was copied to:
 - The NAS-mounted copies passed SHA256 validation against `SHA256SUMS.txt`.
 - `pg_restore --list` successfully read `tryoutspot_prod_full_20260528-204425.dump` directly from the NAS mount.
 
+## Additional NAS Backup Mounts
+
+Two additional NAS backup exports were mounted on `ssvcpro200` so databases backed up by other PostgreSQL servers can be accessed for restore/load work on this server.
+
+| Purpose | NAS export | Mount point on `ssvcpro200` |
+| --- | --- | --- |
+| MAS backups | `192.168.49.238:/volume1/pg-backups-mas` | `/mnt/pg-backups-mas` |
+| MTC backups | `192.168.49.238:/volume1/pg-backups-mtc` | `/mnt/pg-backups-mtc` |
+| Azure backups | `192.168.49.238:/volume1/pg-backups-azure` | `/mnt/pg-backups-azure` |
+
+All three mounts are persistent in `/etc/fstab` with:
+
+```text
+rw,hard,_netdev,nofail,x-systemd.automount,x-systemd.requires=network-online.target
+```
+
+Verification performed from `ssvcpro200`:
+
+- `showmount -e 192.168.49.238` confirmed all three exports are allowed for `192.168.48.15`.
+- `findmnt` confirmed all three mount points are mounted as NFS.
+- Temporary write tests succeeded on `/mnt/pg-backups-mtc` and `/mnt/pg-backups-azure`.
