@@ -48,18 +48,21 @@
         <div class="account-alert">@statusMessage</div>
     }
 
-    <section class="form-section share-panel">
-        <div>
-            <h2>Share this opportunity</h2>
-            <p class="section-help">A public TryOutSpot link keeps registration, favorites, and reporting on-site.</p>
-        </div>
-        <div class="share-input-row">
-            <input class="form-control" value="@shareUrl" readonly aria-label="Public opportunity link" />
-            <button type="button" class="btn btn-outline-primary" data-copy-text="@shareUrl" data-copy-status="#opportunityShareStatus">Copy link</button>
-            <button type="button" class="btn btn-primary" data-copy-text="@shareText" data-copy-status="#opportunityShareStatus">Copy post</button>
-        </div>
-        <p class="copy-status section-help" id="opportunityShareStatus" aria-live="polite"></p>
-    </section>
+    @if (Model.ViewerManagesTeam)
+    {
+        <section class="form-section share-panel">
+            <div>
+                <h2>Share this opportunity</h2>
+                <p class="section-help">A public TryOutSpot link keeps registration, favorites, and reporting on-site.</p>
+            </div>
+            <div class="share-input-row">
+                <input class="form-control" value="@shareUrl" readonly aria-label="Public opportunity link" />
+                <button type="button" class="btn btn-outline-primary" data-copy-text="@shareUrl" data-copy-status="#opportunityShareStatus">Copy link</button>
+                <button type="button" class="btn btn-primary" data-copy-text="@shareText" data-copy-status="#opportunityShareStatus">Copy post</button>
+            </div>
+            <p class="copy-status section-help" id="opportunityShareStatus" aria-live="polite"></p>
+        </section>
+    }
 
     <section class="form-section listing-detail-card">
         @if (showReportAction)

@@ -67,18 +67,21 @@
         <div class="account-alert">@statusMessage</div>
     }
 
-    <section class="form-section share-panel">
-        <div>
-            <h2>Share this listing</h2>
-            <p class="section-help">Public listing links send players, parents, and coaches back through TryOutSpot.</p>
-        </div>
-        <div class="share-input-row">
-            <input class="form-control" value="@shareUrl" readonly aria-label="Public listing link" />
-            <button type="button" class="btn btn-outline-primary" data-copy-text="@shareUrl" data-copy-status="#playerListingShareStatus">Copy link</button>
-            <button type="button" class="btn btn-primary" data-copy-text="@shareText" data-copy-status="#playerListingShareStatus">Copy post</button>
-        </div>
-        <p class="copy-status section-help" id="playerListingShareStatus" aria-live="polite"></p>
-    </section>
+    @if (Model.ViewerOwnsListing)
+    {
+        <section class="form-section share-panel">
+            <div>
+                <h2>Share this listing</h2>
+                <p class="section-help">Public listing links send players, parents, and coaches back through TryOutSpot.</p>
+            </div>
+            <div class="share-input-row">
+                <input class="form-control" value="@shareUrl" readonly aria-label="Public listing link" />
+                <button type="button" class="btn btn-outline-primary" data-copy-text="@shareUrl" data-copy-status="#playerListingShareStatus">Copy link</button>
+                <button type="button" class="btn btn-primary" data-copy-text="@shareText" data-copy-status="#playerListingShareStatus">Copy post</button>
+            </div>
+            <p class="copy-status section-help" id="playerListingShareStatus" aria-live="polite"></p>
+        </section>
+    }
 
     <section class="form-section listing-detail-card">
         @if (showReportAction)

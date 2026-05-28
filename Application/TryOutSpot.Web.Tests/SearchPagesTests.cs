@@ -143,10 +143,12 @@ public sealed class SearchPagesTests
     }
 
     [Fact]
-    public async Task PublicSharePages_RenderCopyControlsAndSocialMetadata()
+    public async Task PublicSharePages_RenderShareControlsOnlyForListingOwnersAndSocialMetadata()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
-        var owner = await factory.CreateUserAsync("public-share-owner@example.com", [TryOutSpotRoles.Parent]);
+        var owner = await factory.CreateUserAsync(
+            "public-share-owner@example.com",
+            [TryOutSpotRoles.Parent, TryOutSpotRoles.TeamRepresentative]);
         var seeded = SeedPublicSharePages(factory, owner.Id);
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -157,8 +159,8 @@ public sealed class SearchPagesTests
 
         Assert.Equal(HttpStatusCode.OK, opportunityResponse.StatusCode);
         var opportunityHtml = WebUtility.HtmlDecode(await opportunityResponse.Content.ReadAsStringAsync());
-        Assert.Contains("Share this opportunity", opportunityHtml);
-        Assert.Contains("Copy post", opportunityHtml);
+        Assert.DoesNotContain("Share this opportunity", opportunityHtml);
+        Assert.DoesNotContain("Copy post", opportunityHtml);
         Assert.Contains($"http://localhost/opportunities/{seeded.OpportunityId}", opportunityHtml);
         Assert.Contains("property=\"og:title\"", opportunityHtml);
 
@@ -166,11 +168,29 @@ public sealed class SearchPagesTests
 
         Assert.Equal(HttpStatusCode.OK, listingResponse.StatusCode);
         var listingHtml = WebUtility.HtmlDecode(await listingResponse.Content.ReadAsStringAsync());
-        Assert.Contains("Share this listing", listingHtml);
-        Assert.Contains("Copy post", listingHtml);
+        Assert.DoesNotContain("Share this listing", listingHtml);
+        Assert.DoesNotContain("Copy post", listingHtml);
         Assert.Contains($"http://localhost/player-listings/{seeded.ListingId}", listingHtml);
         Assert.Contains("View player profile", listingHtml);
         Assert.Contains("property=\"og:title\"", listingHtml);
+
+        await LoginWebUserAsync(client, owner.Email!);
+
+        var ownerOpportunityResponse = await client.GetAsync($"/opportunities/{seeded.OpportunityId}");
+
+        Assert.Equal(HttpStatusCode.OK, ownerOpportunityResponse.StatusCode);
+        var ownerOpportunityHtml = WebUtility.HtmlDecode(await ownerOpportunityResponse.Content.ReadAsStringAsync());
+        Assert.Contains("Share this opportunity", ownerOpportunityHtml);
+        Assert.Contains("Copy post", ownerOpportunityHtml);
+        Assert.Contains($"http://localhost/opportunities/{seeded.OpportunityId}", ownerOpportunityHtml);
+
+        var ownerListingResponse = await client.GetAsync($"/player-listings/{seeded.ListingId}");
+
+        Assert.Equal(HttpStatusCode.OK, ownerListingResponse.StatusCode);
+        var ownerListingHtml = WebUtility.HtmlDecode(await ownerListingResponse.Content.ReadAsStringAsync());
+        Assert.Contains("Share this listing", ownerListingHtml);
+        Assert.Contains("Copy post", ownerListingHtml);
+        Assert.Contains($"http://localhost/player-listings/{seeded.ListingId}", ownerListingHtml);
     }
 
     [Fact]
@@ -397,6 +417,15 @@ public sealed class SearchPagesTests
         var listing = CreatePlayerListing(ownerId, player.Id, sportId, "Public share player listing", now);
 
         dbContext.Teams.Add(team);
+        dbContext.UserTeamRoles.Add(new UserTeamRole
+        {
+            Id = Guid.NewGuid(),
+            UserId = ownerId,
+            TeamId = team.Id,
+            Role = TryOutSpotRoles.TeamRepresentative,
+            IsActive = true,
+            CreatedAt = now
+        });
         dbContext.Players.Add(player);
         dbContext.PlayerSports.Add(CreatePlayerSport(player.Id, sportId, now));
         dbContext.PlayerListings.Add(listing);
