@@ -94,8 +94,10 @@ public sealed class TeamOpportunityRegistrationPageTests
         Assert.DoesNotContain("Create Free Account to Register", html);
         Assert.DoesNotContain("Sign in to register", html);
         Assert.DoesNotContain("Register for this tryout", html);
+        Assert.DoesNotContain("Tryout registration", html);
+        Assert.DoesNotContain("This listing does not require registration.", html);
+        Assert.DoesNotContain("id=\"tryout-registration\"", html);
         Assert.DoesNotContain("listing-primary-action-panel", html);
-        Assert.Contains("This listing does not require registration.", html, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -295,14 +295,10 @@
         </div>
     </section>
 
-    <section class="form-section" id="tryout-registration">
-        <h2>Tryout registration</h2>
-        @if (!Model.RegistrationRequired)
-        {
-            <p class="section-help">This listing does not require registration.</p>
-        }
-        else
-        {
+    @if (Model.RegistrationRequired)
+    {
+        <section class="form-section" id="tryout-registration">
+            <h2>Tryout registration</h2>
             @if (Model.RegistrationFee > 0)
             {
                 <p class="section-help">
@@ -545,8 +541,8 @@
                     </div>
                 </form>
             }
-        }
-    </section>
+        </section>
+    }
 
     @if (!string.IsNullOrWhiteSpace(Model.RequiredEquipment)
         || !string.IsNullOrWhiteSpace(Model.WhatToBring)
