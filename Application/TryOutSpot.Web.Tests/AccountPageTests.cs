@@ -440,6 +440,77 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task Onboarding_WithUnverifiedPhoneAndSmsConsent_ShowsPhoneVerificationPrompt()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("web-onboarding-phone@example.com", [TryOutSpotRoles.Parent]);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var response = await client.GetAsync("/account/onboarding");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Verify your phone number", html);
+        Assert.Contains("Send / resend code", html);
+        Assert.Contains("name=\"Phone.VerificationCode\"", html);
+        Assert.Contains("name=\"Phone.ReturnUrl\" value=\"/account/onboarding#verify-phone\"", html);
+        Assert.Contains("/account/settings/send-phone-code", html);
+        Assert.Contains("/account/settings/verify-phone", html);
+    }
+
+    [Fact]
+    public async Task OnboardingPhoneVerification_CanSendResendAndVerifyFromDashboard()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("web-onboarding-phone-flow@example.com", [TryOutSpotRoles.Parent]);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var sendToken = await GetAntiForgeryTokenAsync(client, "/account/onboarding");
+        var sendResponse = await client.PostAsync(
+            "/account/settings/send-phone-code",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", sendToken),
+                new("Phone.PhoneNumber", user.PhoneNumber!),
+                new("Phone.ReturnUrl", "/account/onboarding#verify-phone")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, sendResponse.StatusCode);
+        Assert.Equal("/account/onboarding#verify-phone", sendResponse.Headers.Location?.ToString());
+
+        var smsSender = factory.Services.GetRequiredService<TestAccountSmsSender>();
+        Assert.True(smsSender.TryGetCode(user.PhoneNumber!, out var phoneCode));
+
+        var verifyToken = await GetAntiForgeryTokenAsync(client, "/account/onboarding");
+        var verifyResponse = await client.PostAsync(
+            "/account/settings/verify-phone",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", verifyToken),
+                new("Phone.PhoneNumber", user.PhoneNumber!),
+                new("Phone.VerificationCode", phoneCode),
+                new("Phone.ReturnUrl", "/account/onboarding#verify-phone")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, verifyResponse.StatusCode);
+        Assert.Equal("/account/onboarding#verify-phone", verifyResponse.Headers.Location?.ToString());
+
+        using var scope = factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+        var updatedUser = await userManager.FindByIdAsync(user.Id.ToString());
+        Assert.NotNull(updatedUser);
+        Assert.True(updatedUser.PhoneNumberConfirmed);
+    }
+
+    [Fact]
     public async Task Onboarding_WithTeamRepresentativeRole_ShowsTeamSetupAndPlanSteps()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();

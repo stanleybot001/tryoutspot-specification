@@ -51,6 +51,11 @@
         : isParentOrGuardianAccount && !isSelfPlayerAccount
             ? "This is your parent/guardian account. Add a separate player profile for each child or player you manage; your account holder details are not shown in player search."
         : "TryOutSpot keeps signup light. These items help tailor the next screens for players, parents, coaches, and organization staff.";
+    const string phoneVerificationReturnUrl = "/account/onboarding#verify-phone";
+    var showPhoneVerificationPrompt = !Model.PhoneNumberConfirmed;
+    var canSendPhoneVerificationCode = showPhoneVerificationPrompt
+        && !string.IsNullOrWhiteSpace(Model.PhoneNumber)
+        && Model.SmsConsentAccepted;
 }
 
 <section class="account-page">
@@ -80,6 +85,53 @@
             <strong>@(string.IsNullOrWhiteSpace(Model.PhoneNumber) ? "Not added" : Model.PhoneNumber)</strong>
         </div>
     </section>
+
+    @if (showPhoneVerificationPrompt)
+    {
+        <section class="form-section phone-verification-panel" id="verify-phone">
+            <h2>Verify your phone number</h2>
+            @if (string.IsNullOrWhiteSpace(Model.PhoneNumber))
+            {
+                <p class="section-help">Add a phone number in account settings before requesting a verification code.</p>
+                <div class="form-actions">
+                    <a class="btn btn-outline-primary" href="/account/settings">Add phone number</a>
+                </div>
+            }
+            else if (!Model.SmsConsentAccepted)
+            {
+                <p class="section-help">SMS consent is required before TryOutSpot can text a verification code to @Model.PhoneNumber.</p>
+                <div class="form-actions">
+                    <a class="btn btn-outline-primary" href="/account/settings">Update SMS consent</a>
+                </div>
+            }
+            else if (canSendPhoneVerificationCode)
+            {
+                <p class="section-help">We will text a verification code to @Model.PhoneNumber. Enter the code here to confirm that number for your account.</p>
+                <div class="phone-verification-grid">
+                    <form asp-action="SendPhoneVerification" asp-controller="Account" method="post" class="stacked-form">
+                        <input type="hidden" name="Phone.PhoneNumber" value="@Model.PhoneNumber" />
+                        <input type="hidden" name="Phone.ReturnUrl" value="@phoneVerificationReturnUrl" />
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-outline-primary">Send / resend code</button>
+                        </div>
+                    </form>
+                    <form asp-action="VerifyPhone" asp-controller="Account" method="post" class="stacked-form">
+                        <input type="hidden" name="Phone.PhoneNumber" value="@Model.PhoneNumber" />
+                        <input type="hidden" name="Phone.ReturnUrl" value="@phoneVerificationReturnUrl" />
+                        <div class="form-grid two-column">
+                            <div class="form-field">
+                                <label class="form-label" for="DashboardPhoneVerificationCode">Verification code</label>
+                                <input id="DashboardPhoneVerificationCode" name="Phone.VerificationCode" class="form-control" autocomplete="one-time-code" />
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Verify phone</button>
+                        </div>
+                    </form>
+                </div>
+            }
+        </section>
+    }
 
     <div class="onboarding-layout">
         <section class="form-section dashboard-menu-section">

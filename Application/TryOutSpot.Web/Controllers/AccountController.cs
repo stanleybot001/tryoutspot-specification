@@ -4628,20 +4628,20 @@ public sealed class AccountController(
         var user = await GetCurrentWebUserAsync();
         if (user is null)
         {
-            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Settings)) });
+            return RedirectToAction(nameof(Login), new { returnUrl = ResolveLocalReturnUrl(model.ReturnUrl) ?? Url.Action(nameof(Settings)) });
         }
 
         var phoneNumber = NormalizeOptional(model.PhoneNumber) ?? user.PhoneNumber;
         if (string.IsNullOrWhiteSpace(phoneNumber))
         {
             TempData["StatusMessage"] = "Add a phone number before sending a verification code.";
-            return RedirectToAction(nameof(Settings));
+            return RedirectToLocalOrSettings(model.ReturnUrl);
         }
 
         if (!user.SmsConsentAccepted)
         {
             TempData["StatusMessage"] = "SMS consent is required before sending phone verification messages.";
-            return RedirectToAction(nameof(Settings));
+            return RedirectToLocalOrSettings(model.ReturnUrl);
         }
 
         if (!string.Equals(user.PhoneNumber, phoneNumber, StringComparison.Ordinal))
@@ -4656,7 +4656,7 @@ public sealed class AccountController(
         await accountSmsSender.SendPhoneVerificationCodeAsync(user, phoneNumber, verificationCode, cancellationToken);
 
         TempData["StatusMessage"] = "Phone verification code sent.";
-        return RedirectToAction(nameof(Settings));
+        return RedirectToLocalOrSettings(model.ReturnUrl);
     }
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
@@ -4667,21 +4667,21 @@ public sealed class AccountController(
         var user = await GetCurrentWebUserAsync();
         if (user is null)
         {
-            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Settings)) });
+            return RedirectToAction(nameof(Login), new { returnUrl = ResolveLocalReturnUrl(model.ReturnUrl) ?? Url.Action(nameof(Settings)) });
         }
 
         var phoneNumber = NormalizeOptional(model.PhoneNumber) ?? user.PhoneNumber;
         if (string.IsNullOrWhiteSpace(phoneNumber) || string.IsNullOrWhiteSpace(model.VerificationCode))
         {
             TempData["StatusMessage"] = "Enter the phone number and verification code.";
-            return RedirectToAction(nameof(Settings));
+            return RedirectToLocalOrSettings(model.ReturnUrl);
         }
 
         var result = await userManager.ChangePhoneNumberAsync(user, phoneNumber, model.VerificationCode.Trim());
         if (!result.Succeeded)
         {
             TempData["StatusMessage"] = string.Join(" ", result.Errors.Select(error => error.Description));
-            return RedirectToAction(nameof(Settings));
+            return RedirectToLocalOrSettings(model.ReturnUrl);
         }
 
         user.UpdatedAt = DateTime.UtcNow;
@@ -4689,7 +4689,7 @@ public sealed class AccountController(
         await SignInWebUserAsync(user, isPersistent: true);
 
         TempData["StatusMessage"] = "Phone number verified.";
-        return RedirectToAction(nameof(Settings));
+        return RedirectToLocalOrSettings(model.ReturnUrl);
     }
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
@@ -6422,6 +6422,7 @@ public sealed class AccountController(
             EmailConfirmed = user.EmailConfirmed,
             PhoneNumber = user.PhoneNumber,
             PhoneNumberConfirmed = user.PhoneNumberConfirmed,
+            SmsConsentAccepted = user.SmsConsentAccepted,
             AccountTypes = roles.ToList(),
             AvailableAccountTypes = GetAccountTypeOptions(roles),
             RecommendedPlans = recommendedPlans,
@@ -10810,6 +10811,20 @@ public sealed class AccountController(
         return !string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl)
             ? LocalRedirect(returnUrl)
             : RedirectToAction(nameof(Onboarding));
+    }
+
+    private IActionResult RedirectToLocalOrSettings(string? returnUrl)
+    {
+        return ResolveLocalReturnUrl(returnUrl) is { } localReturnUrl
+            ? LocalRedirect(localReturnUrl)
+            : RedirectToAction(nameof(Settings));
+    }
+
+    private string? ResolveLocalReturnUrl(string? returnUrl)
+    {
+        return !string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl)
+            ? returnUrl
+            : null;
     }
 
     private static IReadOnlyCollection<AccountTypeSelectionItem> GetAccountTypeOptions(

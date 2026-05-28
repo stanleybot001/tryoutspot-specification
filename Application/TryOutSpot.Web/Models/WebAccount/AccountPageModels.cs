@@ -214,6 +214,8 @@ public sealed class OnboardingPageModel
 
     public string? PhoneNumber { get; set; }
 
+    public bool SmsConsentAccepted { get; set; }
+
     public List<string> AccountTypes { get; set; } = [];
 
     public IReadOnlyCollection<AccountTypeSelectionItem> AvailableAccountTypes { get; set; } = [];
@@ -1971,6 +1973,9 @@ public sealed class PhoneSettingsPageModel
     [MaxLength(20)]
     [Display(Name = "Verification code")]
     public string? VerificationCode { get; set; }
+
+    [MaxLength(2048)]
+    public string? ReturnUrl { get; set; }
 }
 
 public sealed class PasswordSettingsPageModel

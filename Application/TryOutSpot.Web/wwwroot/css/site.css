@@ -567,6 +567,23 @@ body.splash-page {
   margin-top: 1rem;
 }
 
+.phone-verification-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.phone-verification-panel h2,
+.phone-verification-panel .section-help {
+  margin-bottom: 0;
+}
+
+.phone-verification-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.75fr) minmax(280px, 1.25fr);
+  gap: 1rem;
+  align-items: start;
+}
+
 .readonly-field {
   border: 1px solid #d7dee8;
   border-radius: 8px;
@@ -1868,6 +1885,7 @@ body.splash-page {
   .account-type-grid,
   .account-summary-strip,
   .account-summary-strip.settings-summary,
+  .phone-verification-grid,
   .settings-layout,
   .onboarding-layout,
   .dashboard-menu-grid,
