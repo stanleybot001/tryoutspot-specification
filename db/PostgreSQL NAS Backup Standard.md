@@ -10,7 +10,7 @@ This is the reusable backup pattern for PostgreSQL servers that write nightly ba
 - Back up all connectable, non-template databases.
 - Include PostgreSQL globals so roles and other cluster-level objects are recoverable.
 - Keep the newest 7 successful nightly backup folders.
-- Schedule backups at 2:00 AM `America/Chicago`.
+- Schedule backups during the overnight maintenance window. `ssvcpro200` uses 2:00 AM `America/Chicago`; the Azure backup runner uses 3:00 AM `America/Chicago`.
 - Verify every custom-format dump with `pg_restore --list`.
 - Write `SHA256SUMS.txt` and verify checksums before marking the run complete.
 - Delete old backups only after a new backup succeeds.
@@ -61,6 +61,42 @@ tryoutspot_prod
 
 These names are only the current `ssvcpro200` databases. Azure and MTC servers must discover and back up their own local databases.
 
+## ssvcpro100 Azure Current Setup
+
+- Azure PostgreSQL server: `ssvcpro100.postgres.database.azure.com`
+- Backup runner VM: `DB-Backup-Runner`
+- Runner IP: `192.168.48.110`
+- Backup destination: `/mnt/pg-backups-azure/ssvcpro100/nightly`
+- Script: `/usr/local/sbin/ssvcpro100-azure-pg-backup-all.sh`
+- Service: `/etc/systemd/system/ssvcpro100-azure-pg-backup.service`
+- Timer: `/etc/systemd/system/ssvcpro100-azure-pg-backup.timer`
+- Schedule: `OnCalendar=*-*-* 03:00:00 America/Chicago`
+- Retention: newest 7 successful backup folders
+- Credential storage: local `.pgpass` on the backup runner, permissions `0600`
+
+The first manual verification run created:
+
+```text
+/mnt/pg-backups-azure/ssvcpro100/nightly/20260528-180436-CDT
+```
+
+Databases discovered during that run:
+
+```text
+APIKeyManager
+SiteServicePro
+demo
+documentcontroller
+iec
+mas
+masdc
+postgres
+ssvcpro
+yuh0iosh9u8
+```
+
+The Azure-managed `azure_sys` and `azure_maintenance` databases are intentionally excluded from logical backups.
+
 ## Backup Artifacts
 
 Each nightly folder contains:
@@ -83,7 +119,7 @@ Each database folder contains:
 
 The script refuses to run if the NAS mount is not mounted. This prevents accidental backups from being written to the local root filesystem when the NAS is offline.
 
-The script backs up databases using:
+The standard script backs up databases using:
 
 ```sql
 SELECT datname
@@ -91,6 +127,12 @@ FROM pg_database
 WHERE datallowconn
   AND NOT datistemplate
 ORDER BY datname;
+```
+
+For Azure PostgreSQL, also exclude Azure-managed internal databases:
+
+```sql
+AND datname NOT IN ('azure_sys', 'azure_maintenance')
 ```
 
 ## Operations
@@ -173,4 +215,3 @@ pg_restore --list databases/<database>/<database>_full.dump
 - Do not store NAS passwords in repo documentation.
 - NFS access is host-based for these exports.
 - If a future server cannot use local PostgreSQL peer auth, use a secured `.pgpass` or equivalent local secret, not a committed connection string.
-
