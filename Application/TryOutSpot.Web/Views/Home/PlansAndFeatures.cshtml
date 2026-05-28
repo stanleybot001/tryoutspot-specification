@@ -14,7 +14,66 @@
 
     <section class="form-section">
         <h2>Account Type To Plan Matrix</h2>
-        <div class="table-responsive">
+        <div class="plan-team-free-callout">
+            <div>
+                <p class="plan-team-free-eyebrow">Team representatives</p>
+                <h3>Free Coach is the free team tier.</h3>
+                <p>
+                    Coaches and managers can use Free Coach before upgrading to Team Basic, Team Professional, or
+                    Enterprise Organization. It includes one tryout listing every six months, shareable listing links,
+                    flyer attachments, and basic player search.
+                </p>
+            </div>
+            <a class="btn btn-primary" asp-controller="Account" asp-action="Register">Create team account</a>
+        </div>
+        <div class="plan-access-mobile" aria-label="Account type plan eligibility">
+            @foreach (var row in Model.AccountTypePlanAccess)
+            {
+                <article class="plan-access-card@(row.FreeCoach ? " plan-access-card-team" : string.Empty)">
+                    <div class="plan-access-card-head">
+                        <div>
+                            <span>Account type</span>
+                            <strong>@row.AccountType</strong>
+                        </div>
+                        @if (row.FreeCoach)
+                        {
+                            <span class="plan-access-free-badge">Free tier, upgradeable</span>
+                        }
+                    </div>
+                    @if (row.FreeCoach)
+                    {
+                        <p class="plan-access-card-copy">Team representatives can use the Free Coach tier, then upgrade when they need more tools.</p>
+                    }
+                    <div class="plan-access-pill-list" aria-label="Eligible plans">
+                        @if (row.FreePlayerParent)
+                        {
+                            <span class="plan-access-pill">Free Player/Parent</span>
+                        }
+                        @if (row.PremiumPlayer)
+                        {
+                            <span class="plan-access-pill">Premium Player</span>
+                        }
+                        @if (row.FreeCoach)
+                        {
+                            <span class="plan-access-pill plan-access-pill-free">Free Coach</span>
+                        }
+                        @if (row.TeamBasic)
+                        {
+                            <span class="plan-access-pill">Team Basic</span>
+                        }
+                        @if (row.TeamProfessional)
+                        {
+                            <span class="plan-access-pill">Team Professional</span>
+                        }
+                        @if (row.EnterpriseOrganization)
+                        {
+                            <span class="plan-access-pill">Enterprise Organization</span>
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+        <div class="table-responsive plans-matrix-scroll">
             <table class="table table-sm align-middle plans-matrix-table">
                 <thead>
                     <tr>
