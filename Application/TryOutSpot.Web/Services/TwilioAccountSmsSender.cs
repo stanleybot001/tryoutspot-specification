@@ -28,7 +28,7 @@ public sealed class TwilioAccountSmsSender(
         var formValues = new Dictionary<string, string>
         {
             ["To"] = phoneNumber,
-            ["Body"] = $"Your TryOutSpot verification code is {verificationCode}."
+            ["Body"] = $"TryOutSpot: Your verification code is {verificationCode}. Reply STOP to opt out, HELP for help."
         };
 
         if (string.IsNullOrWhiteSpace(options.MessagingServiceSid))
