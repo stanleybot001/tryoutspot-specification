@@ -81,6 +81,50 @@ public sealed class TeamOpportunityRegistrationPageTests
     }
 
     [Fact]
+    public async Task AnonymousTryoutPage_WithoutRegistration_DoesNotShowRegistrationActions()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var opportunityId = SeedPublishedOpportunityWithoutRegistration(factory);
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/opportunities/{opportunityId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("Create Free Account to Register", html);
+        Assert.DoesNotContain("Sign in to register", html);
+        Assert.DoesNotContain("Register for this tryout", html);
+        Assert.DoesNotContain("listing-primary-action-panel", html);
+        Assert.Contains("This listing does not require registration.", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TeamRepresentativeTryoutPage_ShowsManagementActionInsteadOfPlayerRegistrationActions()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var teamUser = await factory.CreateUserAsync("team-public-registration-owner@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var seeded = SeedTeamOpportunityRegistrationForReview(factory, teamUser.Id);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, teamUser.Email!);
+
+        var response = await client.GetAsync($"/opportunities/{seeded.OpportunityId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Registration is enabled", html, StringComparison.Ordinal);
+        Assert.Contains("Manage registrations", html, StringComparison.Ordinal);
+        Assert.Contains($"/account/onboarding/team-opportunities/{seeded.TeamId}", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Register for this tryout", html);
+        Assert.DoesNotContain("Create Free Account to Register", html);
+        Assert.DoesNotContain("Sign in to register", html);
+        Assert.DoesNotContain("Add player profile", html);
+        Assert.DoesNotContain("Submit registration", html);
+    }
+
+    [Fact]
     public async Task RegistrationIsBlockedWhenOpportunityIsAtMaxCapacity()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -380,6 +424,61 @@ public sealed class TeamOpportunityRegistrationPageTests
 
         dbContext.SaveChanges();
         return (opportunityId, managedPlayerId);
+    }
+
+    private static Guid SeedPublishedOpportunityWithoutRegistration(TryOutSpotWebApplicationFactory factory)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var now = DateTime.UtcNow;
+        var sportId = dbContext.Sports
+            .Where(sport => sport.IsActive && sport.Name == "Softball")
+            .Select(sport => sport.Id)
+            .Single();
+
+        var teamId = Guid.NewGuid();
+        dbContext.Teams.Add(new Team
+        {
+            Id = teamId,
+            Name = "Information Only Team",
+            TeamLevel = "14U",
+            GeographicScope = "Local",
+            City = "McPherson",
+            State = "KS",
+            ZipCode = "67460",
+            IsSearchable = true,
+            IsContactInfoVisible = true,
+            IsElite = false,
+            IsVerified = false,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        });
+
+        var opportunityId = Guid.NewGuid();
+        dbContext.Opportunities.Add(new Opportunity
+        {
+            Id = opportunityId,
+            TeamId = teamId,
+            SportId = sportId,
+            Type = "tryout",
+            Title = "Information Only Tryout",
+            RegistrationRequired = false,
+            RegistrationFee = 0m,
+            EventDate = now.AddDays(7),
+            City = "McPherson",
+            State = "KS",
+            ZipCode = "67460",
+            IsPublished = true,
+            PublishedAt = now,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        });
+
+        dbContext.SaveChanges();
+        return opportunityId;
     }
 
     private static void FillOpportunityCapacity(

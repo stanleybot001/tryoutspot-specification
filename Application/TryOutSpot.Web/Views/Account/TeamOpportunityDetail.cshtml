@@ -6,7 +6,7 @@
         ?? $"{Context.Request.Scheme}://{Context.Request.Host}/opportunities/{Model.OpportunityId}";
     var googleMapsUrl = BuildGoogleMapsUrl(Model.Address, Model.City, Model.State, Model.ZipCode);
     var locationText = FormatLocation(Model.City, Model.State, Model.ZipCode);
-    var metaDescription = BuildMetaDescription(Model.Title, Model.TeamName, Model.SportName, locationText);
+    var metaDescription = BuildMetaDescription(Model.Title, Model.TeamName, Model.SportName, locationText, Model.RegistrationRequired);
     var shareText = $"{Model.TeamName} posted {FormatOpportunityType(Model.Type).ToLowerInvariant()} details for {Model.Title} on TryOutSpot: {shareUrl}";
     var reportPageUrl = $"/opportunities/{Model.OpportunityId}/report";
     var reportHref = Model.ViewerIsAuthenticated
@@ -18,6 +18,7 @@
     var loginToRegisterUrl = $"/account/login?returnUrl={encodedOpportunityReturnUrl}";
     var createAccountToRegisterUrl = $"/account/register?returnUrl={encodedOpportunityReturnUrl}";
     var addPlayerProfileUrl = $"/account/onboarding/add-player-profile?createNew=true";
+    var teamRegistrationDashboardUrl = $"/account/onboarding/team-opportunities/{Model.TeamId}";
     var authenticationRequiredForRegistration = Model.RegistrationRequired
         && !Model.ViewerIsAuthenticated
         && string.Equals(
@@ -26,6 +27,7 @@
             StringComparison.Ordinal);
     var playerProfileRequiredForRegistration = Model.RegistrationRequired
         && Model.ViewerIsAuthenticated
+        && !Model.ViewerManagesTeam
         && !Model.ViewerCanSubmitRegistration
         && string.Equals(
             Model.RegistrationClosedReason,
@@ -74,7 +76,7 @@
         <section class="form-section share-panel">
             <div>
                 <h2>Share this opportunity</h2>
-                <p class="section-help">A public TryOutSpot link keeps registration, favorites, and reporting on-site.</p>
+                <p class="section-help">A public TryOutSpot link keeps favorites, reporting, and any enabled registration on-site.</p>
             </div>
             <div class="share-input-row">
                 <input class="form-control" value="@shareUrl" readonly aria-label="Public opportunity link" />
@@ -130,46 +132,57 @@
         @if (Model.RegistrationRequired)
         {
             <div class="listing-primary-action-panel">
-                <div>
-                    <h2>Register for this tryout</h2>
-                    @if (registrationCanContinue)
-                    {
-                        <p class="section-help">Registration is open through TryOutSpot.</p>
-                    }
-                    else
-                    {
-                        <p class="section-help">@Model.RegistrationClosedReason</p>
-                    }
-                </div>
-                <div class="form-actions">
-                    @if (authenticationRequiredForRegistration || (Model.IsRegistrationOpen && !Model.ViewerIsAuthenticated))
-                    {
-                        <a class="btn btn-primary" href="@createAccountToRegisterUrl">Create Free Account to Register</a>
-                        <a class="btn btn-outline-primary" href="@loginToRegisterUrl">Sign in to register</a>
-                    }
-                    else if (Model.IsRegistrationOpen && Model.ViewerCanSubmitRegistration)
-                    {
-                        <a class="btn btn-primary" href="#tryout-registration">Register now</a>
-                    }
-                    else if (playerProfileRequiredForRegistration)
-                    {
-                        <a class="btn btn-primary" href="@addPlayerProfileUrl">Add player profile</a>
-                        <a class="btn btn-outline-primary" href="#tryout-registration">View registration details</a>
-                    }
-                    else
-                    {
-                        <a class="btn btn-outline-secondary" href="#tryout-registration">View registration details</a>
-                    }
-                </div>
-            </div>
-        }
-        else
-        {
-            <div class="listing-primary-action-panel">
-                <div>
-                    <h2>Registration not required</h2>
-                    <p class="section-help">Review the flyer and listing details, then use the team contact options if you need more information.</p>
-                </div>
+                @if (Model.ViewerManagesTeam)
+                {
+                    <div>
+                        <h2>Registration is enabled</h2>
+                        @if (registrationCanContinue)
+                        {
+                            <p class="section-help">Players and parents can register through this public listing.</p>
+                        }
+                        else
+                        {
+                            <p class="section-help">@Model.RegistrationClosedReason</p>
+                        }
+                    </div>
+                    <div class="form-actions">
+                        <a class="btn btn-outline-primary" href="@teamRegistrationDashboardUrl">Manage registrations</a>
+                    </div>
+                }
+                else
+                {
+                    <div>
+                        <h2>Register for this tryout</h2>
+                        @if (registrationCanContinue)
+                        {
+                            <p class="section-help">Registration is open through TryOutSpot.</p>
+                        }
+                        else
+                        {
+                            <p class="section-help">@Model.RegistrationClosedReason</p>
+                        }
+                    </div>
+                    <div class="form-actions">
+                        @if (authenticationRequiredForRegistration || (Model.IsRegistrationOpen && !Model.ViewerIsAuthenticated))
+                        {
+                            <a class="btn btn-primary" href="@createAccountToRegisterUrl">Create Free Account to Register</a>
+                            <a class="btn btn-outline-primary" href="@loginToRegisterUrl">Sign in to register</a>
+                        }
+                        else if (Model.IsRegistrationOpen && Model.ViewerCanSubmitRegistration)
+                        {
+                            <a class="btn btn-primary" href="#tryout-registration">Register now</a>
+                        }
+                        else if (playerProfileRequiredForRegistration)
+                        {
+                            <a class="btn btn-primary" href="@addPlayerProfileUrl">Add player profile</a>
+                            <a class="btn btn-outline-primary" href="#tryout-registration">View registration details</a>
+                        }
+                        else
+                        {
+                            <a class="btn btn-outline-secondary" href="#tryout-registration">View registration details</a>
+                        }
+                    </div>
+                }
             </div>
         }
     </section>
@@ -359,7 +372,13 @@
                 }
             }
 
-            @if (authenticationRequiredForRegistration)
+            @if (Model.ViewerManagesTeam)
+            {
+                <p class="section-help">
+                    Use your <a href="@teamRegistrationDashboardUrl">team opportunity dashboard</a> to review and manage registrations for this listing.
+                </p>
+            }
+            else if (authenticationRequiredForRegistration)
             {
                 <p class="section-help">
                     <a href="@createAccountToRegisterUrl">Create a player or parent account</a>
@@ -656,10 +675,18 @@
         return amount <= 0 ? "Free" : amount.ToString("C");
     }
 
-    private static string BuildMetaDescription(string title, string teamName, string sportName, string location)
+    private static string BuildMetaDescription(
+        string title,
+        string teamName,
+        string sportName,
+        string location,
+        bool registrationRequired)
     {
         var locationText = string.IsNullOrWhiteSpace(location) ? string.Empty : $" in {location}";
-        return $"{teamName} posted {title}, a {sportName} opportunity{locationText}. View details and register through TryOutSpot.";
+        var actionText = registrationRequired
+            ? "View details and register through TryOutSpot."
+            : "View details on TryOutSpot.";
+        return $"{teamName} posted {title}, a {sportName} opportunity{locationText}. {actionText}";
     }
 
     private static string? BuildGoogleMapsUrl(string? address, string? city, string? state, string? zipCode)

@@ -8269,11 +8269,11 @@ public sealed class AccountController(
         {
             registrationClosedReason ??= "Sign in as a parent or player to register.";
         }
-        else if (opportunity.RegistrationRequired && currentUser is not null && registrationPlayers.Length == 0)
+        else if (opportunity.RegistrationRequired && currentUser is not null && !viewerManagesTeam && registrationPlayers.Length == 0)
         {
             registrationClosedReason ??= "Add a player profile you can manage to submit registration.";
         }
-        else if (opportunity.RegistrationRequired && currentUser is not null && !registrationPlayers.Any(player => !player.AlreadyRegistered))
+        else if (opportunity.RegistrationRequired && currentUser is not null && !viewerManagesTeam && !registrationPlayers.Any(player => !player.AlreadyRegistered))
         {
             registrationClosedReason ??= "All of your managed players are already registered for this tryout.";
         }
