@@ -8539,9 +8539,18 @@ public sealed class AccountController(
 
         var registrationStatsByOpportunityId = new Dictionary<Guid, ListingRegistrationStats>();
         var registrationDetailsByOpportunityId = new Dictionary<Guid, TeamOpportunityRegistrantPageItem[]>();
+        var favoriteCountsByOpportunityId = new Dictionary<Guid, int>();
         if (opportunities.Length > 0)
         {
             var opportunityIds = opportunities.Select(opportunity => opportunity.Id).ToHashSet();
+            favoriteCountsByOpportunityId = await dbContext.UserFavorites
+                .AsNoTracking()
+                .Where(favorite => favorite.OpportunityId.HasValue)
+                .Where(favorite => opportunityIds.Contains(favorite.OpportunityId!.Value))
+                .GroupBy(favorite => favorite.OpportunityId!.Value)
+                .Select(group => new { OpportunityId = group.Key, Count = group.Count() })
+                .ToDictionaryAsync(item => item.OpportunityId, item => item.Count, cancellationToken);
+
             registrationDetailsByOpportunityId = await BuildTeamOpportunityRegistrantDetailsByOpportunityAsync(
                 user.Id,
                 opportunityIds,
@@ -8607,6 +8616,11 @@ public sealed class AccountController(
                 summary.DeclinedRegistrationCount = stats.DeclinedCount;
             }
 
+            if (favoriteCountsByOpportunityId.TryGetValue(opportunity.Id, out var favoriteCount))
+            {
+                summary.FavoriteCount = favoriteCount;
+            }
+
             if (registrationDetailsByOpportunityId.TryGetValue(opportunity.Id, out var registrants))
             {
                 summary.Registrants = registrants;
@@ -8618,6 +8632,7 @@ public sealed class AccountController(
 
         var pageViewCountTotal = opportunitySummaries.Sum(summary => summary.ViewCount);
         var pageRegistrationCountTotal = opportunitySummaries.Sum(summary => summary.RegistrationCount);
+        var pageFavoriteCountTotal = opportunitySummaries.Sum(summary => summary.FavoriteCount);
 
         return new TeamOpportunityListPageModel
         {
@@ -8639,6 +8654,7 @@ public sealed class AccountController(
             ShowDetailedAnalytics = hasDetailedAnalytics,
             PageViewCountTotal = pageViewCountTotal,
             PageRegistrationCountTotal = pageRegistrationCountTotal,
+            PageFavoriteCountTotal = pageFavoriteCountTotal,
             PageViewToRegistrationConversionRate = CalculateConversionRate(pageRegistrationCountTotal, pageViewCountTotal),
             Opportunities = opportunitySummaries
         };

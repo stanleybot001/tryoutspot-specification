@@ -797,6 +797,8 @@ public sealed class TeamOpportunityListPageModel
 
     public int PageRegistrationCountTotal { get; set; }
 
+    public int PageFavoriteCountTotal { get; set; }
+
     public decimal? PageViewToRegistrationConversionRate { get; set; }
 
     public IReadOnlyCollection<TeamOpportunitySummaryPageModel> Opportunities { get; set; } = [];
@@ -853,6 +855,8 @@ public sealed class TeamOpportunitySummaryPageModel
     public int ViewCount { get; set; }
 
     public int RegistrationCount { get; set; }
+
+    public int FavoriteCount { get; set; }
 
     public int UniqueApplicantCount { get; set; }
 

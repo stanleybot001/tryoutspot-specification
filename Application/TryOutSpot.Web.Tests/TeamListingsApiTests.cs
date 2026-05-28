@@ -150,6 +150,50 @@ public sealed class TeamListingsApiTests
     }
 
     [Fact]
+    public async Task ManagedOpportunityEndpoints_ReturnFavoriteFollowerCounts()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("team-favorite-count-api@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var followerOne = await factory.CreateUserAsync("team-favorite-count-one@example.com", [TryOutSpotRoles.Parent]);
+        var followerTwo = await factory.CreateUserAsync("team-favorite-count-two@example.com", [TryOutSpotRoles.Parent]);
+        var sportId = GetActiveSportId(factory, "Softball");
+        var teamId = SeedManagedTeam(factory, user.Id, sportId, "Favorite Count Aces");
+        var client = await CreateAuthorizedClientAsync(factory, user.Email!);
+
+        var createResponse = await client.PostAsJsonAsync(
+            $"/api/team-listings/mine/{teamId}/opportunities",
+            new CreateTeamOpportunityRequest
+            {
+                Type = "tryout",
+                Title = "Favorite count tryout",
+                SportId = sportId,
+                RegistrationFee = 10m,
+                EventDate = DateTime.UtcNow.AddDays(14),
+                IsPublished = true
+            });
+
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var created = await createResponse.Content.ReadFromJsonAsync<TeamOpportunityActionResponse>();
+        Assert.NotNull(created);
+        Assert.Equal(0, created.Opportunity.FavoriteCount);
+
+        SeedOpportunityFavorites(factory, created.Opportunity.Id, followerOne.Id, followerTwo.Id);
+
+        var listResponse = await client.GetAsync($"/api/team-listings/mine/{teamId}/opportunities");
+        Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
+        var listPayload = await listResponse.Content.ReadFromJsonAsync<TeamOpportunityListResponse>();
+        Assert.NotNull(listPayload);
+        var listedOpportunity = Assert.Single(listPayload.Opportunities);
+        Assert.Equal(2, listedOpportunity.FavoriteCount);
+
+        var detailResponse = await client.GetAsync($"/api/team-listings/mine/{teamId}/opportunities/{created.Opportunity.Id}");
+        Assert.Equal(HttpStatusCode.OK, detailResponse.StatusCode);
+        var detailPayload = await detailResponse.Content.ReadFromJsonAsync<TeamOpportunityDetailResponse>();
+        Assert.NotNull(detailPayload);
+        Assert.Equal(2, detailPayload.FavoriteCount);
+    }
+
+    [Fact]
     public async Task BasicTeam_CanConfigureTryoutRegistrationFieldsAndCapacity()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -402,6 +446,30 @@ public sealed class TeamListingsApiTests
 
         dbContext.SaveChanges();
         return teamId;
+    }
+
+    private static void SeedOpportunityFavorites(
+        TryOutSpotWebApplicationFactory factory,
+        Guid opportunityId,
+        params Guid[] userIds)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+
+        var index = 0;
+        foreach (var userId in userIds.Distinct())
+        {
+            dbContext.UserFavorites.Add(new UserFavorite
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                OpportunityId = opportunityId,
+                CreatedAt = now.AddMinutes(index++)
+            });
+        }
+
+        dbContext.SaveChanges();
     }
 
     private static async Task<HttpClient> CreateAuthorizedClientAsync(

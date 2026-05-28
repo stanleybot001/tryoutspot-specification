@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data;
 using TryOutSpot.Web.Data.Entities;
 using TryOutSpot.Web.Identity;
@@ -142,7 +143,14 @@ public sealed class TeamOpportunityRegistrationPageTests
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
         var teamUser = await factory.CreateUserAsync("team-roster-favorite@example.com", [TryOutSpotRoles.TeamRepresentative]);
-        var seeded = SeedTeamOpportunityRegistrationForReview(factory, teamUser.Id, favoritePlayer: true);
+        await AddSubscriptionAsync(factory, teamUser.Id, TryOutSpotPlanCodes.TeamBasic);
+        var followerOne = await factory.CreateUserAsync("team-roster-follower-one@example.com", [TryOutSpotRoles.Parent]);
+        var followerTwo = await factory.CreateUserAsync("team-roster-follower-two@example.com", [TryOutSpotRoles.Parent]);
+        var seeded = SeedTeamOpportunityRegistrationForReview(
+            factory,
+            teamUser.Id,
+            favoritePlayer: true,
+            opportunityFavoriteUserIds: [followerOne.Id, followerTwo.Id]);
 
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -159,6 +167,7 @@ public sealed class TeamOpportunityRegistrationPageTests
         Assert.Contains("Check-in sheet", html, StringComparison.Ordinal);
         Assert.Contains("Evaluation sheet", html, StringComparison.Ordinal);
         Assert.Contains("Favorited player listing", html, StringComparison.Ordinal);
+        Assert.Contains("<span>Followers: <strong class=\"text-body\">2</strong></span>", html, StringComparison.Ordinal);
         Assert.Contains("Pending Registrant", html, StringComparison.Ordinal);
         Assert.Contains(">1</strong>", html, StringComparison.Ordinal);
         Assert.Contains("Mark present", html, StringComparison.Ordinal);
@@ -402,7 +411,8 @@ public sealed class TeamOpportunityRegistrationPageTests
     private static (Guid TeamId, Guid OpportunityId, Guid RegistrationId, Guid PlayerId) SeedTeamOpportunityRegistrationForReview(
         TryOutSpotWebApplicationFactory factory,
         Guid teamUserId,
-        bool favoritePlayer = false)
+        bool favoritePlayer = false,
+        IReadOnlyCollection<Guid>? opportunityFavoriteUserIds = null)
     {
         using var scope = factory.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -535,6 +545,18 @@ public sealed class TeamOpportunityRegistrationPageTests
             });
         }
 
+        var followerIndex = 0;
+        foreach (var followerUserId in (opportunityFavoriteUserIds ?? []).Distinct())
+        {
+            dbContext.UserFavorites.Add(new UserFavorite
+            {
+                Id = Guid.NewGuid(),
+                UserId = followerUserId,
+                OpportunityId = opportunityId,
+                CreatedAt = now.AddMinutes(followerIndex++)
+            });
+        }
+
         dbContext.SaveChanges();
         return (teamId, opportunityId, registrationId, playerId);
     }
@@ -568,5 +590,36 @@ public sealed class TeamOpportunityRegistrationPageTests
             ]));
 
         Assert.Equal(HttpStatusCode.Redirect, loginResponse.StatusCode);
+    }
+
+    private static async Task AddSubscriptionAsync(
+        TryOutSpotWebApplicationFactory factory,
+        Guid userId,
+        string planCode)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+
+        dbContext.Subscriptions.Add(new Subscription
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            PlanType = planCode,
+            Status = "active",
+            ScopeType = TryOutSpotSubscriptionScopeTypes.Account,
+            ScopeId = null,
+            StripeCustomerId = $"cus_{Guid.NewGuid():N}",
+            StripeSubscriptionId = $"sub_{Guid.NewGuid():N}",
+            CurrentPeriodStart = now,
+            CurrentPeriodEnd = now.AddMonths(1),
+            Amount = 29m,
+            Currency = "USD",
+            BillingInterval = BillingIntervalCodes.Month,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+
+        await dbContext.SaveChangesAsync();
     }
 }

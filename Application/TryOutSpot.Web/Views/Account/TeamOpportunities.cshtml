@@ -91,6 +91,7 @@
             <div class="d-flex flex-wrap gap-2 mb-2 small text-muted">
                 <span><strong class="text-body">Page views:</strong> @Model.PageViewCountTotal</span>
                 <span><strong class="text-body">Applications:</strong> @Model.PageRegistrationCountTotal</span>
+                <span><strong class="text-body">Followers:</strong> @Model.PageFavoriteCountTotal</span>
                 <span><strong class="text-body">Conversion:</strong> @FormatPercent(Model.PageViewToRegistrationConversionRate)</span>
                 <span><strong class="text-body">Analytics:</strong> @(Model.ShowDetailedAnalytics ? "Detailed" : "Basic")</span>
             </div>
@@ -145,6 +146,7 @@
                                     <strong class="text-body">Reporting</strong>
                                     <span>Views: <strong class="text-body">@opportunity.ViewCount</strong></span>
                                     <span>Applications: <strong class="text-body">@opportunity.RegistrationCount</strong></span>
+                                    <span>Followers: <strong class="text-body">@opportunity.FavoriteCount</strong></span>
                                     <span>Unique players: <strong class="text-body">@opportunity.UniqueApplicantCount</strong></span>
                                     <span>
                                         @(Model.ShowDetailedAnalytics ? "View to apply" : "Pending review"):

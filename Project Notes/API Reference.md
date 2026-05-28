@@ -522,6 +522,11 @@ Discovery and player-listing search summaries include `isFavorited` when the cal
 - `GET /api/player-listings/search`
 - `GET /api/discovery/opportunities`
 
+Managed team opportunity responses include `favoriteCount`, the number of accounts that saved/followed the opportunity:
+
+- `GET /api/team-listings/mine/{teamId}/opportunities`
+- `GET /api/team-listings/mine/{teamId}/opportunities/{opportunityId}`
+
 ## Listing Reports And Admin Review
 
 Signed-in active users can report published listings for platform review. Team representatives report player listings, and parents/players report team opportunities, but the endpoints are role-neutral for any active authenticated user. Duplicate open reports from the same user for the same listing return the existing report instead of creating another row.

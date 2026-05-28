@@ -70,6 +70,7 @@ public sealed record TeamOpportunitySummaryResponse(
     bool IsPublished,
     DateTime? PublishedAt,
     DateTime? ExpiresAt,
+    int FavoriteCount,
     DateTime UpdatedAt);
 
 /// <summary>
@@ -114,6 +115,7 @@ public sealed record TeamOpportunityDetailResponse(
     bool IsPublished,
     DateTime? PublishedAt,
     DateTime? ExpiresAt,
+    int FavoriteCount,
     DateTime CreatedAt,
     DateTime UpdatedAt);
 

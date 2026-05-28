@@ -111,10 +111,17 @@ public sealed class TeamListingsApiController(
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToArrayAsync(cancellationToken);
+        var favoriteCountsByOpportunityId = await GetFavoriteCountsByOpportunityIdAsync(
+            opportunities.Select(opportunity => opportunity.Id),
+            cancellationToken);
 
         return Ok(new TeamOpportunityListResponse(
             teamId,
-            opportunities.Select(ToSummaryResponse).ToArray(),
+            opportunities
+                .Select(opportunity => ToSummaryResponse(
+                    opportunity,
+                    favoriteCountsByOpportunityId.GetValueOrDefault(opportunity.Id)))
+                .ToArray(),
             page,
             pageSize,
             totalCount,
@@ -152,7 +159,14 @@ public sealed class TeamListingsApiController(
             .Include(currentOpportunity => currentOpportunity.Sport)
             .SingleOrDefaultAsync(cancellationToken);
 
-        return opportunity is null ? NotFound() : Ok(ToDetailResponse(opportunity));
+        if (opportunity is null)
+        {
+            return NotFound();
+        }
+
+        var favoriteCount = await GetOpportunityFavoriteCountAsync(opportunityId, cancellationToken);
+
+        return Ok(ToDetailResponse(opportunity, favoriteCount));
     }
 
     /// <summary>
@@ -304,7 +318,7 @@ public sealed class TeamListingsApiController(
 
         return StatusCode(
             StatusCodes.Status201Created,
-            new TeamOpportunityActionResponse("Opportunity created.", ToDetailResponse(created)));
+            new TeamOpportunityActionResponse("Opportunity created.", ToDetailResponse(created, favoriteCount: 0)));
     }
 
     /// <summary>
@@ -449,8 +463,9 @@ public sealed class TeamListingsApiController(
             .Where(currentOpportunity => currentOpportunity.Id == opportunityId)
             .Include(currentOpportunity => currentOpportunity.Sport)
             .SingleAsync(cancellationToken);
+        var favoriteCount = await GetOpportunityFavoriteCountAsync(opportunityId, cancellationToken);
 
-        return Ok(new TeamOpportunityActionResponse("Opportunity updated.", ToDetailResponse(updated)));
+        return Ok(new TeamOpportunityActionResponse("Opportunity updated.", ToDetailResponse(updated, favoriteCount)));
     }
 
     /// <summary>
@@ -519,10 +534,11 @@ public sealed class TeamListingsApiController(
             .Where(currentOpportunity => currentOpportunity.Id == opportunityId)
             .Include(currentOpportunity => currentOpportunity.Sport)
             .SingleAsync(cancellationToken);
+        var favoriteCount = await GetOpportunityFavoriteCountAsync(opportunityId, cancellationToken);
 
         return Ok(new TeamOpportunityActionResponse(
             request.IsPublished ? "Opportunity published." : "Opportunity unpublished.",
-            ToDetailResponse(updated)));
+            ToDetailResponse(updated, favoriteCount)));
     }
 
     /// <summary>
@@ -569,8 +585,9 @@ public sealed class TeamListingsApiController(
             .Where(currentOpportunity => currentOpportunity.Id == opportunityId)
             .Include(currentOpportunity => currentOpportunity.Sport)
             .SingleAsync(cancellationToken);
+        var favoriteCount = await GetOpportunityFavoriteCountAsync(opportunityId, cancellationToken);
 
-        return Ok(new TeamOpportunityActionResponse("Opportunity deactivated.", ToDetailResponse(updated)));
+        return Ok(new TeamOpportunityActionResponse("Opportunity deactivated.", ToDetailResponse(updated, favoriteCount)));
     }
 
     /// <summary>
@@ -934,6 +951,34 @@ public sealed class TeamListingsApiController(
         return Guid.TryParse(userIdClaim, out userId);
     }
 
+    private async Task<Dictionary<Guid, int>> GetFavoriteCountsByOpportunityIdAsync(
+        IEnumerable<Guid> opportunityIds,
+        CancellationToken cancellationToken)
+    {
+        var ids = opportunityIds.ToArray();
+        if (ids.Length == 0)
+        {
+            return [];
+        }
+
+        return await dbContext.UserFavorites
+            .AsNoTracking()
+            .Where(favorite => favorite.OpportunityId.HasValue)
+            .Where(favorite => ids.Contains(favorite.OpportunityId!.Value))
+            .GroupBy(favorite => favorite.OpportunityId!.Value)
+            .Select(group => new { OpportunityId = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(item => item.OpportunityId, item => item.Count, cancellationToken);
+    }
+
+    private Task<int> GetOpportunityFavoriteCountAsync(
+        Guid opportunityId,
+        CancellationToken cancellationToken)
+    {
+        return dbContext.UserFavorites
+            .AsNoTracking()
+            .CountAsync(favorite => favorite.OpportunityId == opportunityId, cancellationToken);
+    }
+
     private static ManagedTeamSummaryResponse ToManagedTeamSummary(Team team, string role)
     {
         var sports = team.TeamSports
@@ -964,7 +1009,7 @@ public sealed class TeamListingsApiController(
             sports);
     }
 
-    private static TeamOpportunitySummaryResponse ToSummaryResponse(Opportunity opportunity)
+    private static TeamOpportunitySummaryResponse ToSummaryResponse(Opportunity opportunity, int favoriteCount)
     {
         var requiredRegistrationFieldCodes = DeserializeRegistrationFieldCodes(opportunity.RegistrationRequiredFieldCodes);
         return new TeamOpportunitySummaryResponse(
@@ -998,10 +1043,11 @@ public sealed class TeamListingsApiController(
             opportunity.IsPublished,
             opportunity.PublishedAt,
             opportunity.ExpiresAt,
+            favoriteCount,
             opportunity.UpdatedAt);
     }
 
-    private static TeamOpportunityDetailResponse ToDetailResponse(Opportunity opportunity)
+    private static TeamOpportunityDetailResponse ToDetailResponse(Opportunity opportunity, int favoriteCount)
     {
         var requiredRegistrationFieldCodes = DeserializeRegistrationFieldCodes(opportunity.RegistrationRequiredFieldCodes);
         var waiverPdfUrl = string.IsNullOrWhiteSpace(opportunity.WaiverUploadedPdfObjectKey)
@@ -1046,6 +1092,7 @@ public sealed class TeamListingsApiController(
             opportunity.IsPublished,
             opportunity.PublishedAt,
             opportunity.ExpiresAt,
+            favoriteCount,
             opportunity.CreatedAt,
             opportunity.UpdatedAt);
     }
