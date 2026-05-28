@@ -27,6 +27,8 @@ public sealed class HomePageSeoTests
         Assert.Contains("\"@type\":\"WebSite\"", html);
         Assert.Contains("\"@type\":\"Organization\"", html);
         Assert.Contains("<h1>Baseball and Softball Tryouts, Teams, and Player Profiles</h1>", decodedHtml);
+        Assert.Contains("View demo listing", decodedHtml);
+        Assert.Contains("href=\"https://tryoutspot.com/opportunities/967602f9-4866-4c75-bc6f-ff86c3f448a5\"", html);
         Assert.DoesNotContain("Home Page - TryOutSpot", html);
     }
 

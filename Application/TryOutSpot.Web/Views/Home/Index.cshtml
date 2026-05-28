@@ -6,6 +6,7 @@
     ViewData["Robots"] = "index,follow";
     ViewData["OpenGraphType"] = "website";
 
+    var demoListingUrl = "https://tryoutspot.com/opportunities/967602f9-4866-4c75-bc6f-ff86c3f448a5";
     var homePageUrl = $"{Context.Request.Scheme}://{Context.Request.Host}/";
     var logoUrl = $"{Context.Request.Scheme}://{Context.Request.Host}{Url.Content("~/logo/MainLogoSized.png")}";
     var websiteJsonLd = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
@@ -92,6 +93,11 @@
                             <span>Still deciding?</span>
                             <strong>Learn more</strong>
                             <small>Compare features for players and teams.</small>
+                        </a>
+                        <a class="start-next-link" href="@demoListingUrl">
+                            <span>Want a preview?</span>
+                            <strong>View demo listing</strong>
+                            <small>See how a public team listing appears.</small>
                         </a>
                     </div>
                 </aside>
