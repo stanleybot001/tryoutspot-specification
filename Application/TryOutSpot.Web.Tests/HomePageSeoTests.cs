@@ -44,6 +44,10 @@ public sealed class HomePageSeoTests
 
         Assert.Contains("Share listing links", decodedHtml);
         Assert.Contains("opportunities.share.links", decodedHtml);
+        Assert.Contains("Listing flyer attachments", decodedHtml);
+        Assert.Contains("opportunities.flyers", decodedHtml);
+        Assert.Contains("Link or upload a PDF event flyer", decodedHtml);
+        Assert.Contains("display it on the public listing", decodedHtml);
         Assert.Contains("Follower SMS updates", decodedHtml);
         Assert.Contains("communication.sms.followers", decodedHtml);
         Assert.Contains("who follow an opportunity", decodedHtml);

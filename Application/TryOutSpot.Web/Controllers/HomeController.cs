@@ -115,6 +115,7 @@ public class HomeController : Controller
                 [
                     F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 1 tryout listing every 6 months."),
                     F(TryOutSpotFeatureCodes.ShareOpportunityListingLinks, "Share listing links", "Copy public listing links and ready-to-share post text for active opportunity listings."),
+                    F(TryOutSpotFeatureCodes.OpportunityListingFlyers, "Listing flyer attachments", "Link or upload a PDF event flyer, save it with the opportunity, and display it on the public listing."),
                     F("players.search.basic", "Basic player search", "Limited player search with age filters and radius capped at 120 miles.")
                 ]),
             new FeatureBundlePageItem(
@@ -183,6 +184,7 @@ public class HomeController : Controller
         {
             F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 1 tryout listing every 6 months."),
             F(TryOutSpotFeatureCodes.ShareOpportunityListingLinks, "Share listing links", "Copy public listing links and ready-to-share post text for active opportunity listings."),
+            F(TryOutSpotFeatureCodes.OpportunityListingFlyers, "Listing flyer attachments", "Link or upload a PDF event flyer, save it with the opportunity, and display it on the public listing."),
             F("players.search.basic", "Basic player search", "Limited player search with age filters and radius capped at 120 miles.")
         };
 
@@ -261,7 +263,7 @@ public class HomeController : Controller
                         "Entry team subscription with limited annual tryout posting capacity.",
                         "$29.00/month",
                         null,
-                        teamBasic,
+                        freeCoach.Concat(teamBasic).ToArray(),
                         teamBasic),
                     new PlanDetailPageItem(
                         TryOutSpotPlanCodes.TeamProfessional,
@@ -270,7 +272,7 @@ public class HomeController : Controller
                         "Professional team annual subscription for unlimited postings and advanced tools.",
                         "$799.00/year (annual commitment)",
                         null,
-                        teamBasic.Concat(pro).ToArray(),
+                        freeCoach.Concat(teamBasic).Concat(pro).ToArray(),
                         pro),
                     new PlanDetailPageItem(
                         TryOutSpotPlanCodes.EnterpriseOrganization,
@@ -279,7 +281,7 @@ public class HomeController : Controller
                         "Enterprise annual subscription for multi-team organizations and custom workflows.",
                         "$1,999.00/year (annual commitment)",
                         null,
-                        teamBasic.Concat(pro).Concat(enterpriseAdds).ToArray(),
+                        freeCoach.Concat(teamBasic).Concat(pro).Concat(enterpriseAdds).ToArray(),
                         enterpriseAdds)
                 ])
         ];

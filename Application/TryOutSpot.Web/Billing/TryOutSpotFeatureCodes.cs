@@ -18,6 +18,7 @@ public static class TryOutSpotFeatureCodes
 
     public const string PostLimitedOpportunities = "opportunities.post.limited";
     public const string ShareOpportunityListingLinks = "opportunities.share.links";
+    public const string OpportunityListingFlyers = "opportunities.flyers";
     public const string BasicPlayerSearch = "players.search.basic";
     public const string StandardRegistrationManagement = "registrations.manage.standard";
     public const string FollowerSmsMessaging = "communication.sms.followers";

@@ -91,6 +91,7 @@ These are the feature-to-capability checks to add as each module is built.
 | Player search (advanced filters) | `players.search.advanced` | Service guard for advanced filter fields |
 | Team direct messaging from player side | `communication.team.direct` | Policy on message-create endpoints |
 | Team listing link sharing | `opportunities.share.links` | Available to Free Coach and higher for active opportunity listings |
+| Team listing flyer attachments | `opportunities.flyers` | Available to Free Coach and higher; supports external PDF links and uploaded PDF flyers displayed with the public listing |
 | Team follower SMS updates | `communication.sms.followers` | Future follower-SMS send endpoints; requires Basic Team or higher plus SMS compliance controls |
 | Team bulk messaging | `communication.bulk` | Policy on bulk send endpoints |
 | Player analytics views | `registrations.analytics.player` | Policy on analytics API/view routes |

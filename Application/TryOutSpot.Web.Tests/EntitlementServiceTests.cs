@@ -33,8 +33,11 @@ public sealed class EntitlementServiceTests
         Assert.NotNull(plans);
         Assert.NotNull(features);
         Assert.Contains(plans, plan => plan.Code == TryOutSpotPlanCodes.PremiumPlayer);
+        Assert.Contains(plans, plan => plan.Code == TryOutSpotPlanCodes.TeamBasic
+            && plan.IncludedFeatureCodes.Contains(TryOutSpotFeatureCodes.OpportunityListingFlyers));
         Assert.Contains(features, feature => feature.Code == TryOutSpotFeatureCodes.BrowseOpportunities);
         Assert.Contains(features, feature => feature.Code == TryOutSpotFeatureCodes.ShareOpportunityListingLinks);
+        Assert.Contains(features, feature => feature.Code == TryOutSpotFeatureCodes.OpportunityListingFlyers);
         Assert.Contains(features, feature => feature.Code == TryOutSpotFeatureCodes.FollowerSmsMessaging);
     }
 
@@ -128,6 +131,7 @@ public sealed class EntitlementServiceTests
         Assert.NotNull(entitlements);
         Assert.Contains(TryOutSpotPlanCodes.FreeCoach, entitlements.ActivePlanCodes);
         Assert.Contains(TryOutSpotFeatureCodes.ShareOpportunityListingLinks, entitlements.FeatureCodes);
+        Assert.Contains(TryOutSpotFeatureCodes.OpportunityListingFlyers, entitlements.FeatureCodes);
         Assert.DoesNotContain(TryOutSpotFeatureCodes.FollowerSmsMessaging, entitlements.FeatureCodes);
     }
 

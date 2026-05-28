@@ -18,6 +18,7 @@ public static class TryOutSpotBillingCatalog
     [
         TryOutSpotFeatureCodes.PostLimitedOpportunities,
         TryOutSpotFeatureCodes.ShareOpportunityListingLinks,
+        TryOutSpotFeatureCodes.OpportunityListingFlyers,
         TryOutSpotFeatureCodes.BasicPlayerSearch
     ];
 
@@ -92,6 +93,11 @@ public static class TryOutSpotBillingCatalog
             TryOutSpotFeatureCodes.ShareOpportunityListingLinks,
             "Share listing links",
             "Copy public listing links and ready-to-share post text for active opportunity listings.",
+            false),
+        new(
+            TryOutSpotFeatureCodes.OpportunityListingFlyers,
+            "Listing flyer attachments",
+            "Link or upload a PDF event flyer, save it with the opportunity, and display it on the public listing.",
             false),
         new(
             TryOutSpotFeatureCodes.BasicPlayerSearch,
@@ -248,6 +254,8 @@ public static class TryOutSpotBillingCatalog
             true,
             [
                 TryOutSpotFeatureCodes.PostLimitedOpportunities,
+                TryOutSpotFeatureCodes.ShareOpportunityListingLinks,
+                TryOutSpotFeatureCodes.OpportunityListingFlyers,
                 TryOutSpotFeatureCodes.BasicPlayerSearch,
                 TryOutSpotFeatureCodes.AdvancedPlayerSearch,
                 TryOutSpotFeatureCodes.StandardRegistrationManagement,
@@ -267,6 +275,8 @@ public static class TryOutSpotBillingCatalog
             true,
             [
                 TryOutSpotFeatureCodes.UnlimitedOpportunityPostings,
+                TryOutSpotFeatureCodes.ShareOpportunityListingLinks,
+                TryOutSpotFeatureCodes.OpportunityListingFlyers,
                 TryOutSpotFeatureCodes.AdvancedPlayerSearch,
                 TryOutSpotFeatureCodes.FollowerSmsMessaging,
                 TryOutSpotFeatureCodes.PremiumRegistrationManagement,
@@ -287,6 +297,8 @@ public static class TryOutSpotBillingCatalog
             true,
             [
                 TryOutSpotFeatureCodes.UnlimitedOpportunityPostings,
+                TryOutSpotFeatureCodes.ShareOpportunityListingLinks,
+                TryOutSpotFeatureCodes.OpportunityListingFlyers,
                 TryOutSpotFeatureCodes.AdvancedPlayerSearch,
                 TryOutSpotFeatureCodes.FollowerSmsMessaging,
                 TryOutSpotFeatureCodes.PremiumRegistrationManagement,
