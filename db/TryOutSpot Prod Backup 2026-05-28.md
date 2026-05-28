@@ -72,3 +72,56 @@ Verification performed from `ssvcpro200`:
 - `showmount -e 192.168.49.238` confirmed all three exports are allowed for `192.168.48.15`.
 - `findmnt` confirmed all three mount points are mounted as NFS.
 - Temporary write tests succeeded on `/mnt/pg-backups-mtc` and `/mnt/pg-backups-azure`.
+
+## Nightly Backup Schedule
+
+All connectable, non-template PostgreSQL databases on `ssvcpro200` are backed up nightly to:
+
+```text
+/mnt/pg-backups-mas/ssvcpro200/nightly
+```
+
+Installed files:
+
+```text
+/usr/local/sbin/ssvcpro200-pg-backup-all.sh
+/etc/systemd/system/ssvcpro200-pg-backup.service
+/etc/systemd/system/ssvcpro200-pg-backup.timer
+```
+
+Schedule and retention:
+
+- Runs daily at `2:00 AM America/Chicago`.
+- Timer uses `Persistent=true`.
+- Keeps the newest 7 successful nightly backup folders.
+- The script discovers database names at runtime; it does not hard-code the current `ssvcpro200` database list.
+
+The first verified scheduled-backup-format manual run created:
+
+```text
+/mnt/pg-backups-mas/ssvcpro200/nightly/20260528-162924-CDT
+```
+
+That run backed up these current `ssvcpro200` databases:
+
+```text
+asdu894sd8
+clawd_agents
+postgres
+stripe3_ssvcpro
+testprovision_ssvcpro
+tryoutspot_prod
+```
+
+Each run creates:
+
+- `globals.sql`
+- `databases.txt`
+- `manifest.txt`
+- `backup_complete.txt`
+- `SHA256SUMS.txt`
+- Per-database custom-format `*_full.dump`
+- Per-database readable `*_schema.sql`
+- Per-database `*_restore_list.txt`
+
+The manual run passed `sha256sum -c SHA256SUMS.txt` for all generated files.
