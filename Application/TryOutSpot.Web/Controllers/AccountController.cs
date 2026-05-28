@@ -70,8 +70,8 @@ public sealed class AccountController(
     private const int FreeSearchMaxRadiusMiles = 120;
     private const int SearchSuggestionResultLimit = 5;
     private const string AllSearchFilterValue = "all";
-    private const int ListingPdfMaxSizeMegabytes = 10;
-    private const long ListingPdfMaxSizeBytes = ListingPdfMaxSizeMegabytes * 1024L * 1024L;
+    private const int ListingFlyerMaxSizeMegabytes = 10;
+    private const long ListingFlyerMaxSizeBytes = ListingFlyerMaxSizeMegabytes * 1024L * 1024L;
     private const string PlayerListingDocumentType = "player-listings";
     private const string OpportunityDocumentType = "opportunities";
     private const string OpportunityWaiverDocumentType = "opportunity-waivers";
@@ -91,6 +91,13 @@ public sealed class AccountController(
         "image/png",
         "image/webp",
         "image/svg+xml"
+    ];
+    private static readonly string[] SupportedListingFlyerContentTypes =
+    [
+        "application/pdf",
+        "image/jpeg",
+        "image/png",
+        "image/webp"
     ];
     private static readonly (string Token, string BrowserDisplayName)[] InAppBrowserSignatures =
     [
@@ -2560,7 +2567,7 @@ public sealed class AccountController(
             IsActive = true
         };
 
-        await ApplyOpportunityPdfUploadChangesAsync(
+        await ApplyOpportunityFlyerUploadChangesAsync(
             opportunity,
             user.Id,
             model.PdfUpload,
@@ -2755,7 +2762,7 @@ public sealed class AccountController(
         opportunity.ExpiresAt = NormalizeUtc(model.ListingEndDate) ?? NormalizeUtc(model.ExpiresAt);
         opportunity.UpdatedAt = now;
 
-        await ApplyOpportunityPdfUploadChangesAsync(
+        await ApplyOpportunityFlyerUploadChangesAsync(
             opportunity,
             user.Id,
             model.PdfUpload,
@@ -4133,20 +4140,25 @@ public sealed class AccountController(
             return NotFound();
         }
 
-        var pdfReference = await GetPdfReferenceAsync(normalizedType, listingId, cancellationToken);
-        if (pdfReference is null || string.IsNullOrWhiteSpace(pdfReference.Value.ObjectKey))
+        var documentReference = await GetPdfReferenceAsync(normalizedType, listingId, cancellationToken);
+        if (documentReference is null || string.IsNullOrWhiteSpace(documentReference.Value.ObjectKey))
         {
             return NotFound();
         }
 
-        var content = await pdfStorageService.DownloadPdfAsync(pdfReference.Value.ObjectKey, cancellationToken);
-        if (content is null || content.Length == 0)
+        var payload = await pdfStorageService.DownloadFileAsync(documentReference.Value.ObjectKey, cancellationToken);
+        if (payload is null || payload.Content.Length == 0)
         {
             return NotFound();
         }
+
+        var contentType = ResolveListingDocumentContentType(
+            payload.ContentType,
+            documentReference.Value.FileName,
+            documentReference.Value.ObjectKey);
 
         Response.Headers["X-Content-Type-Options"] = "nosniff";
-        return File(content, "application/pdf", enableRangeProcessing: false);
+        return File(payload.Content, contentType, enableRangeProcessing: false);
     }
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
@@ -6716,13 +6728,13 @@ public sealed class AccountController(
             ?
             [
                 "Create the tryout listing with age group, dates, location, and contact details.",
-                "Add a PDF flyer and enable registration from the same listing form.",
+                "Add a flyer and enable registration from the same listing form.",
                 "Publish when the listing is ready for players."
             ]
             :
             [
                 $"Latest tryout: {latestTryout.Title}.",
-                latestTryout.HasPdfFlyer ? "PDF flyer is attached." : "PDF flyer still needs to be added.",
+                latestTryout.HasPdfFlyer ? "Flyer is attached." : "Flyer still needs to be added.",
                 latestTryout.RegistrationRequired ? "Registration is turned on." : "Registration still needs to be turned on.",
                 latestTryout.IsPublished ? "Listing is published." : "Listing is still unpublished."
             ];
@@ -8157,9 +8169,14 @@ public sealed class AccountController(
             && TryNormalizeAbsoluteLink(opportunity.PdfUrl, out var normalizedPdfUrl)
                 ? normalizedPdfUrl
                 : null;
-        var pdfUrl = isContactInfoVisible && !string.IsNullOrWhiteSpace(opportunity.UploadedPdfObjectKey)
+        var uploadedFlyerUrl = isContactInfoVisible && !string.IsNullOrWhiteSpace(opportunity.UploadedPdfObjectKey)
             ? BuildListingDocumentPath(OpportunityDocumentType, opportunity.Id)
-            : externalPdfUrl;
+            : null;
+        var pdfUrl = uploadedFlyerUrl ?? externalPdfUrl;
+        var isFlyerImage = uploadedFlyerUrl is not null
+            ? IsListingFlyerImageReference(opportunity.UploadedPdfFileName)
+                || IsListingFlyerImageReference(opportunity.UploadedPdfObjectKey)
+            : IsListingFlyerImageReference(externalPdfUrl);
         var requiredRegistrationFieldCodes = opportunity.RegistrationRequired
             ? DeserializeRegistrationFieldCodes(opportunity.RegistrationRequiredFieldCodes)
             : [];
@@ -8295,6 +8312,7 @@ public sealed class AccountController(
             ContactPhone = isContactInfoVisible ? NormalizeOptional(opportunity.ContactPhone) : null,
             WebsiteUrl = websiteUrl,
             PdfUrl = pdfUrl,
+            IsFlyerImage = isFlyerImage,
             RequiredEquipment = NormalizeOptional(opportunity.RequiredEquipment),
             WhatToBring = NormalizeOptional(opportunity.WhatToBring),
             SpecialInstructions = NormalizeOptional(opportunity.SpecialInstructions),
@@ -9924,7 +9942,7 @@ public sealed class AccountController(
 
         try
         {
-            var objectKey = BuildPdfObjectKey(PlayerListingDocumentType, listing.Id, uploadedByUserId, parsedUpload.FileName);
+            var objectKey = BuildListingDocumentObjectKey(PlayerListingDocumentType, listing.Id, uploadedByUserId, parsedUpload.FileName);
             await pdfStorageService.UploadPdfAsync(objectKey, parsedUpload.Content, cancellationToken);
             listing.UploadedPdfObjectKey = objectKey;
             listing.UploadedPdfFileName = parsedUpload.FileName;
@@ -9939,17 +9957,17 @@ public sealed class AccountController(
         }
     }
 
-    private async Task ApplyOpportunityPdfUploadChangesAsync(
+    private async Task ApplyOpportunityFlyerUploadChangesAsync(
         Opportunity opportunity,
         Guid uploadedByUserId,
-        IFormFile? uploadedPdf,
-        bool removeUploadedPdf,
+        IFormFile? uploadedFlyer,
+        bool removeUploadedFlyer,
         string modelStateKey,
         CancellationToken cancellationToken)
     {
-        if (uploadedPdf is null || uploadedPdf.Length == 0)
+        if (uploadedFlyer is null || uploadedFlyer.Length == 0)
         {
-            if (removeUploadedPdf)
+            if (removeUploadedFlyer)
             {
                 await RemoveOpportunityPdfAsync(opportunity, cancellationToken);
             }
@@ -9958,13 +9976,13 @@ public sealed class AccountController(
         }
 
         logger.LogInformation(
-            "Opportunity PDF upload requested. OpportunityId={OpportunityId} UserId={UserId} FileName={FileName} FileSizeBytes={FileSizeBytes}",
+            "Opportunity flyer upload requested. OpportunityId={OpportunityId} UserId={UserId} FileName={FileName} FileSizeBytes={FileSizeBytes}",
             opportunity.Id,
             uploadedByUserId,
-            uploadedPdf.FileName,
-            uploadedPdf.Length);
+            uploadedFlyer.FileName,
+            uploadedFlyer.Length);
 
-        var parsedUpload = await ParseUploadedPdfAsync(uploadedPdf, modelStateKey, cancellationToken);
+        var parsedUpload = await ParseUploadedListingFlyerAsync(uploadedFlyer, modelStateKey, cancellationToken);
         if (parsedUpload is null)
         {
             return;
@@ -9977,8 +9995,8 @@ public sealed class AccountController(
 
         try
         {
-            var objectKey = BuildPdfObjectKey(OpportunityDocumentType, opportunity.Id, uploadedByUserId, parsedUpload.FileName);
-            await pdfStorageService.UploadPdfAsync(objectKey, parsedUpload.Content, cancellationToken);
+            var objectKey = BuildListingDocumentObjectKey(OpportunityDocumentType, opportunity.Id, uploadedByUserId, parsedUpload.FileName);
+            await pdfStorageService.UploadFileAsync(objectKey, parsedUpload.Content, parsedUpload.ContentType, cancellationToken);
             opportunity.UploadedPdfObjectKey = objectKey;
             opportunity.UploadedPdfFileName = parsedUpload.FileName;
         }
@@ -9986,9 +10004,9 @@ public sealed class AccountController(
         {
             logger.LogError(
                 exception,
-                "Failed to upload opportunity PDF to R2 for opportunity {OpportunityId}.",
+                "Failed to upload opportunity flyer to R2 for opportunity {OpportunityId}.",
                 opportunity.Id);
-            ModelState.AddModelError(modelStateKey, "We could not upload the PDF right now. Please try again.");
+            ModelState.AddModelError(modelStateKey, "We could not upload the flyer right now. Please try again.");
         }
     }
 
@@ -10030,7 +10048,7 @@ public sealed class AccountController(
 
         try
         {
-            var objectKey = BuildPdfObjectKey(OpportunityWaiverDocumentType, opportunity.Id, uploadedByUserId, parsedUpload.FileName);
+            var objectKey = BuildListingDocumentObjectKey(OpportunityWaiverDocumentType, opportunity.Id, uploadedByUserId, parsedUpload.FileName);
             await pdfStorageService.UploadPdfAsync(objectKey, parsedUpload.Content, cancellationToken);
             opportunity.WaiverUploadedPdfObjectKey = objectKey;
             opportunity.WaiverUploadedPdfFileName = parsedUpload.FileName;
@@ -10056,11 +10074,11 @@ public sealed class AccountController(
             return null;
         }
 
-        if (uploadedPdf.Length > ListingPdfMaxSizeBytes)
+        if (uploadedPdf.Length > ListingFlyerMaxSizeBytes)
         {
             ModelState.AddModelError(
                 modelStateKey,
-                $"PDF files can be up to {ListingPdfMaxSizeMegabytes} MB.");
+                $"PDF files can be up to {ListingFlyerMaxSizeMegabytes} MB.");
             return null;
         }
 
@@ -10081,11 +10099,11 @@ public sealed class AccountController(
             return null;
         }
 
-        if (memoryStream.Length > ListingPdfMaxSizeBytes)
+        if (memoryStream.Length > ListingFlyerMaxSizeBytes)
         {
             ModelState.AddModelError(
                 modelStateKey,
-                $"PDF files can be up to {ListingPdfMaxSizeMegabytes} MB.");
+                $"PDF files can be up to {ListingFlyerMaxSizeMegabytes} MB.");
             return null;
         }
 
@@ -10103,6 +10121,71 @@ public sealed class AccountController(
         }
 
         return new UploadedPdfPayload(fileName.Trim(), content);
+    }
+
+    private async Task<UploadedListingFlyerPayload?> ParseUploadedListingFlyerAsync(
+        IFormFile uploadedFlyer,
+        string modelStateKey,
+        CancellationToken cancellationToken)
+    {
+        if (uploadedFlyer.Length <= 0)
+        {
+            ModelState.AddModelError(modelStateKey, "Upload a PDF or image flyer.");
+            return null;
+        }
+
+        if (uploadedFlyer.Length > ListingFlyerMaxSizeBytes)
+        {
+            ModelState.AddModelError(
+                modelStateKey,
+                $"Flyer files can be up to {ListingFlyerMaxSizeMegabytes} MB.");
+            return null;
+        }
+
+        var contentType = ResolveListingFlyerContentType(uploadedFlyer.ContentType, uploadedFlyer.FileName);
+        if (contentType is null)
+        {
+            ModelState.AddModelError(modelStateKey, "Only PDF, JPG, PNG, or WEBP flyer files are supported.");
+            return null;
+        }
+
+        await using var stream = uploadedFlyer.OpenReadStream();
+        using var memoryStream = new MemoryStream();
+        await stream.CopyToAsync(memoryStream, cancellationToken);
+
+        if (memoryStream.Length <= 0)
+        {
+            ModelState.AddModelError(modelStateKey, "Upload a PDF or image flyer.");
+            return null;
+        }
+
+        if (memoryStream.Length > ListingFlyerMaxSizeBytes)
+        {
+            ModelState.AddModelError(
+                modelStateKey,
+                $"Flyer files can be up to {ListingFlyerMaxSizeMegabytes} MB.");
+            return null;
+        }
+
+        var content = memoryStream.ToArray();
+        if (string.Equals(contentType, "application/pdf", StringComparison.Ordinal)
+            && !LooksLikePdf(content))
+        {
+            ModelState.AddModelError(modelStateKey, "Uploaded file is not a valid PDF.");
+            return null;
+        }
+
+        if (contentType.StartsWith("image/", StringComparison.Ordinal)
+            && !LooksLikeSupportedListingFlyerImage(content, contentType))
+        {
+            ModelState.AddModelError(modelStateKey, "Uploaded file is not a valid JPG, PNG, or WEBP image.");
+            return null;
+        }
+
+        return new UploadedListingFlyerPayload(
+            BuildSafeListingFlyerFileName(uploadedFlyer.FileName, contentType),
+            content,
+            contentType);
     }
 
     private async Task<UploadedImagePayload?> ParseUploadedImageAsync(
@@ -10230,6 +10313,36 @@ public sealed class AccountController(
             && content[4] == 0x2D; // -
     }
 
+    private static bool LooksLikeSupportedListingFlyerImage(byte[] content, string contentType)
+    {
+        return contentType switch
+        {
+            "image/jpeg" => content.Length >= 3
+                && content[0] == 0xFF
+                && content[1] == 0xD8
+                && content[2] == 0xFF,
+            "image/png" => content.Length >= 8
+                && content[0] == 0x89
+                && content[1] == 0x50 // P
+                && content[2] == 0x4E // N
+                && content[3] == 0x47 // G
+                && content[4] == 0x0D
+                && content[5] == 0x0A
+                && content[6] == 0x1A
+                && content[7] == 0x0A,
+            "image/webp" => content.Length >= 12
+                && content[0] == 0x52 // R
+                && content[1] == 0x49 // I
+                && content[2] == 0x46 // F
+                && content[3] == 0x46 // F
+                && content[8] == 0x57 // W
+                && content[9] == 0x45 // E
+                && content[10] == 0x42 // B
+                && content[11] == 0x50, // P
+            _ => false
+        };
+    }
+
     private async Task RemovePlayerListingPdfAsync(PlayerListing listing, CancellationToken cancellationToken)
     {
         if (!string.IsNullOrWhiteSpace(listing.UploadedPdfObjectKey))
@@ -10293,7 +10406,7 @@ public sealed class AccountController(
         return null;
     }
 
-    private static string BuildPdfObjectKey(string listingType, Guid listingId, Guid userId, string fileName)
+    private static string BuildListingDocumentObjectKey(string listingType, Guid listingId, Guid userId, string fileName)
     {
         var safeFileName = Path.GetFileName(fileName);
         return $"{listingType}/{listingId}/{DateTime.UtcNow:yyyyMMddHHmmss}-{userId}-{safeFileName}";
@@ -10360,6 +10473,98 @@ public sealed class AccountController(
         };
 
         return $"{baseName.Trim()}{extension}";
+    }
+
+    private static string BuildSafeListingFlyerFileName(string originalFileName, string contentType)
+    {
+        var baseName = Path.GetFileNameWithoutExtension(originalFileName);
+        if (string.IsNullOrWhiteSpace(baseName))
+        {
+            baseName = "listing-flyer";
+        }
+
+        var invalidFileNameChars = Path.GetInvalidFileNameChars();
+        var safeBaseName = new string(
+            baseName
+                .Trim()
+                .Select(character => invalidFileNameChars.Contains(character) ? '-' : character)
+                .ToArray());
+        if (string.IsNullOrWhiteSpace(safeBaseName))
+        {
+            safeBaseName = "listing-flyer";
+        }
+
+        var extension = GetListingFlyerExtension(contentType);
+        var maxBaseNameLength = Math.Max(1, 260 - extension.Length);
+        if (safeBaseName.Length > maxBaseNameLength)
+        {
+            safeBaseName = safeBaseName[..maxBaseNameLength];
+        }
+
+        return $"{safeBaseName}{extension}";
+    }
+
+    private static string? ResolveListingFlyerContentType(string? contentType, string? fileNameOrUrl)
+    {
+        var normalizedContentType = NormalizeOptional(contentType)?.Split(';', 2)[0].Trim().ToLowerInvariant();
+        if (string.Equals(normalizedContentType, "image/jpg", StringComparison.Ordinal))
+        {
+            normalizedContentType = "image/jpeg";
+        }
+
+        if (normalizedContentType is not null
+            && SupportedListingFlyerContentTypes.Contains(normalizedContentType, StringComparer.Ordinal))
+        {
+            return normalizedContentType;
+        }
+
+        var path = NormalizeOptional(fileNameOrUrl);
+        if (path is null)
+        {
+            return null;
+        }
+
+        if (Uri.TryCreate(path, UriKind.Absolute, out var absoluteUri))
+        {
+            path = absoluteUri.AbsolutePath;
+        }
+
+        return Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".pdf" => "application/pdf",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            _ => null
+        };
+    }
+
+    private static string ResolveListingDocumentContentType(
+        string? storedContentType,
+        string? fileName,
+        string? objectKey)
+    {
+        var contentType = ResolveListingFlyerContentType(storedContentType, fileName)
+            ?? ResolveListingFlyerContentType(null, objectKey);
+        return contentType ?? "application/octet-stream";
+    }
+
+    private static bool IsListingFlyerImageReference(string? fileNameOrUrl)
+    {
+        var contentType = ResolveListingFlyerContentType(null, fileNameOrUrl);
+        return contentType is not null && contentType.StartsWith("image/", StringComparison.Ordinal);
+    }
+
+    private static string GetListingFlyerExtension(string contentType)
+    {
+        return contentType switch
+        {
+            "application/pdf" => ".pdf",
+            "image/jpeg" => ".jpg",
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            _ => Path.GetExtension(contentType)
+        };
     }
 
     private async Task<(string? ObjectKey, string? FileName)?> GetPdfReferenceAsync(
@@ -10549,6 +10754,8 @@ public sealed class AccountController(
     }
 
     private sealed record UploadedPdfPayload(string FileName, byte[] Content);
+
+    private sealed record UploadedListingFlyerPayload(string FileName, byte[] Content, string ContentType);
 
     private static IReadOnlyCollection<ExternalProfileLinkPageItem> BuildPlayerExternalLinkItems(
         string? serializedLinks,

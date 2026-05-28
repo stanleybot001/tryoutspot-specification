@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authentication.Facebook;
@@ -670,7 +671,7 @@ public sealed class AccountPageTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("Coach Hub Aces 14U", html);
-        Assert.Contains("PDF flyer is attached.", html);
+        Assert.Contains("Flyer is attached.", html);
         Assert.Contains("Registration is turned on.", html);
         Assert.Contains($"href=\"/account/onboarding/team-opportunities/{teamId}/{tryoutId}/edit\"", html);
         Assert.Contains($"href=\"/account/onboarding/team-opportunities/{teamId}/{tryoutId}/registrations/check-in\"", html);
@@ -1524,6 +1525,121 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task TeamOpportunityEditor_AcceptsImageFlyerUploadAndPublicPagePreviewsImage()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory(services =>
+        {
+            services.RemoveAll<IPdfStorageService>();
+            services.AddSingleton<TestListingDocumentStorageService>();
+            services.AddScoped<IPdfStorageService>(serviceProvider =>
+                serviceProvider.GetRequiredService<TestListingDocumentStorageService>());
+        });
+        var user = await factory.CreateUserAsync("team-opportunity-image-flyer@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.TeamBasic, "active");
+
+        Guid teamId;
+        Guid sportId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            sportId = await dbContext.Sports
+                .Where(sport => sport.IsActive && sport.Name == "Baseball")
+                .Select(sport => sport.Id)
+                .SingleAsync();
+            var now = DateTime.UtcNow;
+            teamId = Guid.NewGuid();
+
+            dbContext.Teams.Add(new Team
+            {
+                Id = teamId,
+                Name = "Image Flyer Baseball 14U",
+                TeamLevel = "14U",
+                GeographicScope = "Regional",
+                City = "McPherson",
+                State = "KS",
+                ZipCode = "67460",
+                IsSearchable = true,
+                IsContactInfoVisible = true,
+                IsElite = false,
+                IsVerified = false,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+            dbContext.UserTeamRoles.Add(new UserTeamRole
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                TeamId = teamId,
+                Role = TryOutSpotRoles.TeamRepresentative,
+                StartDate = now,
+                IsActive = true,
+                CreatedAt = now
+            });
+            dbContext.TeamSports.Add(new TeamSport
+            {
+                Id = Guid.NewGuid(),
+                TeamId = teamId,
+                SportId = sportId,
+                IsActive = true,
+                CreatedAt = now
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(
+            client,
+            $"/account/onboarding/team-opportunities/{teamId}/new");
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent(antiForgeryToken), "__RequestVerificationToken");
+        form.Add(new StringContent("tryout"), "Type");
+        form.Add(new StringContent("Image flyer tryout"), "Title");
+        form.Add(new StringContent(sportId.ToString()), "SportId");
+        form.Add(new StringContent("0"), "RegistrationFee");
+        form.Add(new StringContent(DateTime.UtcNow.AddDays(14).ToString("yyyy-MM-dd")), "EventDate");
+        form.Add(new StringContent("true"), "IsPublished");
+
+        var flyerBytes = new byte[]
+        {
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00
+        };
+        var fileContent = new ByteArrayContent(flyerBytes);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        form.Add(fileContent, "PdfUpload", "ai-flyer.png");
+
+        var response = await client.PostAsync($"/account/onboarding/team-opportunities/{teamId}/new", form);
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+
+        Guid opportunityId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var opportunity = await dbContext.Opportunities.SingleAsync();
+            opportunityId = opportunity.Id;
+            Assert.Equal("ai-flyer.png", opportunity.UploadedPdfFileName);
+            var uploadedObjectKey = Assert.IsType<string>(opportunity.UploadedPdfObjectKey);
+            Assert.EndsWith(".png", uploadedObjectKey);
+        }
+
+        var detailResponse = await client.GetAsync($"/opportunities/{opportunityId}");
+        Assert.Equal(HttpStatusCode.OK, detailResponse.StatusCode);
+        var html = await detailResponse.Content.ReadAsStringAsync();
+        Assert.Contains("listing-flyer-image", html);
+        Assert.Contains($"/listing-documents/opportunities/{opportunityId}", html);
+
+        var documentResponse = await client.GetAsync($"/listing-documents/opportunities/{opportunityId}");
+        Assert.Equal(HttpStatusCode.OK, documentResponse.StatusCode);
+        Assert.Equal("image/png", documentResponse.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
     public async Task AddAndEditTeamProfilePages_GroupInputsBySection()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -2193,7 +2309,7 @@ public sealed class AccountPageTests
         Assert.Contains("<legend>Schedule</legend>", html);
         Assert.Contains("<legend>Location</legend>", html);
         Assert.Contains("<legend>Contact and links</legend>", html);
-        Assert.Contains("<legend>PDF flyer</legend>", html);
+        Assert.Contains("<legend>Flyer attachment</legend>", html);
         Assert.Contains("<legend>Description and instructions</legend>", html);
         Assert.Contains("<legend>Tryout registration settings</legend>", html);
         Assert.Contains("<legend>Visibility and publishing</legend>", html);
@@ -2589,6 +2705,44 @@ public sealed class AccountPageTests
                 };
             });
         });
+    }
+
+    private sealed class TestListingDocumentStorageService : IPdfStorageService
+    {
+        private readonly Dictionary<string, StoredObjectPayload> storedObjects = [];
+
+        public Task UploadPdfAsync(string objectKey, byte[] content, CancellationToken cancellationToken)
+        {
+            return UploadFileAsync(objectKey, content, "application/pdf", cancellationToken);
+        }
+
+        public Task UploadFileAsync(
+            string objectKey,
+            byte[] content,
+            string contentType,
+            CancellationToken cancellationToken)
+        {
+            storedObjects[objectKey] = new StoredObjectPayload(content, contentType);
+            return Task.CompletedTask;
+        }
+
+        public Task<byte[]?> DownloadPdfAsync(string objectKey, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(storedObjects.TryGetValue(objectKey, out var payload)
+                ? payload.Content
+                : null);
+        }
+
+        public Task<StoredObjectPayload?> DownloadFileAsync(string objectKey, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(storedObjects.GetValueOrDefault(objectKey));
+        }
+
+        public Task DeletePdfAsync(string objectKey, CancellationToken cancellationToken)
+        {
+            storedObjects.Remove(objectKey);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class TestStripeBillingService : IStripeBillingService

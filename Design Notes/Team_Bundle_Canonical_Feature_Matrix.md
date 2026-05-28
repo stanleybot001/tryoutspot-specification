@@ -42,7 +42,7 @@ This matrix is intended to be the single source of truth for:
 | `opportunities.tryout.post` | Tryout Listings | Permission to publish tryout listings. | `boolean` | true | true | true | true |
 | `opportunities.tryout.post.quota` | Tryout Listings | Tryout listing publish quota in rolling window. | `count_window` | 1 / 6 months | 9 / 12 months | 24 / 12 months | 50 / 12 months |
 | `opportunities.share.links` | Tryout Listings | Copy public listing links and ready-to-share post text for active opportunity listings. | `boolean` | true | true | true | true |
-| `opportunities.flyers` | Tryout Listings | Link or upload a PDF event flyer, save it with the opportunity, and display it on the public listing. | `boolean` | true | true | true | true |
+| `opportunities.flyers` | Tryout Listings | Link or upload a PDF or image event flyer, save it with the opportunity, and display it on the public listing. | `boolean` | true | true | true | true |
 | `players.search.access` | Player Search | Player database search access level. | `enum` | preview | basic | advanced | advanced |
 | `players.search.monthly_quota` | Player Search | Player search query quota per 30-day window. | `count_window` | 25 / 30 days | 300 / 30 days | 3000 / 30 days | 10000 / 30 days |
 | `registrations.tryout.manage.standard` | Tryout Registration | Standard registration workflow access (forms, applicant list, status updates). | `boolean` | false | true | true | true |

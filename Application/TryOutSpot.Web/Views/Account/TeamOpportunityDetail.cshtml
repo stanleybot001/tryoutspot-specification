@@ -478,7 +478,7 @@
                 }
                 @if (!string.IsNullOrWhiteSpace(Model.PdfUrl))
                 {
-                    <div><span>PDF flyer</span><strong><a href="@Model.PdfUrl" target="_blank" rel="noopener">Open PDF</a></strong></div>
+                    <div><span>Flyer</span><strong><a href="@Model.PdfUrl" target="_blank" rel="noopener">Open flyer</a></strong></div>
                 }
             </div>
         </section>
@@ -501,16 +501,28 @@
     {
         <section class="form-section">
             <h2>Flyer preview</h2>
-            <div class="listing-pdf-embed">
-                <iframe
-                    src="@Model.PdfUrl"
-                    title="Opportunity flyer PDF"
-                    loading="lazy">
-                </iframe>
-            </div>
-            <p class="section-help">
-                If the preview does not load in your browser, <a href="@Model.PdfUrl" target="_blank" rel="noopener">open the PDF in a new tab</a>.
-            </p>
+            @if (Model.IsFlyerImage)
+            {
+                <div class="listing-flyer-image-frame">
+                    <img src="@Model.PdfUrl" alt="@Model.Title flyer" class="listing-flyer-image" loading="lazy" />
+                </div>
+                <p class="section-help">
+                    <a href="@Model.PdfUrl" target="_blank" rel="noopener">Open the flyer image in a new tab</a>.
+                </p>
+            }
+            else
+            {
+                <div class="listing-pdf-embed">
+                    <iframe
+                        src="@Model.PdfUrl"
+                        title="Opportunity flyer PDF"
+                        loading="lazy">
+                    </iframe>
+                </div>
+                <p class="section-help">
+                    If the preview does not load in your browser, <a href="@Model.PdfUrl" target="_blank" rel="noopener">open the flyer in a new tab</a>.
+                </p>
+            }
         </section>
     }
 </section>

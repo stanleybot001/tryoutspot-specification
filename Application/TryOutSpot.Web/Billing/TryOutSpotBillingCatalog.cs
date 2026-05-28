@@ -97,7 +97,7 @@ public static class TryOutSpotBillingCatalog
         new(
             TryOutSpotFeatureCodes.OpportunityListingFlyers,
             "Listing flyer attachments",
-            "Link or upload a PDF event flyer, save it with the opportunity, and display it on the public listing.",
+            "Link or upload a PDF or image event flyer, save it with the opportunity, and display it on the public listing.",
             false),
         new(
             TryOutSpotFeatureCodes.BasicPlayerSearch,

@@ -12,6 +12,15 @@ public sealed class R2PdfStorageService(
 
     public async Task UploadPdfAsync(string objectKey, byte[] content, CancellationToken cancellationToken)
     {
+        await UploadFileAsync(objectKey, content, "application/pdf", cancellationToken);
+    }
+
+    public async Task UploadFileAsync(
+        string objectKey,
+        byte[] content,
+        string contentType,
+        CancellationToken cancellationToken)
+    {
         if (string.IsNullOrWhiteSpace(objectKey))
         {
             throw new ArgumentException("Object key is required.", nameof(objectKey));
@@ -24,7 +33,7 @@ public sealed class R2PdfStorageService(
             BucketName = storageOptions.BucketName,
             Key = objectKey,
             InputStream = stream,
-            ContentType = "application/pdf",
+            ContentType = contentType,
             AutoCloseStream = true,
             UseChunkEncoding = false,
             DisablePayloadSigning = true
@@ -51,6 +60,12 @@ public sealed class R2PdfStorageService(
 
     public async Task<byte[]?> DownloadPdfAsync(string objectKey, CancellationToken cancellationToken)
     {
+        var payload = await DownloadFileAsync(objectKey, cancellationToken);
+        return payload?.Content;
+    }
+
+    public async Task<StoredObjectPayload?> DownloadFileAsync(string objectKey, CancellationToken cancellationToken)
+    {
         if (string.IsNullOrWhiteSpace(objectKey))
         {
             return null;
@@ -70,7 +85,10 @@ public sealed class R2PdfStorageService(
             await using var responseStream = response.ResponseStream;
             using var memoryStream = new MemoryStream();
             await responseStream.CopyToAsync(memoryStream, cancellationToken);
-            return memoryStream.ToArray();
+            var contentType = string.IsNullOrWhiteSpace(response.Headers.ContentType)
+                ? "application/octet-stream"
+                : response.Headers.ContentType;
+            return new StoredObjectPayload(memoryStream.ToArray(), contentType);
         }
         catch (AmazonS3Exception exception) when (exception.StatusCode == System.Net.HttpStatusCode.NotFound)
         {

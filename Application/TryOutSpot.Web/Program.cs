@@ -19,8 +19,8 @@ using TryOutSpot.Web.Security;
 using TryOutSpot.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
-const long ListingPdfMaxUploadBytes = 10L * 1024L * 1024L;
-const long MultipartRequestLimitBytes = ListingPdfMaxUploadBytes + (2L * 1024L * 1024L);
+const long ListingFlyerMaxUploadBytes = 10L * 1024L * 1024L;
+const long MultipartRequestLimitBytes = ListingFlyerMaxUploadBytes + (2L * 1024L * 1024L);
 if (builder.Environment.IsDevelopment())
 {
     builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
@@ -373,7 +373,7 @@ if (!app.Environment.IsDevelopment())
         {
             httpContext.Response.ContentType = "text/plain; charset=utf-8";
             await httpContext.Response.WriteAsync(
-                "File upload is too large. Upload PDF files up to 10 MB.");
+                "File upload is too large. Upload flyer files up to 10 MB.");
             return;
         }
 

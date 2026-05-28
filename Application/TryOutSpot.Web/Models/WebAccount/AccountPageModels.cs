@@ -1094,13 +1094,13 @@ public sealed class TeamOpportunityEditorPageModel
     public string? WebsiteUrl { get; set; }
 
     [MaxLength(500)]
-    [Display(Name = "PDF link")]
+    [Display(Name = "Flyer link")]
     public string? PdfUrl { get; set; }
 
-    [Display(Name = "Upload PDF flyer")]
+    [Display(Name = "Upload flyer")]
     public IFormFile? PdfUpload { get; set; }
 
-    [Display(Name = "Remove uploaded PDF")]
+    [Display(Name = "Remove uploaded flyer")]
     public bool RemoveUploadedPdf { get; set; }
 
     public bool HasUploadedPdf { get; set; }
@@ -1522,6 +1522,8 @@ public sealed class TeamOpportunityDetailPageModel
     public string? WebsiteUrl { get; set; }
 
     public string? PdfUrl { get; set; }
+
+    public bool IsFlyerImage { get; set; }
 
     public string? RequiredEquipment { get; set; }
 

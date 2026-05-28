@@ -39,7 +39,7 @@ Compared to: No team plan
 
 - `opportunities.post.limited`: Publish up to 1 tryout listing every 6 months.
 - `opportunities.share.links`: Copy public listing links and ready-to-share post text for active opportunity listings.
-- `opportunities.flyers`: Link or upload a PDF event flyer, save it with the opportunity, and display it on the public listing.
+- `opportunities.flyers`: Link or upload a PDF or image event flyer, save it with the opportunity, and display it on the public listing.
 - `players.search.basic`: Limited player search (radius capped at 120 miles; age filters available; skill-level filters not included).
 
 ## Team Basic add-ons

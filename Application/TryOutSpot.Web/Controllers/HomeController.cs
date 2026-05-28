@@ -115,7 +115,7 @@ public class HomeController : Controller
                 [
                     F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 1 tryout listing every 6 months."),
                     F(TryOutSpotFeatureCodes.ShareOpportunityListingLinks, "Share listing links", "Copy public listing links and ready-to-share post text for active opportunity listings."),
-                    F(TryOutSpotFeatureCodes.OpportunityListingFlyers, "Listing flyer attachments", "Link or upload a PDF event flyer, save it with the opportunity, and display it on the public listing."),
+                    F(TryOutSpotFeatureCodes.OpportunityListingFlyers, "Listing flyer attachments", "Link or upload a PDF or image event flyer, save it with the opportunity, and display it on the public listing."),
                     F("players.search.basic", "Basic player search", "Limited player search with age filters and radius capped at 120 miles.")
                 ]),
             new FeatureBundlePageItem(
@@ -184,7 +184,7 @@ public class HomeController : Controller
         {
             F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 1 tryout listing every 6 months."),
             F(TryOutSpotFeatureCodes.ShareOpportunityListingLinks, "Share listing links", "Copy public listing links and ready-to-share post text for active opportunity listings."),
-            F(TryOutSpotFeatureCodes.OpportunityListingFlyers, "Listing flyer attachments", "Link or upload a PDF event flyer, save it with the opportunity, and display it on the public listing."),
+            F(TryOutSpotFeatureCodes.OpportunityListingFlyers, "Listing flyer attachments", "Link or upload a PDF or image event flyer, save it with the opportunity, and display it on the public listing."),
             F("players.search.basic", "Basic player search", "Limited player search with age filters and radius capped at 120 miles.")
         };
 

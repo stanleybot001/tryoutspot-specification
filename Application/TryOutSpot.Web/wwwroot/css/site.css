@@ -1450,6 +1450,23 @@ body.splash-page {
   background: #ffffff;
 }
 
+.listing-flyer-image-frame {
+  width: 100%;
+  border: 1px solid #d7dee8;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.listing-flyer-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 900px;
+  object-fit: contain;
+  background: #0f172a;
+}
+
 .listing-visibility-options {
   display: grid;
   gap: 0.35rem;

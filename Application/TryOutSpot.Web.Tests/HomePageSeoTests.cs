@@ -44,7 +44,7 @@ public sealed class HomePageSeoTests
 
         Assert.Contains("Share listing links", decodedHtml);
         Assert.Contains("Listing flyer attachments", decodedHtml);
-        Assert.Contains("Link or upload a PDF event flyer", decodedHtml);
+        Assert.Contains("Link or upload a PDF or image event flyer", decodedHtml);
         Assert.Contains("display it on the public listing", decodedHtml);
         Assert.Contains("Free Team/Coach", decodedHtml);
         Assert.Contains("Team representatives can use the Free Coach tier, then upgrade", decodedHtml);

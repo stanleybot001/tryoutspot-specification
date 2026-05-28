@@ -377,12 +377,12 @@
                                 @if (!string.IsNullOrWhiteSpace(opportunity.UploadedPdfUrl))
                                 {
                                     <a href="@opportunity.UploadedPdfUrl" target="_blank" rel="noopener">
-                                        @(string.IsNullOrWhiteSpace(opportunity.UploadedPdfFileName) ? "Uploaded PDF" : opportunity.UploadedPdfFileName)
+                                        @(string.IsNullOrWhiteSpace(opportunity.UploadedPdfFileName) ? "Uploaded flyer" : opportunity.UploadedPdfFileName)
                                     </a>
                                 }
                                 @if (!string.IsNullOrWhiteSpace(opportunity.PdfUrl))
                                 {
-                                    <a href="@opportunity.PdfUrl" target="_blank" rel="noopener">External PDF</a>
+                                    <a href="@opportunity.PdfUrl" target="_blank" rel="noopener">External flyer</a>
                                 }
                             </div>
                         }

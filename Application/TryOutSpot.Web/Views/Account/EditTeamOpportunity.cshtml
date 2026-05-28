@@ -183,34 +183,34 @@
                         <span asp-validation-for="WebsiteUrl" class="text-danger"></span>
                     </div>
                     <div class="form-field">
-                        <label asp-for="PdfUrl" class="form-label">External PDF link</label>
-                        <input asp-for="PdfUrl" class="form-control" placeholder="https://.../flyer.pdf" />
+                        <label asp-for="PdfUrl" class="form-label">External flyer link</label>
+                        <input asp-for="PdfUrl" class="form-control" placeholder="https://.../flyer.pdf or .png" />
                         <span asp-validation-for="PdfUrl" class="text-danger"></span>
                     </div>
                 </div>
             </fieldset>
 
             <fieldset class="form-fieldset">
-                <legend>PDF flyer</legend>
-                <p class="section-help">Upload a PDF flyer when the listing needs a downloadable handout.</p>
+                <legend>Flyer attachment</legend>
+                <p class="section-help">Upload a PDF or image flyer for the public listing.</p>
                 <div class="form-field">
                     @if (Model.HasUploadedPdf && !string.IsNullOrWhiteSpace(Model.UploadedPdfUrl))
                     {
                         <p class="section-help mb-2">
                             Current upload:
                             <a href="@Model.UploadedPdfUrl" target="_blank" rel="noopener">
-                                @(string.IsNullOrWhiteSpace(Model.UploadedPdfFileName) ? "Open PDF" : Model.UploadedPdfFileName)
+                                @(string.IsNullOrWhiteSpace(Model.UploadedPdfFileName) ? "Open flyer" : Model.UploadedPdfFileName)
                             </a>
                         </p>
                         <label class="sms-consent-option" for="RemoveUploadedPdf">
                             <input asp-for="RemoveUploadedPdf" class="form-check-input" />
-                            <span>Remove current uploaded PDF.</span>
+                            <span>Remove current uploaded flyer.</span>
                         </label>
                     }
 
-                    <label asp-for="PdfUpload" class="form-label">Upload PDF</label>
-                    <input asp-for="PdfUpload" type="file" accept=".pdf,application/pdf" class="form-control" id="PdfUploadInput" />
-                    <p class="section-help">Maximum file size: 10 MB. Upload a PDF only.</p>
+                    <label asp-for="PdfUpload" class="form-label">Upload flyer</label>
+                    <input asp-for="PdfUpload" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" class="form-control" id="PdfUploadInput" />
+                    <p class="section-help">Maximum file size: 10 MB. Supported formats: PDF, JPG, PNG, or WEBP.</p>
                     <span asp-validation-for="PdfUpload" class="text-danger"></span>
                     <p class="text-danger d-none" id="PdfUploadClientError"></p>
                 </div>
@@ -476,7 +476,7 @@
 
                 if (file.size > maxBytes) {
                     fileInput.value = "";
-                    setError("PDF files can be up to 10 MB.");
+                    setError("Flyer files can be up to 10 MB.");
                 }
             });
 
@@ -490,7 +490,7 @@
                 if (file.size > maxBytes) {
                     event.preventDefault();
                     fileInput.value = "";
-                    setError("PDF files can be up to 10 MB.");
+                    setError("Flyer files can be up to 10 MB.");
                 }
             });
         })();
