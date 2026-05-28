@@ -108,6 +108,13 @@
             <div class="plan-list">
                 @foreach (var opportunity in Model.Opportunities)
                 {
+                    var publicOpportunityUrl = Url.Action("TeamOpportunityDetail", "Account", new { opportunityId = opportunity.OpportunityId }, Context.Request.Scheme)
+                        ?? $"{Context.Request.Scheme}://{Context.Request.Host}/opportunities/{opportunity.OpportunityId}";
+                    var canShareOpportunity = Model.Team.IsSearchable
+                        && opportunity.IsPublished
+                        && (!opportunity.ExpiresAt.HasValue || opportunity.ExpiresAt > DateTime.UtcNow);
+                    var opportunityShareText = $"{Model.Team.TeamName} posted {FormatOpportunityType(opportunity.Type).ToLowerInvariant()} details for {opportunity.Title} on TryOutSpot: {publicOpportunityUrl}";
+
                     <article class="plan-row plan-row-stack opportunity-row p-2 @(opportunity.IsPublished ? "published" : "draft")">
                         <div class="opportunity-row-head">
                             <div>
@@ -379,11 +386,18 @@
                         }
 
                         <div class="form-actions mt-2">
-                            @if (Model.Team.IsSearchable
-                                && opportunity.IsPublished
-                                && (!opportunity.ExpiresAt.HasValue || opportunity.ExpiresAt > DateTime.UtcNow))
+                            @if (canShareOpportunity)
                             {
-                                <a class="btn btn-outline-primary btn-sm" href="/opportunities/@opportunity.OpportunityId" target="_blank" rel="noopener">View public page</a>
+                                <a class="btn btn-outline-primary btn-sm" href="@publicOpportunityUrl" target="_blank" rel="noopener">View public page</a>
+                                <button type="button"
+                                        class="btn btn-outline-primary btn-sm"
+                                        data-copy-text="@publicOpportunityUrl"
+                                        data-copy-status="#shareStatus-@opportunity.OpportunityId">Copy link</button>
+                                <button type="button"
+                                        class="btn btn-primary btn-sm"
+                                        data-copy-text="@opportunityShareText"
+                                        data-copy-status="#shareStatus-@opportunity.OpportunityId">Copy post</button>
+                                <span class="copy-status section-help" id="shareStatus-@opportunity.OpportunityId" aria-live="polite"></span>
                             }
                             <a class="btn btn-outline-primary btn-sm" href="/account/onboarding/team-opportunities/@Model.Team.TeamId/@opportunity.OpportunityId/edit">Edit</a>
 

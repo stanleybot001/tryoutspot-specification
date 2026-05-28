@@ -1305,6 +1305,10 @@ public sealed class PlayerListingDetailPageModel
 
     public string? PlayerName { get; set; }
 
+    public Guid? PlayerId { get; set; }
+
+    public string? PublicPlayerProfileUrl { get; set; }
+
     public string? ProfileImageUrl { get; set; }
 
     public DateTime? PlayerDateOfBirth { get; set; }
@@ -1371,6 +1375,83 @@ public sealed class PlayerListingDetailPageModel
 
     public bool ViewerHasOpenReport { get; set; }
 }
+
+public sealed class PlayerProfileDetailPageModel
+{
+    public Guid PlayerId { get; set; }
+
+    public string PlayerName { get; set; } = string.Empty;
+
+    public string? ProfileImageUrl { get; set; }
+
+    public DateTime DateOfBirth { get; set; }
+
+    public string? City { get; set; }
+
+    public string? State { get; set; }
+
+    public string? ZipCode { get; set; }
+
+    public string? SchoolName { get; set; }
+
+    public string? CurrentTeamName { get; set; }
+
+    public int? GraduationYear { get; set; }
+
+    public string? Height { get; set; }
+
+    public string? Weight { get; set; }
+
+    public string? ThrowsHand { get; set; }
+
+    public string? BatsHand { get; set; }
+
+    public string? SixtyYardDash { get; set; }
+
+    public string? HomeToFirstTime { get; set; }
+
+    public string? ExitVelocity { get; set; }
+
+    public string? ThrowingVelocity { get; set; }
+
+    public string? PitchVelocity { get; set; }
+
+    public string? CatcherPopTime { get; set; }
+
+    public string? AdditionalMetrics { get; set; }
+
+    public bool CanViewContactDetails { get; set; }
+
+    public string? ContactEmail { get; set; }
+
+    public string? ContactPhone { get; set; }
+
+    public IReadOnlyCollection<PlayerListingSportSummaryPageItem> Sports { get; set; } = [];
+
+    public IReadOnlyCollection<ExternalProfileLinkPageItem> SocialLinks { get; set; } = [];
+
+    public IReadOnlyCollection<ExternalProfileLinkPageItem> ProfileVideoLinks { get; set; } = [];
+
+    public IReadOnlyCollection<ExternalProfileLinkPageItem> RecruitingLinks { get; set; } = [];
+
+    public IReadOnlyCollection<PlayerProfileListingSummaryPageItem> ActiveListings { get; set; } = [];
+
+    public bool ViewerIsAuthenticated { get; set; }
+}
+
+public sealed record PlayerProfileListingSummaryPageItem(
+    Guid ListingId,
+    string ListingTypeLabel,
+    string Title,
+    string? Description,
+    string? SportName,
+    decimal? AskingPrice,
+    string? Currency,
+    string? City,
+    string? State,
+    string? ZipCode,
+    DateTime? PublishedAt,
+    DateTime? ExpiresAt);
 
 public sealed class TeamOpportunityDetailPageModel
 {

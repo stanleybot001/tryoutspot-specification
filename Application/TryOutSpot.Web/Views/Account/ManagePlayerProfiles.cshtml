@@ -38,6 +38,10 @@
             <div class="plan-list">
                 @foreach (var profile in Model.Profiles)
                 {
+                    var publicProfileUrl = Url.Action("PlayerProfileDetail", "Account", new { playerId = profile.PlayerId }, Context.Request.Scheme)
+                        ?? $"{Context.Request.Scheme}://{Context.Request.Host}/players/{profile.PlayerId}";
+                    var profileShareText = $"View {profile.FullName}'s TryOutSpot player profile: {publicProfileUrl}";
+
                     <article class="plan-row plan-row-stack opportunity-row published">
                         <div class="opportunity-row-head">
                             <div>
@@ -61,6 +65,19 @@
                         </div>
 
                         <div class="form-actions">
+                            @if (profile.IsSearchable)
+                            {
+                                <a class="btn btn-outline-primary" href="@publicProfileUrl" target="_blank" rel="noopener">View public profile</a>
+                                <button type="button"
+                                        class="btn btn-outline-primary"
+                                        data-copy-text="@publicProfileUrl"
+                                        data-copy-status="#shareStatus-@profile.PlayerId">Copy link</button>
+                                <button type="button"
+                                        class="btn btn-primary"
+                                        data-copy-text="@profileShareText"
+                                        data-copy-status="#shareStatus-@profile.PlayerId">Copy post</button>
+                                <span class="copy-status section-help" id="shareStatus-@profile.PlayerId" aria-live="polite"></span>
+                            }
                             <a class="btn btn-outline-primary" href="/account/onboarding/player-profiles/@profile.PlayerId/edit">Edit</a>
                             <form class="inline-form"
                                   asp-action="DeactivatePlayerProfile"

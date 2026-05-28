@@ -2,8 +2,13 @@
 
 @{
     ViewData["Title"] = Model.Title;
+    var shareUrl = Url.Action("PlayerListingDetail", "Account", new { listingId = Model.ListingId }, Context.Request.Scheme)
+        ?? $"{Context.Request.Scheme}://{Context.Request.Host}/player-listings/{Model.ListingId}";
     var profileSize = FormatSize(Model.Height, Model.Weight);
     var playerLocation = FormatLocation(Model.PlayerCity, Model.PlayerState, Model.PlayerZipCode);
+    var listingLocation = FormatLocation(Model.City, Model.State, Model.ZipCode);
+    var metaDescription = BuildMetaDescription(Model.Title, Model.ListingTypeLabel, Model.PlayerName, listingLocation);
+    var shareText = $"View this TryOutSpot listing: {Model.Title} - {shareUrl}";
     var hasPerformanceMetrics = !string.IsNullOrWhiteSpace(Model.SixtyYardDash)
         || !string.IsNullOrWhiteSpace(Model.HomeToFirstTime)
         || !string.IsNullOrWhiteSpace(Model.ExitVelocity)
@@ -27,6 +32,14 @@
         ? reportPageUrl
         : $"/account/login?returnUrl={Uri.EscapeDataString(reportPageUrl)}";
     var showReportAction = !Model.ViewerIsAuthenticated || Model.ViewerCanReport;
+
+    ViewData["MetaDescription"] = metaDescription;
+    ViewData["CanonicalUrl"] = shareUrl;
+    ViewData["OpenGraphTitle"] = $"{Model.Title} - TryOutSpot";
+    ViewData["OpenGraphDescription"] = metaDescription;
+    ViewData["OpenGraphImage"] = string.IsNullOrWhiteSpace(Model.ProfileImageUrl)
+        ? "~/logo/MainLogoSized.png"
+        : Model.ProfileImageUrl;
 }
 
 <section class="account-page">
@@ -53,6 +66,19 @@
     {
         <div class="account-alert">@statusMessage</div>
     }
+
+    <section class="form-section share-panel">
+        <div>
+            <h2>Share this listing</h2>
+            <p class="section-help">Public listing links send players, parents, and coaches back through TryOutSpot.</p>
+        </div>
+        <div class="share-input-row">
+            <input class="form-control" value="@shareUrl" readonly aria-label="Public listing link" />
+            <button type="button" class="btn btn-outline-primary" data-copy-text="@shareUrl" data-copy-status="#playerListingShareStatus">Copy link</button>
+            <button type="button" class="btn btn-primary" data-copy-text="@shareText" data-copy-status="#playerListingShareStatus">Copy post</button>
+        </div>
+        <p class="copy-status section-help" id="playerListingShareStatus" aria-live="polite"></p>
+    </section>
 
     <section class="form-section listing-detail-card">
         @if (showReportAction)
@@ -93,6 +119,10 @@
             else
             {
                 <a class="btn btn-outline-primary" href="/account/login?returnUrl=@Uri.EscapeDataString($"/player-listings/{Model.ListingId}")">Sign in to favorite</a>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.PublicPlayerProfileUrl))
+            {
+                <a class="btn btn-outline-secondary" href="@Model.PublicPlayerProfileUrl">View player profile</a>
             }
         </div>
 
@@ -397,6 +427,13 @@
         }
 
         return $"{height.Trim()} / {weight.Trim()}";
+    }
+
+    private static string BuildMetaDescription(string title, string listingType, string? playerName, string location)
+    {
+        var playerText = string.IsNullOrWhiteSpace(playerName) ? string.Empty : $" for {playerName}";
+        var locationText = string.IsNullOrWhiteSpace(location) ? string.Empty : $" in {location}";
+        return $"{title} is a {listingType} listing{playerText}{locationText}. View details through TryOutSpot.";
     }
 
     private static string GetLinkIcon(string? label)

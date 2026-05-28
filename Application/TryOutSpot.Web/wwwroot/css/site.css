@@ -361,6 +361,32 @@ body.splash-page {
   gap: 0.75rem;
 }
 
+.share-panel {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.share-panel h2 {
+  margin-bottom: 0.25rem;
+}
+
+.share-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.share-input-row .form-control {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.copy-status {
+  margin: 0;
+  min-height: 1.35em;
+}
+
 .inline-form {
   margin: 0;
 }
@@ -1894,6 +1920,7 @@ body.splash-page {
   .coach-step-card,
   .coach-step-heading,
   .coach-team-row,
+  .share-input-row,
   .recent-activity-row,
   .step-row,
   .plan-row,

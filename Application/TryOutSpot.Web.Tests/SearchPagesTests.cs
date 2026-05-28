@@ -142,6 +142,69 @@ public sealed class SearchPagesTests
         Assert.Contains("Wichita radius suggestion tryout", html);
     }
 
+    [Fact]
+    public async Task PublicSharePages_RenderCopyControlsAndSocialMetadata()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var owner = await factory.CreateUserAsync("public-share-owner@example.com", [TryOutSpotRoles.Parent]);
+        var seeded = SeedPublicSharePages(factory, owner.Id);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var opportunityResponse = await client.GetAsync($"/opportunities/{seeded.OpportunityId}");
+
+        Assert.Equal(HttpStatusCode.OK, opportunityResponse.StatusCode);
+        var opportunityHtml = WebUtility.HtmlDecode(await opportunityResponse.Content.ReadAsStringAsync());
+        Assert.Contains("Share this opportunity", opportunityHtml);
+        Assert.Contains("Copy post", opportunityHtml);
+        Assert.Contains($"http://localhost/opportunities/{seeded.OpportunityId}", opportunityHtml);
+        Assert.Contains("property=\"og:title\"", opportunityHtml);
+
+        var listingResponse = await client.GetAsync($"/player-listings/{seeded.ListingId}");
+
+        Assert.Equal(HttpStatusCode.OK, listingResponse.StatusCode);
+        var listingHtml = WebUtility.HtmlDecode(await listingResponse.Content.ReadAsStringAsync());
+        Assert.Contains("Share this listing", listingHtml);
+        Assert.Contains("Copy post", listingHtml);
+        Assert.Contains($"http://localhost/player-listings/{seeded.ListingId}", listingHtml);
+        Assert.Contains("View player profile", listingHtml);
+        Assert.Contains("property=\"og:title\"", listingHtml);
+    }
+
+    [Fact]
+    public async Task PublicPlayerProfilePage_RendersShareableProfileAndHidesCoachOnlyContactForAnonymous()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var owner = await factory.CreateUserAsync("public-profile-owner@example.com", [TryOutSpotRoles.Parent]);
+        var playerId = SeedPublicPlayerProfile(factory, owner.Id);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var response = await client.GetAsync($"/players/{playerId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+        Assert.Contains("Share this profile", html);
+        Assert.Contains("Copy post", html);
+        Assert.Contains($"http://localhost/players/{playerId}", html);
+        Assert.Contains("Shareable Profile", html);
+        Assert.Contains("Public profile listing", html);
+        Assert.Contains("Contact details are limited", html);
+        Assert.DoesNotContain("555-777-0000", html);
+
+        await LoginWebUserAsync(client, owner.Email!);
+        var manageResponse = await client.GetAsync("/account/onboarding/player-profiles");
+
+        Assert.Equal(HttpStatusCode.OK, manageResponse.StatusCode);
+        var manageHtml = WebUtility.HtmlDecode(await manageResponse.Content.ReadAsStringAsync());
+        Assert.Contains("View public profile", manageHtml);
+        Assert.Contains($"http://localhost/players/{playerId}", manageHtml);
+    }
+
     private static void SeedTeamItemSearchData(TryOutSpotWebApplicationFactory factory)
     {
         using var scope = factory.Services.CreateScope();
@@ -308,6 +371,73 @@ public sealed class SearchPagesTests
         dbContext.SaveChanges();
     }
 
+    private static (Guid OpportunityId, Guid ListingId) SeedPublicSharePages(
+        TryOutSpotWebApplicationFactory factory,
+        Guid ownerId)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+        var sportId = dbContext.Sports
+            .Where(sport => sport.IsActive && sport.Name == "Softball")
+            .Select(sport => sport.Id)
+            .Single();
+
+        var team = CreateTeam("Public Share Team", "McPherson", "KS", "67460", now);
+        var player = CreatePlayer("Shareable", "Profile", true, "Public", now);
+        var opportunity = CreateOpportunity(
+            team.Id,
+            sportId,
+            "tryout",
+            "Public share tryout",
+            "McPherson",
+            "KS",
+            "67460",
+            now);
+        var listing = CreatePlayerListing(ownerId, player.Id, sportId, "Public share player listing", now);
+
+        dbContext.Teams.Add(team);
+        dbContext.Players.Add(player);
+        dbContext.PlayerSports.Add(CreatePlayerSport(player.Id, sportId, now));
+        dbContext.PlayerListings.Add(listing);
+        dbContext.Opportunities.Add(opportunity);
+        dbContext.SaveChanges();
+
+        return (opportunity.Id, listing.Id);
+    }
+
+    private static Guid SeedPublicPlayerProfile(
+        TryOutSpotWebApplicationFactory factory,
+        Guid ownerId)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+        var sportId = dbContext.Sports
+            .Where(sport => sport.IsActive && sport.Name == "Softball")
+            .Select(sport => sport.Id)
+            .Single();
+        var player = CreatePlayer("Shareable", "Profile", true, "VerifiedCoachesOnly", now);
+        player.ContactPhone = "555-777-0000";
+        player.ContactEmail = "shareable.profile@example.com";
+
+        dbContext.Players.Add(player);
+        dbContext.PlayerSports.Add(CreatePlayerSport(player.Id, sportId, now));
+        dbContext.UserPlayerRelationships.Add(new UserPlayerRelationship
+        {
+            Id = Guid.NewGuid(),
+            UserId = ownerId,
+            PlayerId = player.Id,
+            Relationship = "Parent",
+            CanManage = true,
+            CreatedAt = now
+        });
+        dbContext.PlayerListings.Add(CreatePlayerListing(ownerId, player.Id, sportId, "Public profile listing", now));
+        dbContext.SaveChanges();
+
+        return player.Id;
+    }
+
     private static Team CreateTeam(
         string name,
         string city,
@@ -362,6 +492,24 @@ public sealed class SearchPagesTests
             CreatedAt = now,
             UpdatedAt = now,
             IsActive = true
+        };
+    }
+
+    private static PlayerSport CreatePlayerSport(Guid playerId, Guid sportId, DateTime now)
+    {
+        return new PlayerSport
+        {
+            Id = Guid.NewGuid(),
+            PlayerId = playerId,
+            SportId = sportId,
+            SkillLevel = "Competitive",
+            PrimaryPosition = "Pitcher",
+            SecondaryPositions = "First base",
+            ExperienceLevel = "Travel",
+            YearsPlaying = 5,
+            Availability = "Weekends",
+            IsActive = true,
+            CreatedAt = now
         };
     }
 

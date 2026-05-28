@@ -2,12 +2,25 @@
 
 @{
     ViewData["Title"] = Model.Title;
+    var shareUrl = Url.Action("TeamOpportunityDetail", "Account", new { opportunityId = Model.OpportunityId }, Context.Request.Scheme)
+        ?? $"{Context.Request.Scheme}://{Context.Request.Host}/opportunities/{Model.OpportunityId}";
     var googleMapsUrl = BuildGoogleMapsUrl(Model.Address, Model.City, Model.State, Model.ZipCode);
+    var locationText = FormatLocation(Model.City, Model.State, Model.ZipCode);
+    var metaDescription = BuildMetaDescription(Model.Title, Model.TeamName, Model.SportName, locationText);
+    var shareText = $"{Model.TeamName} posted {FormatOpportunityType(Model.Type).ToLowerInvariant()} details for {Model.Title} on TryOutSpot: {shareUrl}";
     var reportPageUrl = $"/opportunities/{Model.OpportunityId}/report";
     var reportHref = Model.ViewerIsAuthenticated
         ? reportPageUrl
         : $"/account/login?returnUrl={Uri.EscapeDataString(reportPageUrl)}";
     var showReportAction = !Model.ViewerIsAuthenticated || Model.ViewerCanReport;
+
+    ViewData["MetaDescription"] = metaDescription;
+    ViewData["CanonicalUrl"] = shareUrl;
+    ViewData["OpenGraphTitle"] = $"{Model.Title} - TryOutSpot";
+    ViewData["OpenGraphDescription"] = metaDescription;
+    ViewData["OpenGraphImage"] = string.IsNullOrWhiteSpace(Model.TeamLogoImageUrl)
+        ? "~/logo/MainLogoSized.png"
+        : Model.TeamLogoImageUrl;
 }
 
 <section class="account-page">
@@ -34,6 +47,19 @@
     {
         <div class="account-alert">@statusMessage</div>
     }
+
+    <section class="form-section share-panel">
+        <div>
+            <h2>Share this opportunity</h2>
+            <p class="section-help">A public TryOutSpot link keeps registration, favorites, and reporting on-site.</p>
+        </div>
+        <div class="share-input-row">
+            <input class="form-control" value="@shareUrl" readonly aria-label="Public opportunity link" />
+            <button type="button" class="btn btn-outline-primary" data-copy-text="@shareUrl" data-copy-status="#opportunityShareStatus">Copy link</button>
+            <button type="button" class="btn btn-primary" data-copy-text="@shareText" data-copy-status="#opportunityShareStatus">Copy post</button>
+        </div>
+        <p class="copy-status section-help" id="opportunityShareStatus" aria-live="polite"></p>
+    </section>
 
     <section class="form-section listing-detail-card">
         @if (showReportAction)
@@ -539,6 +565,12 @@
     private static string FormatFee(decimal amount)
     {
         return amount <= 0 ? "Free" : amount.ToString("C");
+    }
+
+    private static string BuildMetaDescription(string title, string teamName, string sportName, string location)
+    {
+        var locationText = string.IsNullOrWhiteSpace(location) ? string.Empty : $" in {location}";
+        return $"{teamName} posted {title}, a {sportName} opportunity{locationText}. View details and register through TryOutSpot.";
     }
 
     private static string? BuildGoogleMapsUrl(string? address, string? city, string? state, string? zipCode)

@@ -48,6 +48,11 @@
             <div class="plan-list">
                 @foreach (var listing in Model.Listings)
                 {
+                    var publicListingUrl = Url.Action("PlayerListingDetail", "Account", new { listingId = listing.ListingId }, Context.Request.Scheme)
+                        ?? $"{Context.Request.Scheme}://{Context.Request.Host}/player-listings/{listing.ListingId}";
+                    var canShareListing = listing.IsPublished && listing.IsSearchable;
+                    var listingShareText = $"View this TryOutSpot listing: {listing.Title} - {publicListingUrl}";
+
                     <article class="plan-row plan-row-stack opportunity-row p-2 @(listing.IsPublished ? "published" : "draft")">
                         <div class="opportunity-row-head">
                             <div>
@@ -86,9 +91,18 @@
                         }
 
                         <div class="form-actions mt-2">
-                            @if (listing.IsPublished && listing.IsSearchable)
+                            @if (canShareListing)
                             {
-                                <a class="btn btn-outline-primary btn-sm" href="/player-listings/@listing.ListingId" target="_blank" rel="noopener">View public page</a>
+                                <a class="btn btn-outline-primary btn-sm" href="@publicListingUrl" target="_blank" rel="noopener">View public page</a>
+                                <button type="button"
+                                        class="btn btn-outline-primary btn-sm"
+                                        data-copy-text="@publicListingUrl"
+                                        data-copy-status="#shareStatus-@listing.ListingId">Copy link</button>
+                                <button type="button"
+                                        class="btn btn-primary btn-sm"
+                                        data-copy-text="@listingShareText"
+                                        data-copy-status="#shareStatus-@listing.ListingId">Copy post</button>
+                                <span class="copy-status section-help" id="shareStatus-@listing.ListingId" aria-live="polite"></span>
                             }
                             <a class="btn btn-outline-primary btn-sm" href="/account/onboarding/player-listings/@listing.ListingId/edit">Edit</a>
 

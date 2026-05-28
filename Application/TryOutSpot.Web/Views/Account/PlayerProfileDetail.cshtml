@@ -1,0 +1,351 @@
+@model PlayerProfileDetailPageModel
+
+@{
+    ViewData["Title"] = Model.PlayerName;
+    var shareUrl = Url.Action("PlayerProfileDetail", "Account", new { playerId = Model.PlayerId }, Context.Request.Scheme)
+        ?? $"{Context.Request.Scheme}://{Context.Request.Host}/players/{Model.PlayerId}";
+    var playerLocation = FormatLocation(Model.City, Model.State, Model.ZipCode);
+    var profileSize = FormatSize(Model.Height, Model.Weight);
+    var sportSummary = Model.Sports.Count == 0
+        ? "baseball and softball"
+        : string.Join(", ", Model.Sports.Select(sport => sport.SportName));
+    var metaDescription = BuildMetaDescription(Model.PlayerName, sportSummary, playerLocation);
+    var shareText = $"View {Model.PlayerName}'s TryOutSpot player profile: {shareUrl}";
+    var hasPerformanceMetrics = !string.IsNullOrWhiteSpace(Model.SixtyYardDash)
+        || !string.IsNullOrWhiteSpace(Model.HomeToFirstTime)
+        || !string.IsNullOrWhiteSpace(Model.ExitVelocity)
+        || !string.IsNullOrWhiteSpace(Model.ThrowingVelocity)
+        || !string.IsNullOrWhiteSpace(Model.PitchVelocity)
+        || !string.IsNullOrWhiteSpace(Model.CatcherPopTime)
+        || !string.IsNullOrWhiteSpace(Model.AdditionalMetrics);
+    var hasVisibleContactDetails = Model.CanViewContactDetails
+        && (!string.IsNullOrWhiteSpace(Model.ContactEmail)
+            || !string.IsNullOrWhiteSpace(Model.ContactPhone));
+
+    ViewData["MetaDescription"] = metaDescription;
+    ViewData["CanonicalUrl"] = shareUrl;
+    ViewData["OpenGraphTitle"] = $"{Model.PlayerName} - TryOutSpot player profile";
+    ViewData["OpenGraphDescription"] = metaDescription;
+    ViewData["OpenGraphImage"] = string.IsNullOrWhiteSpace(Model.ProfileImageUrl)
+        ? "~/logo/MainLogoSized.png"
+        : Model.ProfileImageUrl;
+}
+
+<section class="account-page">
+    <div class="account-heading">
+        <p class="account-kicker">Player profile</p>
+        <h1>@Model.PlayerName</h1>
+        <p>@sportSummary</p>
+        @if (!string.IsNullOrWhiteSpace(Model.ProfileImageUrl))
+        {
+            <div class="listing-identity-row section-help">
+                <img class="listing-hero-avatar" src="@Model.ProfileImageUrl" alt="@Model.PlayerName profile photo" loading="lazy" onerror="this.style.display='none'" />
+            </div>
+        }
+    </div>
+
+    <section class="form-section share-panel">
+        <div>
+            <h2>Share this profile</h2>
+            <p class="section-help">Copy the TryOutSpot profile link or a ready-to-post caption.</p>
+        </div>
+        <div class="share-input-row">
+            <input class="form-control" value="@shareUrl" readonly aria-label="Public profile link" />
+            <button type="button" class="btn btn-outline-primary" data-copy-text="@shareUrl" data-copy-status="#profileShareStatus">Copy link</button>
+            <button type="button" class="btn btn-primary" data-copy-text="@shareText" data-copy-status="#profileShareStatus">Copy post</button>
+        </div>
+        <p class="copy-status section-help" id="profileShareStatus" aria-live="polite"></p>
+    </section>
+
+    <section class="form-section">
+        <div class="team-summary-grid opportunity-summary-grid">
+            <div><span>Birthday</span><strong>@FormatBirthDate(Model.DateOfBirth)</strong></div>
+            @if (!string.IsNullOrWhiteSpace(playerLocation))
+            {
+                <div><span>Location</span><strong>@playerLocation</strong></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.SchoolName))
+            {
+                <div><span>School</span><strong>@Model.SchoolName</strong></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.CurrentTeamName))
+            {
+                <div><span>Current team</span><strong>@Model.CurrentTeamName</strong></div>
+            }
+            @if (Model.GraduationYear.HasValue)
+            {
+                <div><span>Graduation year</span><strong>@Model.GraduationYear.Value</strong></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(profileSize))
+            {
+                <div><span>Height / weight</span><strong>@profileSize</strong></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.ThrowsHand))
+            {
+                <div><span>Throws</span><strong>@Model.ThrowsHand</strong></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.BatsHand))
+            {
+                <div><span>Bats</span><strong>@Model.BatsHand</strong></div>
+            }
+        </div>
+    </section>
+
+    @if (hasPerformanceMetrics)
+    {
+        <section class="form-section">
+            <h2>Performance metrics</h2>
+            <div class="team-summary-grid opportunity-summary-grid">
+                @if (!string.IsNullOrWhiteSpace(Model.SixtyYardDash))
+                {
+                    <div><span>60-yard dash</span><strong>@Model.SixtyYardDash</strong></div>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.HomeToFirstTime))
+                {
+                    <div><span>Home-to-first</span><strong>@Model.HomeToFirstTime</strong></div>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.ExitVelocity))
+                {
+                    <div><span>Exit velocity</span><strong>@Model.ExitVelocity</strong></div>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.ThrowingVelocity))
+                {
+                    <div><span>Throwing velocity</span><strong>@Model.ThrowingVelocity</strong></div>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.PitchVelocity))
+                {
+                    <div><span>Pitch velocity</span><strong>@Model.PitchVelocity</strong></div>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.CatcherPopTime))
+                {
+                    <div><span>Catcher pop time</span><strong>@Model.CatcherPopTime</strong></div>
+                }
+            </div>
+            @if (!string.IsNullOrWhiteSpace(Model.AdditionalMetrics))
+            {
+                <div class="readonly-field mt-2">@Model.AdditionalMetrics</div>
+            }
+        </section>
+    }
+
+    @if (Model.Sports.Count > 0)
+    {
+        <section class="form-section">
+            <h2>Sports and positions</h2>
+            <div class="plan-list">
+                @foreach (var sport in Model.Sports)
+                {
+                    <div class="plan-row plan-row-stack">
+                        <strong>@sport.SportName</strong>
+                        @if (!string.IsNullOrWhiteSpace(sport.SkillLevel))
+                        {
+                            <span>Level: @sport.SkillLevel</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(sport.PrimaryPosition))
+                        {
+                            <span>Primary position: @sport.PrimaryPosition</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(sport.SecondaryPositions))
+                        {
+                            <span>Secondary positions: @sport.SecondaryPositions</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(sport.ExperienceLevel))
+                        {
+                            <span>Experience: @sport.ExperienceLevel</span>
+                        }
+                        @if (sport.YearsPlaying.HasValue)
+                        {
+                            <span>Years playing: @sport.YearsPlaying.Value</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(sport.Availability))
+                        {
+                            <span>Availability: @sport.Availability</span>
+                        }
+                    </div>
+                }
+            </div>
+        </section>
+    }
+
+    @if (Model.ActiveListings.Count > 0)
+    {
+        <section class="form-section">
+            <h2>Active listings</h2>
+            <div class="plan-list">
+                @foreach (var listing in Model.ActiveListings)
+                {
+                    <article class="plan-row plan-row-stack opportunity-row published">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@listing.Title</strong>
+                                <span>@listing.ListingTypeLabel</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                @if (!string.IsNullOrWhiteSpace(listing.SportName))
+                                {
+                                    <span>@listing.SportName</span>
+                                }
+                                <span>@FormatLocation(listing.City, listing.State, listing.ZipCode)</span>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(listing.Description))
+                        {
+                            <p class="section-help mb-1">@listing.Description</p>
+                        }
+                        <div class="form-actions">
+                            <a class="btn btn-outline-primary btn-sm" href="/player-listings/@listing.ListingId">View listing</a>
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+
+    @if (Model.SocialLinks.Count > 0 || Model.ProfileVideoLinks.Count > 0 || Model.RecruitingLinks.Count > 0)
+    {
+        <section class="form-section">
+            <h2>Links</h2>
+            @if (Model.SocialLinks.Count > 0)
+            {
+                <div class="profile-link-grid mb-2">
+                    @foreach (var link in Model.SocialLinks)
+                    {
+                        <a class="profile-link-card" href="@link.Url" target="_blank" rel="noopener">
+                            <span class="profile-link-icon">@GetLinkIcon(link.Label)</span>
+                            <span class="profile-link-text">@GetLinkDisplayText(link)</span>
+                        </a>
+                    }
+                </div>
+            }
+            @if (Model.ProfileVideoLinks.Count > 0)
+            {
+                <div class="profile-link-grid mb-2">
+                    @foreach (var link in Model.ProfileVideoLinks)
+                    {
+                        <a class="profile-link-card" href="@link.Url" target="_blank" rel="noopener">
+                            <span class="profile-link-icon">@GetLinkIcon(link.Label)</span>
+                            <span class="profile-link-text">@GetLinkDisplayText(link)</span>
+                        </a>
+                    }
+                </div>
+            }
+            @if (Model.RecruitingLinks.Count > 0)
+            {
+                <ul class="listing-link-list mb-0">
+                    @foreach (var link in Model.RecruitingLinks)
+                    {
+                        <li><a href="@link.Url" target="_blank" rel="noopener">@link.Label</a></li>
+                    }
+                </ul>
+            }
+        </section>
+    }
+
+    <section class="form-section">
+        <h2>Contact</h2>
+        @if (hasVisibleContactDetails)
+        {
+            <div class="team-summary-grid">
+                @if (!string.IsNullOrWhiteSpace(Model.ContactEmail))
+                {
+                    <div><span>Email</span><strong>@Model.ContactEmail</strong></div>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.ContactPhone))
+                {
+                    <div><span>Phone</span><strong>@Model.ContactPhone</strong></div>
+                }
+            </div>
+        }
+        else
+        {
+            <p class="section-help">Contact details are limited to approved coach access for this player profile.</p>
+        }
+    </section>
+</section>
+
+@functions {
+    private static string BuildMetaDescription(string playerName, string sportSummary, string location)
+    {
+        var locationText = string.IsNullOrWhiteSpace(location) ? string.Empty : $" in {location}";
+        return $"{playerName} player profile for {sportSummary}{locationText}. View player details and active TryOutSpot listings.";
+    }
+
+    private static string FormatBirthDate(DateTime value)
+    {
+        return value.Date.ToString("MMM d, yyyy");
+    }
+
+    private static string FormatLocation(string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim().ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        return parts.Count == 0 ? string.Empty : string.Join(", ", parts);
+    }
+
+    private static string FormatSize(string? height, string? weight)
+    {
+        if (string.IsNullOrWhiteSpace(height) && string.IsNullOrWhiteSpace(weight))
+        {
+            return string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(height))
+        {
+            return weight!.Trim();
+        }
+
+        if (string.IsNullOrWhiteSpace(weight))
+        {
+            return height.Trim();
+        }
+
+        return $"{height.Trim()} / {weight.Trim()}";
+    }
+
+    private static string GetLinkIcon(string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            return "L";
+        }
+
+        return label.Trim().ToLowerInvariant() switch
+        {
+            "facebook" => "f",
+            "x" => "x",
+            "instagram" => "ig",
+            "youtube" => "yt",
+            "tiktok" => "tt",
+            _ when label.Contains("video", StringComparison.OrdinalIgnoreCase) => "vd",
+            _ => "ln"
+        };
+    }
+
+    private static string GetLinkDisplayText(ExternalProfileLinkPageItem link)
+    {
+        if (Uri.TryCreate(link.Url, UriKind.Absolute, out var uri))
+        {
+            var segment = uri.Segments.LastOrDefault()?.Trim('/');
+            if (!string.IsNullOrWhiteSpace(segment))
+            {
+                return $"@{segment}";
+            }
+        }
+
+        return link.Label;
+    }
+}

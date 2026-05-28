@@ -1382,6 +1382,28 @@ public sealed class AccountController(
         return RedirectToAction(nameof(ManagePlayerProfiles));
     }
 
+    [AllowAnonymous]
+    [HttpGet("/players/{playerId:guid}")]
+    public async Task<IActionResult> PlayerProfileDetail(Guid playerId, CancellationToken cancellationToken = default)
+    {
+        var currentUser = await GetCurrentWebUserAsync();
+        var player = await dbContext.Players
+            .AsNoTracking()
+            .Where(currentPlayer => currentPlayer.Id == playerId)
+            .Where(currentPlayer => currentPlayer.IsActive)
+            .Where(currentPlayer => currentPlayer.IsSearchable)
+            .Include(currentPlayer => currentPlayer.PlayerSports)
+                .ThenInclude(playerSport => playerSport.Sport)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (player is null)
+        {
+            return NotFound();
+        }
+
+        var model = await BuildPlayerProfileDetailPageModelAsync(player, currentUser, cancellationToken);
+        return View(model);
+    }
+
     [Authorize(
         AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
         Policy = TryOutSpotAuthorizationPolicies.FeaturePolicyPrefix + TryOutSpotFeatureCodes.CreatePlayerListings)]
@@ -1707,6 +1729,10 @@ public sealed class AccountController(
             .Where(currentListing => currentListing.IsPublished)
             .Where(currentListing => currentListing.IsSearchable)
             .Where(currentListing => currentListing.ExpiresAt == null || currentListing.ExpiresAt > now)
+            .Where(currentListing => currentListing.PlayerId == null
+                || (currentListing.Player != null
+                    && currentListing.Player.IsActive
+                    && currentListing.Player.IsSearchable))
             .Include(currentListing => currentListing.Player)
                 .ThenInclude(player => player!.PlayerSports)
                     .ThenInclude(playerSport => playerSport.Sport)
@@ -3583,7 +3609,11 @@ public sealed class AccountController(
             .Where(currentListing => currentListing.IsActive)
             .Where(currentListing => currentListing.IsPublished)
             .Where(currentListing => currentListing.IsSearchable)
-            .Where(currentListing => currentListing.ExpiresAt == null || currentListing.ExpiresAt > now);
+            .Where(currentListing => currentListing.ExpiresAt == null || currentListing.ExpiresAt > now)
+            .Where(currentListing => currentListing.PlayerId == null
+                || (currentListing.Player != null
+                    && currentListing.Player.IsActive
+                    && currentListing.Player.IsSearchable));
     }
 
     private static ListingReportPageModel BuildPlayerListingReportPageModel(
@@ -7864,6 +7894,118 @@ public sealed class AccountController(
         return new PlayerListingValidationContext(listingTypeOption, player);
     }
 
+    private async Task<PlayerProfileDetailPageModel> BuildPlayerProfileDetailPageModelAsync(
+        Player player,
+        User? currentUser,
+        CancellationToken cancellationToken)
+    {
+        var hasEnhancedProfileVisibility = await PlayerHasEnhancedProfileVisibilityAsync(player.Id, cancellationToken);
+        var isContactPublic = string.Equals(player.ContactVisibility, "Public", StringComparison.OrdinalIgnoreCase);
+        var isCoachOnlyContact = string.Equals(player.ContactVisibility, "VerifiedCoachesOnly", StringComparison.OrdinalIgnoreCase);
+        var canViewCoachOnlyContact = await CanViewCoachOnlyPlayerContactAsync(currentUser);
+        var canViewContactDetails = isContactPublic || (isCoachOnlyContact && canViewCoachOnlyContact);
+
+        var sports = player.PlayerSports
+            .Where(playerSport => playerSport.IsActive)
+            .OrderBy(playerSport => playerSport.Sport.Name)
+            .Select(playerSport => new PlayerListingSportSummaryPageItem(
+                playerSport.Sport.Name,
+                hasEnhancedProfileVisibility ? NormalizeOptional(playerSport.SkillLevel) : null,
+                hasEnhancedProfileVisibility ? NormalizeOptional(playerSport.PrimaryPosition) : null,
+                hasEnhancedProfileVisibility ? NormalizeOptional(playerSport.SecondaryPositions) : null,
+                hasEnhancedProfileVisibility ? NormalizeOptional(playerSport.ExperienceLevel) : null,
+                hasEnhancedProfileVisibility ? playerSport.YearsPlaying : null,
+                hasEnhancedProfileVisibility ? NormalizeOptional(playerSport.Availability) : null))
+            .ToArray();
+
+        var socialLinks = hasEnhancedProfileVisibility
+            ? BuildPlayerExternalLinkItems(
+                player.SocialMediaLinks,
+                ("facebook", "Facebook"),
+                ("x", "X"),
+                ("instagram", "Instagram"),
+                ("youtube", "YouTube"),
+                ("tiktok", "TikTok"))
+            : [];
+        var profileVideoLinks = hasEnhancedProfileVisibility
+            ? BuildPlayerExternalLinkItems(
+                player.SocialMediaLinks,
+                ("highlight_video_1", "Highlight video 1"),
+                ("highlight_video_2", "Highlight video 2"))
+            : [];
+        var recruitingLinks = hasEnhancedProfileVisibility
+            ? BuildPlayerExternalLinkItems(
+                player.RecruitingProfileLinks,
+                ("sportsrecruits", "SportsRecruits"),
+                ("fieldlevel", "FieldLevel"),
+                ("ncsa", "NCSA"),
+                ("other", "Other recruiting profile"))
+            : [];
+
+        var now = DateTime.UtcNow;
+        var listingRows = await dbContext.PlayerListings
+            .AsNoTracking()
+            .Where(listing => listing.PlayerId == player.Id)
+            .Where(listing => listing.IsActive)
+            .Where(listing => listing.IsPublished)
+            .Where(listing => listing.IsSearchable)
+            .Where(listing => listing.ExpiresAt == null || listing.ExpiresAt > now)
+            .Include(listing => listing.Sport)
+            .OrderByDescending(listing => listing.PublishedAt)
+            .ThenByDescending(listing => listing.UpdatedAt)
+            .Take(8)
+            .ToArrayAsync(cancellationToken);
+        var activeListings = listingRows
+            .Select(listing => new PlayerProfileListingSummaryPageItem(
+                listing.Id,
+                GetPlayerListingTypeLabel(listing.ListingType),
+                listing.Title,
+                NormalizeOptional(listing.Description),
+                listing.Sport?.Name,
+                listing.AskingPrice,
+                listing.Currency,
+                listing.City,
+                listing.State,
+                listing.ZipCode,
+                listing.PublishedAt,
+                listing.ExpiresAt))
+            .ToArray();
+
+        return new PlayerProfileDetailPageModel
+        {
+            PlayerId = player.Id,
+            PlayerName = $"{player.FirstName} {player.LastName}".Trim(),
+            ProfileImageUrl = ResolvePlayerProfileImagePublicUrl(player.Id, player.ProfileImageUrl),
+            DateOfBirth = player.DateOfBirth.Date,
+            City = NormalizeOptional(player.City),
+            State = NormalizeState(player.State),
+            ZipCode = NormalizeOptional(player.ZipCode),
+            SchoolName = NormalizeOptional(player.SchoolName),
+            CurrentTeamName = NormalizeOptional(player.CurrentTeamName),
+            GraduationYear = player.GraduationYear,
+            Height = NormalizeOptional(player.Height),
+            Weight = NormalizeOptional(player.Weight),
+            ThrowsHand = NormalizeOptional(player.ThrowsHand),
+            BatsHand = NormalizeOptional(player.BatsHand),
+            SixtyYardDash = hasEnhancedProfileVisibility ? NormalizeOptional(player.SixtyYardDash) : null,
+            HomeToFirstTime = hasEnhancedProfileVisibility ? NormalizeOptional(player.HomeToFirstTime) : null,
+            ExitVelocity = hasEnhancedProfileVisibility ? NormalizeOptional(player.ExitVelocity) : null,
+            ThrowingVelocity = hasEnhancedProfileVisibility ? NormalizeOptional(player.ThrowingVelocity) : null,
+            PitchVelocity = hasEnhancedProfileVisibility ? NormalizeOptional(player.PitchVelocity) : null,
+            CatcherPopTime = hasEnhancedProfileVisibility ? NormalizeOptional(player.CatcherPopTime) : null,
+            AdditionalMetrics = hasEnhancedProfileVisibility ? NormalizeOptional(player.AdditionalMetrics) : null,
+            CanViewContactDetails = canViewContactDetails,
+            ContactEmail = canViewContactDetails ? NormalizeOptional(player.ContactEmail) : null,
+            ContactPhone = canViewContactDetails ? NormalizeOptional(player.ContactPhone) : null,
+            Sports = sports,
+            SocialLinks = socialLinks,
+            ProfileVideoLinks = profileVideoLinks,
+            RecruitingLinks = recruitingLinks,
+            ActiveListings = activeListings,
+            ViewerIsAuthenticated = currentUser is not null
+        };
+    }
+
     private async Task<PlayerListingDetailPageModel> BuildPlayerListingDetailPageModelAsync(
         PlayerListing listing,
         User? currentUser,
@@ -7957,6 +8099,10 @@ public sealed class AccountController(
             PublishedAt = listing.PublishedAt,
             ExpiresAt = listing.ExpiresAt,
             PlayerName = player is null ? null : $"{player.FirstName} {player.LastName}".Trim(),
+            PlayerId = player?.Id,
+            PublicPlayerProfileUrl = player is { IsActive: true, IsSearchable: true }
+                ? $"/players/{player.Id}"
+                : null,
             ProfileImageUrl = ResolvePlayerProfileImagePublicUrl(player?.Id, player?.ProfileImageUrl),
             PlayerDateOfBirth = player?.DateOfBirth,
             PlayerCity = NormalizeOptional(player?.City),
@@ -8170,6 +8316,44 @@ public sealed class AccountController(
             ViewerManagesTeam = viewerManagesTeam,
             ViewerHasOpenReport = viewerHasOpenReport
         };
+    }
+
+    private async Task<bool> CanViewCoachOnlyPlayerContactAsync(User? currentUser)
+    {
+        if (currentUser is null)
+        {
+            return false;
+        }
+
+        var viewerRoles = await GetCanonicalPublicRolesAsync(currentUser);
+        return viewerRoles.Any(TryOutSpotRoles.IsTeamBundleRole);
+    }
+
+    private async Task<bool> PlayerHasEnhancedProfileVisibilityAsync(
+        Guid playerId,
+        CancellationToken cancellationToken)
+    {
+        var managerUserIds = await dbContext.UserPlayerRelationships
+            .AsNoTracking()
+            .Where(relationship => relationship.PlayerId == playerId)
+            .Where(relationship => relationship.CanManage)
+            .Where(relationship => relationship.Player.IsActive)
+            .Select(relationship => relationship.UserId)
+            .Distinct()
+            .ToArrayAsync(cancellationToken);
+
+        foreach (var managerUserId in managerUserIds)
+        {
+            if (await entitlementService.HasFeatureAsync(
+                    managerUserId,
+                    TryOutSpotFeatureCodes.EnhancedPlayerProfile,
+                    cancellationToken))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private async Task<ChoosePlanPageModel> BuildChoosePlanPageModelAsync(
