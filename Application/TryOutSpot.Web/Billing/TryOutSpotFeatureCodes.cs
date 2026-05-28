@@ -17,8 +17,10 @@ public static class TryOutSpotFeatureCodes
     public const string EarlyOpportunityAccess = "opportunities.early_access";
 
     public const string PostLimitedOpportunities = "opportunities.post.limited";
+    public const string ShareOpportunityListingLinks = "opportunities.share.links";
     public const string BasicPlayerSearch = "players.search.basic";
     public const string StandardRegistrationManagement = "registrations.manage.standard";
+    public const string FollowerSmsMessaging = "communication.sms.followers";
     public const string BasicTeamAnalytics = "analytics.team.basic";
     public const string EmailSupport = "support.email";
     public const string TeamDirectorySearchable = "directory.team.searchable";

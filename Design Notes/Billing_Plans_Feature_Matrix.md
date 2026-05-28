@@ -1,6 +1,6 @@
 # TryOutSpot Billing Plans and Feature Matrix
 
-Updated: May 17, 2026
+Updated: May 28, 2026
 
 ## 1) Account Type -> Eligible Plans
 
@@ -38,6 +38,7 @@ Compared to: Free Player/Parent
 Compared to: No team plan
 
 - `opportunities.post.limited`: Publish up to 1 tryout listing every 6 months.
+- `opportunities.share.links`: Copy public listing links and ready-to-share post text for active opportunity listings.
 - `players.search.basic`: Limited player search (radius capped at 120 miles; age filters available; skill-level filters not included).
 
 ## Team Basic add-ons
@@ -46,6 +47,7 @@ Compared to: Free Coach
 - `opportunities.post.limited`: Publish up to 9 tryout listings every 12 months.
 - `players.search.advanced`: Full player discovery filters (age, level, radius, and related advanced search tools).
 - `registrations.manage.standard`: Standard registration/applicant management.
+- `communication.sms.followers`: Coming soon - short SMS listing updates to opted-in players and parents who follow an opportunity.
 - `analytics.team.basic`: Basic team activity reporting.
 - `support.email`: Standard email support.
 
@@ -91,14 +93,14 @@ Compared to: Team Professional
 
 - Audience: Team/Academy (starter)
 - Price: Free
-- Includes: 1 listing every 6 months
+- Includes: 1 listing every 6 months, basic player search, and listing link sharing
 - Stripe required: No (internal plan)
 
 ## Team Basic
 
 - Audience: Team/Academy
 - Price: $29/month
-- Includes: Team Basic add-ons
+- Includes: Team Basic add-ons, including follower SMS updates once SMS consent and carrier campaign language are approved
 
 ## Team Professional
 

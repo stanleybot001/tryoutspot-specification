@@ -1,6 +1,6 @@
 # TryOutSpot Team Bundle Canonical Feature Matrix
 
-Updated: May 16, 2026
+Updated: May 28, 2026
 Status: Proposed canonical source for Team bundle entitlements
 
 ## Purpose
@@ -41,6 +41,7 @@ This matrix is intended to be the single source of truth for:
 | `teams.count.max` | Team Management | Maximum teams the account can actively manage. | `count_max` | 1 | 1 | 12 | 24 |
 | `opportunities.tryout.post` | Tryout Listings | Permission to publish tryout listings. | `boolean` | true | true | true | true |
 | `opportunities.tryout.post.quota` | Tryout Listings | Tryout listing publish quota in rolling window. | `count_window` | 1 / 6 months | 9 / 12 months | 24 / 12 months | 50 / 12 months |
+| `opportunities.share.links` | Tryout Listings | Copy public listing links and ready-to-share post text for active opportunity listings. | `boolean` | true | true | true | true |
 | `players.search.access` | Player Search | Player database search access level. | `enum` | preview | basic | advanced | advanced |
 | `players.search.monthly_quota` | Player Search | Player search query quota per 30-day window. | `count_window` | 25 / 30 days | 300 / 30 days | 3000 / 30 days | 10000 / 30 days |
 | `registrations.tryout.manage.standard` | Tryout Registration | Standard registration workflow access (forms, applicant list, status updates). | `boolean` | false | true | true | true |
@@ -48,6 +49,7 @@ This matrix is intended to be the single source of truth for:
 | `events.tournament.advertise` | Tournament Advertising | Ability to post tournament/event advertisements. | `boolean` | false | false | true | true |
 | `communication.inapp.direct` | Communication | Direct in-app messaging with families/players. | `boolean` | false | true | true | true |
 | `communication.email.bulk` | Communication | Bulk email campaigns and segmented sends. | `boolean` | false | true | true | true |
+| `communication.sms.followers` | Communication | Short listing-update SMS messages to opted-in players and parents who follow a specific opportunity. | `boolean` | false | true | true | true |
 | `communication.sms.bulk` | Communication | Bulk SMS campaigns through platform messaging service. | `boolean` | false | false | true | true |
 | `analytics.team.basic` | Analytics | Basic team performance and listing activity metrics. | `boolean` | false | true | true | true |
 | `analytics.team.detailed` | Analytics | Advanced reporting (conversion, cohort, source attribution). | `boolean` | false | false | true | true |
@@ -67,6 +69,7 @@ This matrix is intended to be the single source of truth for:
 - Quotas must be enforced in service layer, not only controller/policy attributes.
 - For `count_window` features, use rolling windows (not calendar month reset) unless product policy changes.
 - `players.search.access=preview` should return constrained results and masked contact details.
+- `communication.sms.followers` is narrower than bulk SMS campaigns and requires confirmed recipient SMS consent, updated consent copy, matching A2P 10DLC campaign samples, STOP/HELP handling, and send/audit limits before enablement.
 - `team_professional` and `enterprise_organization` should include all lower-tier features unless explicitly overridden.
 
 ## Plan Copy Guidance (UI)
@@ -87,4 +90,3 @@ Recommended wording pattern:
 - Add new plan code `free_coach` to catalog and eligibility map.
 - Keep existing codes `team_basic`, `team_professional`, `enterprise_organization`.
 - Replace ambiguous "team bundle role description" text with entitlement-aware copy on account settings and onboarding.
-

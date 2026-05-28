@@ -114,6 +114,7 @@ public class HomeController : Controller
                 "No team plan",
                 [
                     F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 1 tryout listing every 6 months."),
+                    F(TryOutSpotFeatureCodes.ShareOpportunityListingLinks, "Share listing links", "Copy public listing links and ready-to-share post text for active opportunity listings."),
                     F("players.search.basic", "Basic player search", "Limited player search with age filters and radius capped at 120 miles.")
                 ]),
             new FeatureBundlePageItem(
@@ -124,6 +125,7 @@ public class HomeController : Controller
                     F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 9 tryout listings every 12 months."),
                     F("players.search.advanced", "Advanced player search", "Full player discovery filters including age, level, and radius."),
                     F("registrations.manage.standard", "Standard registration management", "Standard registration/applicant management."),
+                    F(TryOutSpotFeatureCodes.FollowerSmsMessaging, "Follower SMS updates", "Coming soon - send short listing updates to opted-in players and parents who follow an opportunity."),
                     F("analytics.team.basic", "Basic team analytics", "Basic team activity reporting."),
                     F("support.email", "Email support", "Standard email support.")
                 ]),
@@ -180,6 +182,7 @@ public class HomeController : Controller
         var freeCoach = new[]
         {
             F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 1 tryout listing every 6 months."),
+            F(TryOutSpotFeatureCodes.ShareOpportunityListingLinks, "Share listing links", "Copy public listing links and ready-to-share post text for active opportunity listings."),
             F("players.search.basic", "Basic player search", "Limited player search with age filters and radius capped at 120 miles.")
         };
 
@@ -188,6 +191,7 @@ public class HomeController : Controller
             F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 9 tryout listings every 12 months."),
             F("players.search.advanced", "Advanced player search", "Full player discovery filters including age, level, and radius."),
             F("registrations.manage.standard", "Standard registration management", "Standard registration/applicant management."),
+            F(TryOutSpotFeatureCodes.FollowerSmsMessaging, "Follower SMS updates", "Coming soon - send short listing updates to opted-in players and parents who follow an opportunity."),
             F("analytics.team.basic", "Basic team analytics", "Basic team activity reporting."),
             F("support.email", "Email support", "Standard email support.")
         };
@@ -266,7 +270,7 @@ public class HomeController : Controller
                         "Professional team annual subscription for unlimited postings and advanced tools.",
                         "$799.00/year (annual commitment)",
                         null,
-                        pro,
+                        teamBasic.Concat(pro).ToArray(),
                         pro),
                     new PlanDetailPageItem(
                         TryOutSpotPlanCodes.EnterpriseOrganization,
@@ -275,7 +279,7 @@ public class HomeController : Controller
                         "Enterprise annual subscription for multi-team organizations and custom workflows.",
                         "$1,999.00/year (annual commitment)",
                         null,
-                        pro.Concat(enterpriseAdds).ToArray(),
+                        teamBasic.Concat(pro).Concat(enterpriseAdds).ToArray(),
                         enterpriseAdds)
                 ])
         ];

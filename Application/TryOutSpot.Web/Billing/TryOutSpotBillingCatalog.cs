@@ -17,6 +17,7 @@ public static class TryOutSpotBillingCatalog
     private static readonly string[] FreeCoachFeatures =
     [
         TryOutSpotFeatureCodes.PostLimitedOpportunities,
+        TryOutSpotFeatureCodes.ShareOpportunityListingLinks,
         TryOutSpotFeatureCodes.BasicPlayerSearch
     ];
 
@@ -85,8 +86,13 @@ public static class TryOutSpotBillingCatalog
         new(
             TryOutSpotFeatureCodes.PostLimitedOpportunities,
             "Limited opportunity posting",
-            "Post up to five team opportunities per month.",
+            "Publish team opportunity listings within the plan's rolling quota.",
             true),
+        new(
+            TryOutSpotFeatureCodes.ShareOpportunityListingLinks,
+            "Share listing links",
+            "Copy public listing links and ready-to-share post text for active opportunity listings.",
+            false),
         new(
             TryOutSpotFeatureCodes.BasicPlayerSearch,
             "Basic player search",
@@ -96,6 +102,11 @@ public static class TryOutSpotBillingCatalog
             TryOutSpotFeatureCodes.StandardRegistrationManagement,
             "Standard registration management",
             "Review and manage opportunity registrations.",
+            true),
+        new(
+            TryOutSpotFeatureCodes.FollowerSmsMessaging,
+            "Follower SMS updates",
+            "Coming soon - send short listing updates to opted-in players and parents who follow an opportunity.",
             true),
         new(
             TryOutSpotFeatureCodes.BasicTeamAnalytics,
@@ -240,6 +251,7 @@ public static class TryOutSpotBillingCatalog
                 TryOutSpotFeatureCodes.BasicPlayerSearch,
                 TryOutSpotFeatureCodes.AdvancedPlayerSearch,
                 TryOutSpotFeatureCodes.StandardRegistrationManagement,
+                TryOutSpotFeatureCodes.FollowerSmsMessaging,
                 TryOutSpotFeatureCodes.BasicTeamAnalytics,
                 TryOutSpotFeatureCodes.EmailSupport
             ]),
@@ -256,6 +268,7 @@ public static class TryOutSpotBillingCatalog
             [
                 TryOutSpotFeatureCodes.UnlimitedOpportunityPostings,
                 TryOutSpotFeatureCodes.AdvancedPlayerSearch,
+                TryOutSpotFeatureCodes.FollowerSmsMessaging,
                 TryOutSpotFeatureCodes.PremiumRegistrationManagement,
                 TryOutSpotFeatureCodes.DetailedTeamAnalytics,
                 TryOutSpotFeatureCodes.PrioritySupport,
@@ -275,6 +288,7 @@ public static class TryOutSpotBillingCatalog
             [
                 TryOutSpotFeatureCodes.UnlimitedOpportunityPostings,
                 TryOutSpotFeatureCodes.AdvancedPlayerSearch,
+                TryOutSpotFeatureCodes.FollowerSmsMessaging,
                 TryOutSpotFeatureCodes.PremiumRegistrationManagement,
                 TryOutSpotFeatureCodes.DetailedTeamAnalytics,
                 TryOutSpotFeatureCodes.PrioritySupport,

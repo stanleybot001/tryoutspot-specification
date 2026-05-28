@@ -34,6 +34,8 @@ public sealed class EntitlementServiceTests
         Assert.NotNull(features);
         Assert.Contains(plans, plan => plan.Code == TryOutSpotPlanCodes.PremiumPlayer);
         Assert.Contains(features, feature => feature.Code == TryOutSpotFeatureCodes.BrowseOpportunities);
+        Assert.Contains(features, feature => feature.Code == TryOutSpotFeatureCodes.ShareOpportunityListingLinks);
+        Assert.Contains(features, feature => feature.Code == TryOutSpotFeatureCodes.FollowerSmsMessaging);
     }
 
     [Fact]
@@ -106,8 +108,44 @@ public sealed class EntitlementServiceTests
 
         Assert.NotNull(entitlements);
         Assert.Contains(TryOutSpotFeatureCodes.UnlimitedOpportunityPostings, entitlements.FeatureCodes);
+        Assert.Contains(TryOutSpotFeatureCodes.ShareOpportunityListingLinks, entitlements.FeatureCodes);
+        Assert.Contains(TryOutSpotFeatureCodes.FollowerSmsMessaging, entitlements.FeatureCodes);
         Assert.Contains(TryOutSpotFeatureCodes.AdvancedPlayerSearch, entitlements.FeatureCodes);
         Assert.DoesNotContain(TryOutSpotFeatureCodes.BrowseOpportunities, entitlements.FeatureCodes);
+    }
+
+    [Fact]
+    public async Task FreeCoach_GetsListingLinkSharingButNotFollowerSms()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var userId = await factory.RegisterUserAsync("free-coach-sharing@example.com", ["TeamRepresentative"]);
+
+        using var scope = factory.Services.CreateScope();
+        var entitlementService = scope.ServiceProvider.GetRequiredService<IEntitlementService>();
+
+        var entitlements = await entitlementService.GetEntitlementsAsync(userId, CancellationToken.None);
+
+        Assert.NotNull(entitlements);
+        Assert.Contains(TryOutSpotPlanCodes.FreeCoach, entitlements.ActivePlanCodes);
+        Assert.Contains(TryOutSpotFeatureCodes.ShareOpportunityListingLinks, entitlements.FeatureCodes);
+        Assert.DoesNotContain(TryOutSpotFeatureCodes.FollowerSmsMessaging, entitlements.FeatureCodes);
+    }
+
+    [Fact]
+    public async Task ActiveTeamBasicSubscription_GrantsFollowerSms()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var userId = await factory.RegisterUserAsync("team-basic-follower-sms@example.com", ["TeamRepresentative"]);
+        await AddSubscriptionAsync(factory, userId, TryOutSpotPlanCodes.TeamBasic, "active");
+
+        using var scope = factory.Services.CreateScope();
+        var entitlementService = scope.ServiceProvider.GetRequiredService<IEntitlementService>();
+
+        var entitlements = await entitlementService.GetEntitlementsAsync(userId, CancellationToken.None);
+
+        Assert.NotNull(entitlements);
+        Assert.Contains(TryOutSpotFeatureCodes.ShareOpportunityListingLinks, entitlements.FeatureCodes);
+        Assert.Contains(TryOutSpotFeatureCodes.FollowerSmsMessaging, entitlements.FeatureCodes);
     }
 
     [Fact]
