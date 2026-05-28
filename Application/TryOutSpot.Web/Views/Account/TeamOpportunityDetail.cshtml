@@ -144,7 +144,7 @@
                 <div class="form-actions">
                     @if (authenticationRequiredForRegistration || (Model.IsRegistrationOpen && !Model.ViewerIsAuthenticated))
                     {
-                        <a class="btn btn-primary" href="@createAccountToRegisterUrl">Create account to register</a>
+                        <a class="btn btn-primary" href="@createAccountToRegisterUrl">Create Free Account to Register</a>
                         <a class="btn btn-outline-primary" href="@loginToRegisterUrl">Sign in to register</a>
                     }
                     else if (Model.IsRegistrationOpen && Model.ViewerCanSubmitRegistration)
