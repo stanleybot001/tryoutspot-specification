@@ -1633,6 +1633,9 @@ public sealed class AccountPageTests
         var html = await detailResponse.Content.ReadAsStringAsync();
         Assert.Contains("listing-flyer-image", html);
         Assert.Contains($"/listing-documents/opportunities/{opportunityId}", html);
+        Assert.True(
+            html.IndexOf("listing-flyer-image", StringComparison.Ordinal) < html.IndexOf("opportunity-summary-grid", StringComparison.Ordinal),
+            "The flyer should appear before the listing summary grid.");
 
         var documentResponse = await client.GetAsync($"/listing-documents/opportunities/{opportunityId}");
         Assert.Equal(HttpStatusCode.OK, documentResponse.StatusCode);

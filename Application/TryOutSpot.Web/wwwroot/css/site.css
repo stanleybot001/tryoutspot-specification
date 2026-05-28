@@ -1381,6 +1381,27 @@ body.splash-page {
   margin: 0;
 }
 
+.listing-primary-action-panel {
+  border-top: 1px solid #d7dee8;
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.listing-primary-action-panel h2 {
+  font-size: 1.1rem;
+  margin-bottom: 0.25rem;
+}
+
+.listing-primary-action-panel .form-actions {
+  margin: 0;
+}
+
+.listing-flyer-section {
+  padding: 1rem;
+}
+
 .listing-link-list {
   margin: 0;
   padding-left: 1rem;

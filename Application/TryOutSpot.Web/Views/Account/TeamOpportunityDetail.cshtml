@@ -13,6 +13,27 @@
         ? reportPageUrl
         : $"/account/login?returnUrl={Uri.EscapeDataString(reportPageUrl)}";
     var showReportAction = !Model.ViewerIsAuthenticated || Model.ViewerCanReport;
+    var opportunityReturnUrl = $"/opportunities/{Model.OpportunityId}";
+    var encodedOpportunityReturnUrl = Uri.EscapeDataString(opportunityReturnUrl);
+    var loginToRegisterUrl = $"/account/login?returnUrl={encodedOpportunityReturnUrl}";
+    var createAccountToRegisterUrl = $"/account/register?returnUrl={encodedOpportunityReturnUrl}";
+    var addPlayerProfileUrl = $"/account/onboarding/add-player-profile?createNew=true";
+    var authenticationRequiredForRegistration = Model.RegistrationRequired
+        && !Model.ViewerIsAuthenticated
+        && string.Equals(
+            Model.RegistrationClosedReason,
+            "Sign in as a parent or player to register.",
+            StringComparison.Ordinal);
+    var playerProfileRequiredForRegistration = Model.RegistrationRequired
+        && Model.ViewerIsAuthenticated
+        && !Model.ViewerCanSubmitRegistration
+        && string.Equals(
+            Model.RegistrationClosedReason,
+            "Add a player profile you can manage to submit registration.",
+            StringComparison.Ordinal);
+    var registrationCanContinue = Model.IsRegistrationOpen
+        || authenticationRequiredForRegistration
+        || playerProfileRequiredForRegistration;
 
     ViewData["MetaDescription"] = metaDescription;
     ViewData["CanonicalUrl"] = shareUrl;
@@ -102,10 +123,85 @@
             }
             else
             {
-                <a class="btn btn-outline-primary" href="/account/login?returnUrl=@Uri.EscapeDataString($"/opportunities/{Model.OpportunityId}")">Sign in to favorite</a>
+                <a class="btn btn-outline-primary" href="/account/login?returnUrl=@encodedOpportunityReturnUrl">Sign in to favorite</a>
             }
         </div>
+
+        @if (Model.RegistrationRequired)
+        {
+            <div class="listing-primary-action-panel">
+                <div>
+                    <h2>Register for this tryout</h2>
+                    @if (registrationCanContinue)
+                    {
+                        <p class="section-help">Registration is open through TryOutSpot.</p>
+                    }
+                    else
+                    {
+                        <p class="section-help">@Model.RegistrationClosedReason</p>
+                    }
+                </div>
+                <div class="form-actions">
+                    @if (authenticationRequiredForRegistration || (Model.IsRegistrationOpen && !Model.ViewerIsAuthenticated))
+                    {
+                        <a class="btn btn-primary" href="@createAccountToRegisterUrl">Create account to register</a>
+                        <a class="btn btn-outline-primary" href="@loginToRegisterUrl">Sign in to register</a>
+                    }
+                    else if (Model.IsRegistrationOpen && Model.ViewerCanSubmitRegistration)
+                    {
+                        <a class="btn btn-primary" href="#tryout-registration">Register now</a>
+                    }
+                    else if (playerProfileRequiredForRegistration)
+                    {
+                        <a class="btn btn-primary" href="@addPlayerProfileUrl">Add player profile</a>
+                        <a class="btn btn-outline-primary" href="#tryout-registration">View registration details</a>
+                    }
+                    else
+                    {
+                        <a class="btn btn-outline-secondary" href="#tryout-registration">View registration details</a>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="listing-primary-action-panel">
+                <div>
+                    <h2>Registration not required</h2>
+                    <p class="section-help">Review the flyer and listing details, then use the team contact options if you need more information.</p>
+                </div>
+            </div>
+        }
     </section>
+
+    @if (!string.IsNullOrWhiteSpace(Model.PdfUrl))
+    {
+        <section class="form-section listing-flyer-section">
+            <h2>Flyer</h2>
+            @if (Model.IsFlyerImage)
+            {
+                <div class="listing-flyer-image-frame">
+                    <img src="@Model.PdfUrl" alt="@Model.Title flyer" class="listing-flyer-image" loading="lazy" />
+                </div>
+                <p class="section-help">
+                    <a href="@Model.PdfUrl" target="_blank" rel="noopener">Open the flyer image in a new tab</a>.
+                </p>
+            }
+            else
+            {
+                <div class="listing-pdf-embed">
+                    <iframe
+                        src="@Model.PdfUrl"
+                        title="Opportunity flyer PDF"
+                        loading="lazy">
+                    </iframe>
+                </div>
+                <p class="section-help">
+                    If the preview does not load in your browser, <a href="@Model.PdfUrl" target="_blank" rel="noopener">open the flyer in a new tab</a>.
+                </p>
+            }
+        </section>
+    }
 
     <section class="form-section">
         @if (!string.IsNullOrWhiteSpace(Model.Description))
@@ -186,7 +282,7 @@
         </div>
     </section>
 
-    <section class="form-section">
+    <section class="form-section" id="tryout-registration">
         <h2>Tryout registration</h2>
         @if (!Model.RegistrationRequired)
         {
@@ -263,15 +359,22 @@
                 }
             }
 
-            @if (!Model.IsRegistrationOpen)
+            @if (authenticationRequiredForRegistration)
+            {
+                <p class="section-help">
+                    <a href="@createAccountToRegisterUrl">Create a player or parent account</a>
+                    or <a href="@loginToRegisterUrl">sign in</a> to register.
+                </p>
+            }
+            else if (!Model.IsRegistrationOpen)
             {
                 <p class="section-help">@Model.RegistrationClosedReason</p>
             }
             else if (!Model.ViewerIsAuthenticated)
             {
                 <p class="section-help">
-                    <a href="/account/login?returnUrl=@Uri.EscapeDataString($"/opportunities/{Model.OpportunityId}")">Sign in</a>
-                    as a player or parent account to register.
+                    <a href="@createAccountToRegisterUrl">Create a player or parent account</a>
+                    or <a href="@loginToRegisterUrl">sign in</a> to register.
                 </p>
             }
             else if (!Model.ViewerCanSubmitRegistration)
@@ -494,35 +597,6 @@
                 </div>
             }
             <p class="section-help">This team has chosen to keep contact details and external links private.</p>
-        </section>
-    }
-
-    @if (!string.IsNullOrWhiteSpace(Model.PdfUrl))
-    {
-        <section class="form-section">
-            <h2>Flyer preview</h2>
-            @if (Model.IsFlyerImage)
-            {
-                <div class="listing-flyer-image-frame">
-                    <img src="@Model.PdfUrl" alt="@Model.Title flyer" class="listing-flyer-image" loading="lazy" />
-                </div>
-                <p class="section-help">
-                    <a href="@Model.PdfUrl" target="_blank" rel="noopener">Open the flyer image in a new tab</a>.
-                </p>
-            }
-            else
-            {
-                <div class="listing-pdf-embed">
-                    <iframe
-                        src="@Model.PdfUrl"
-                        title="Opportunity flyer PDF"
-                        loading="lazy">
-                    </iframe>
-                </div>
-                <p class="section-help">
-                    If the preview does not load in your browser, <a href="@Model.PdfUrl" target="_blank" rel="noopener">open the flyer in a new tab</a>.
-                </p>
-            }
         </section>
     }
 </section>

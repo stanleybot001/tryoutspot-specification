@@ -63,6 +63,24 @@ public sealed class TeamOpportunityRegistrationPageTests
     }
 
     [Fact]
+    public async Task AnonymousTryoutPage_ShowsCreateAccountAndSignInRegistrationActions()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var parentUser = await factory.CreateUserAsync("parent-register-cta@example.com", [TryOutSpotRoles.Parent]);
+        var seeded = SeedPublishedTryoutOpportunity(factory, parentUser.Id, fillToCapacity: false);
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/opportunities/{seeded.OpportunityId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Create account to register", html, StringComparison.Ordinal);
+        Assert.Contains("Sign in to register", html, StringComparison.Ordinal);
+        Assert.Contains($"/account/register?returnUrl=%2Fopportunities%2F{seeded.OpportunityId}", html, StringComparison.Ordinal);
+        Assert.Contains($"/account/login?returnUrl=%2Fopportunities%2F{seeded.OpportunityId}", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task RegistrationIsBlockedWhenOpportunityIsAtMaxCapacity()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
