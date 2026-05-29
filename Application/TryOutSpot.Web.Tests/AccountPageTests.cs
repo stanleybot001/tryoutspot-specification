@@ -575,7 +575,7 @@ public sealed class AccountPageTests
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("Coach Getting Started Hub", html);
         Assert.Contains("Choose Basic Team", html);
-        Assert.Contains("href=\"/account/onboarding/choose-plan\"", html);
+        Assert.Contains("href=\"/account/onboarding/choose-plan?bundle=team\"", html);
         Assert.Contains("Create tryout listing", html);
         Assert.Contains("Locked", html);
     }
@@ -1034,7 +1034,8 @@ public sealed class AccountPageTests
         Assert.Contains("name=\"teamRole\"", html);
         Assert.Contains("name=\"SmsConsent.SmsConsentAccepted\"", html);
         Assert.Contains("Membership access", html);
-        Assert.Contains("Choose or change plan", html);
+        Assert.Contains("Choose or change Parent/Player plan", html);
+        Assert.Contains("Choose or change Team plan", html);
         Assert.Contains("Dashboard activity", html);
         Assert.Contains("name=\"activityTypes\"", html);
     }
@@ -1063,6 +1064,34 @@ public sealed class AccountPageTests
         Assert.Contains("Complimentary access", html);
         Assert.Contains("players.profiles.enhanced", html);
         Assert.DoesNotContain("Current membership: Free Player/Parent", html);
+    }
+
+    [Fact]
+    public async Task Settings_WithPlayerAndTeamSubscriptions_ShowsSeparateMembershipBundles()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync(
+            "settings-dual-membership@example.com",
+            [TryOutSpotRoles.Parent, TryOutSpotRoles.TeamRepresentative]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.PremiumPlayer, "active");
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.TeamBasic, "active");
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        await LoginWebUserAsync(client, user.Email!);
+        var response = await client.GetAsync("/account/settings");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+
+        Assert.Contains("Parent/Player membership: Premium Player", html);
+        Assert.Contains("Team membership: Basic Team", html);
+        Assert.Matches("Parent/Player access snapshot[\\s\\S]*Current plan:</strong> Premium Player", html);
+        Assert.Matches("Team access snapshot[\\s\\S]*Current plan:</strong> Basic Team", html);
+        Assert.Contains("href=\"/account/onboarding/choose-plan?bundle=player_parent\"", html);
+        Assert.Contains("href=\"/account/onboarding/choose-plan?bundle=team\"", html);
     }
 
     [Fact]
@@ -2255,6 +2284,95 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task ChoosePlanPost_WithMixedRoleAndPlayerSubscription_StartsTeamCheckoutWithoutChangingPlayerSubscription()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync(
+            "onboarding-plan-dual-checkout@example.com",
+            [TryOutSpotRoles.Parent, TryOutSpotRoles.TeamRepresentative]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.PremiumPlayer, "active");
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/onboarding/choose-plan?bundle=team");
+        var response = await client.PostAsync(
+            "/account/onboarding/choose-plan",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("BundleType", "team"),
+                new("PlanCode", TryOutSpotPlanCodes.TeamBasic),
+                new("BillingInterval", BillingIntervalCodes.Month)
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("https://checkout.stripe.test/session", response.Headers.Location?.ToString());
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var subscriptions = await dbContext.Subscriptions
+            .Where(current => current.UserId == user.Id)
+            .ToArrayAsync();
+        var playerSubscription = Assert.Single(subscriptions, current => current.PlanType == TryOutSpotPlanCodes.PremiumPlayer);
+        Assert.Equal("active", playerSubscription.Status);
+        Assert.False(playerSubscription.CancelAtPeriodEnd);
+
+        var teamSubscription = Assert.Single(subscriptions, current => current.PlanType == TryOutSpotPlanCodes.TeamBasic);
+        Assert.Equal("checkout_started", teamSubscription.Status);
+        Assert.Equal("price_team_basic_month", teamSubscription.StripePriceId);
+    }
+
+    [Fact]
+    public async Task ChoosePlanPost_DowngradeTeamBundleToFreeCoach_KeepsPlayerSubscriptionActive()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync(
+            "onboarding-plan-team-downgrade-only@example.com",
+            [TryOutSpotRoles.Parent, TryOutSpotRoles.TeamRepresentative]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.PremiumPlayer, "active");
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.TeamBasic, "active");
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/onboarding/choose-plan?bundle=team");
+        var response = await client.PostAsync(
+            "/account/onboarding/choose-plan",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("BundleType", "team"),
+                new("PlanCode", TryOutSpotPlanCodes.FreeCoach),
+                new("BillingInterval", BillingIntervalCodes.Month)
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/account/settings", response.Headers.Location?.ToString());
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var subscriptions = await dbContext.Subscriptions
+            .Where(current => current.UserId == user.Id)
+            .ToArrayAsync();
+
+        var playerSubscription = Assert.Single(subscriptions, current => current.PlanType == TryOutSpotPlanCodes.PremiumPlayer);
+        Assert.Equal("active", playerSubscription.Status);
+        Assert.False(playerSubscription.CancelAtPeriodEnd);
+
+        var paidTeamSubscription = Assert.Single(subscriptions, current => current.PlanType == TryOutSpotPlanCodes.TeamBasic);
+        Assert.Equal("active", paidTeamSubscription.Status);
+        Assert.True(paidTeamSubscription.CancelAtPeriodEnd);
+
+        var freeCoachSelection = Assert.Single(subscriptions, current => current.PlanType == TryOutSpotPlanCodes.FreeCoach);
+        Assert.Equal("plan_selected", freeCoachSelection.Status);
+    }
+
+    [Fact]
     public async Task Onboarding_WithPendingPaidCheckout_KeepsChoosePlanStepOpen()
     {
         await using var factory = CreateFactoryWithStripe();
@@ -2327,6 +2445,46 @@ public sealed class AccountPageTests
         var subscription = await dbContext.Subscriptions.SingleAsync(current =>
             current.UserId == user.Id && current.PlanType == TryOutSpotPlanCodes.PremiumPlayer);
         Assert.True(subscription.CancelAtPeriodEnd);
+    }
+
+    [Fact]
+    public async Task CancelMembershipPost_WithTeamBundle_CancelsOnlyTeamPaidMembership()
+    {
+        await using var factory = CreateFactoryWithStripe();
+        var user = await factory.CreateUserAsync(
+            "settings-cancel-team-only@example.com",
+            [TryOutSpotRoles.Parent, TryOutSpotRoles.TeamRepresentative]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.PremiumPlayer, "active");
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.TeamBasic, "active");
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/settings");
+        var response = await client.PostAsync(
+            "/account/settings/cancel-membership",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("bundleType", "team")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/account/settings", response.Headers.Location?.ToString());
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var subscriptions = await dbContext.Subscriptions
+            .Where(current => current.UserId == user.Id)
+            .ToArrayAsync();
+
+        var playerSubscription = Assert.Single(subscriptions, current => current.PlanType == TryOutSpotPlanCodes.PremiumPlayer);
+        Assert.False(playerSubscription.CancelAtPeriodEnd);
+
+        var teamSubscription = Assert.Single(subscriptions, current => current.PlanType == TryOutSpotPlanCodes.TeamBasic);
+        Assert.True(teamSubscription.CancelAtPeriodEnd);
     }
 
     [Fact]
@@ -2612,10 +2770,10 @@ public sealed class AccountPageTests
             ScopeType = TryOutSpotSubscriptionScopeTypes.Account,
             ScopeId = null,
             StripeCustomerId = $"cus_{Guid.NewGuid():N}",
-            StripeSubscriptionId = $"sub_{Guid.NewGuid():N}",
+            StripeSubscriptionId = $"sub_{planType}_{Guid.NewGuid():N}",
             CurrentPeriodStart = now,
             CurrentPeriodEnd = now.AddMonths(1),
-            Amount = 29m,
+            Amount = planType == TryOutSpotPlanCodes.PremiumPlayer ? 9.99m : 29m,
             Currency = "USD",
             BillingInterval = BillingIntervalCodes.Month,
             CreatedAt = now,
@@ -2785,6 +2943,18 @@ public sealed class AccountPageTests
                     {
                         MonthlyPriceId = "price_premium_month",
                         AnnualPriceId = "price_premium_year"
+                    },
+                    [TryOutSpotPlanCodes.TeamBasic] = new()
+                    {
+                        MonthlyPriceId = "price_team_basic_month"
+                    },
+                    [TryOutSpotPlanCodes.TeamProfessional] = new()
+                    {
+                        AnnualPriceId = "price_team_professional_year"
+                    },
+                    [TryOutSpotPlanCodes.EnterpriseOrganization] = new()
+                    {
+                        AnnualPriceId = "price_enterprise_organization_year"
                     }
                 };
             });
@@ -2862,19 +3032,38 @@ public sealed class AccountPageTests
             CancellationToken cancellationToken)
         {
             var now = DateTime.UtcNow;
+            var planCode = ResolvePlanCode(stripeSubscriptionId);
+            var priceId = planCode switch
+            {
+                TryOutSpotPlanCodes.TeamBasic => "price_team_basic_month",
+                TryOutSpotPlanCodes.TeamProfessional => "price_team_professional_year",
+                TryOutSpotPlanCodes.EnterpriseOrganization => "price_enterprise_organization_year",
+                _ => "price_premium_month"
+            };
+            var amount = planCode switch
+            {
+                TryOutSpotPlanCodes.TeamBasic => 29m,
+                TryOutSpotPlanCodes.TeamProfessional => 799m,
+                TryOutSpotPlanCodes.EnterpriseOrganization => 1999m,
+                _ => 9.99m
+            };
+            var billingInterval = planCode is TryOutSpotPlanCodes.TeamProfessional or TryOutSpotPlanCodes.EnterpriseOrganization
+                ? BillingIntervalCodes.Year
+                : BillingIntervalCodes.Month;
+
             return Task.FromResult<StripeSubscriptionSnapshot?>(new StripeSubscriptionSnapshot(
                 stripeSubscriptionId,
                 "cus_test_checkout",
                 null,
-                TryOutSpotPlanCodes.PremiumPlayer,
-                "price_premium_month",
+                planCode,
+                priceId,
                 "active",
                 now,
                 now.AddMonths(1),
                 null,
-                9.99m,
+                amount,
                 "usd",
-                BillingIntervalCodes.Month,
+                billingInterval,
                 TryOutSpotSubscriptionScopeTypes.Account,
                 null,
                 true,
@@ -2891,6 +3080,26 @@ public sealed class AccountPageTests
         public Event ConstructWebhookEvent(string payload, string signatureHeader)
         {
             throw new NotSupportedException("Webhook construction is not used by these tests.");
+        }
+
+        private static string ResolvePlanCode(string stripeSubscriptionId)
+        {
+            if (stripeSubscriptionId.Contains(TryOutSpotPlanCodes.TeamBasic, StringComparison.OrdinalIgnoreCase))
+            {
+                return TryOutSpotPlanCodes.TeamBasic;
+            }
+
+            if (stripeSubscriptionId.Contains(TryOutSpotPlanCodes.TeamProfessional, StringComparison.OrdinalIgnoreCase))
+            {
+                return TryOutSpotPlanCodes.TeamProfessional;
+            }
+
+            if (stripeSubscriptionId.Contains(TryOutSpotPlanCodes.EnterpriseOrganization, StringComparison.OrdinalIgnoreCase))
+            {
+                return TryOutSpotPlanCodes.EnterpriseOrganization;
+            }
+
+            return TryOutSpotPlanCodes.PremiumPlayer;
         }
     }
 }

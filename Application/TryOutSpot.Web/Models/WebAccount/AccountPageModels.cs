@@ -526,6 +526,11 @@ public sealed class ChoosePlanPageModel
     [Display(Name = "Billing interval")]
     public string BillingInterval { get; set; } = "month";
 
+    [MaxLength(50)]
+    public string? BundleType { get; set; }
+
+    public string BundleName { get; set; } = "Membership";
+
     public bool StripeIsConfigured { get; set; }
 
     public bool CheckoutAvailableForSelection { get; set; }
@@ -1994,9 +1999,17 @@ public sealed class AccountSettingsPageModel
 
     public bool CanCancelPaidMembership { get; set; }
 
+    public bool CanCancelPlayerParentPaidMembership { get; set; }
+
+    public bool CanCancelTeamPaidMembership { get; set; }
+
     public bool HasScheduledPaidCancellation { get; set; }
 
     public DateTime? ScheduledPaidCancellationAt { get; set; }
+
+    public DateTime? PlayerParentScheduledPaidCancellationAt { get; set; }
+
+    public DateTime? TeamScheduledPaidCancellationAt { get; set; }
 
     public DashboardActivityPreferencesResponse? DashboardActivityPreferences { get; set; }
 }
@@ -2107,6 +2120,8 @@ public sealed class SmsConsentSettingsPageModel
 }
 
 public sealed record AccountMembershipSummaryItem(
+    string PlanCode,
+    string BundleType,
     string PlanName,
     string Status,
     string BillingInterval,

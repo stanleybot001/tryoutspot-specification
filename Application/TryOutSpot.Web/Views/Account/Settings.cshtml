@@ -5,6 +5,16 @@
 
 @{
     ViewData["Title"] = "Account Settings";
+    const string playerParentBundleCode = "player_parent";
+    const string teamBundleCode = "team";
+    var playerParentPlans = Model.RecommendedPlans
+        .Where(plan => IsPlayerParentPlan(plan.Code))
+        .ToArray();
+    var teamPlans = Model.RecommendedPlans
+        .Where(plan => IsTeamPlan(plan.Code))
+        .ToArray();
+    var playerParentMembership = FindMembershipForBundle(Model, playerParentBundleCode);
+    var teamMembership = FindMembershipForBundle(Model, teamBundleCode);
 }
 
 <section class="account-page">
@@ -224,9 +234,8 @@
                 </div>
                 @if (!string.IsNullOrWhiteSpace(selectedPlayerParentRole))
                 {
-                    var primaryMembership = Model.MembershipSummaries.FirstOrDefault();
-                    var playerParentPlanName = primaryMembership?.PlanName ?? Model.CurrentPlanName ?? "No plan selected";
-                    var playerParentPlanStatus = primaryMembership?.Status ?? Model.CurrentPlanStatus;
+                    var playerParentPlanName = playerParentMembership?.PlanName ?? "Free Player/Parent";
+                    var playerParentPlanStatus = playerParentMembership?.Status ?? "Active";
                     <div class="team-access-snapshot">
                         <p class="team-access-title">Parent/Player access snapshot</p>
                         <p class="team-access-line"><strong>Role:</strong> @selectedPlayerParentRole</p>
@@ -265,9 +274,8 @@
                 </div>
                 @if (TryOutSpotRoles.IsTeamBundleRole(selectedTeamRole))
                 {
-                    var primaryMembership = Model.MembershipSummaries.FirstOrDefault();
-                    var teamPlanName = primaryMembership?.PlanName ?? Model.CurrentPlanName ?? "No team plan selected";
-                    var teamPlanStatus = primaryMembership?.Status ?? Model.CurrentPlanStatus;
+                    var teamPlanName = teamMembership?.PlanName ?? "Free Coach";
+                    var teamPlanStatus = teamMembership?.Status ?? "Active";
                     <div class="team-access-snapshot">
                         <p class="team-access-title">Team access snapshot</p>
                         <p class="team-access-line"><strong>Role:</strong> @selectedTeamRole</p>
@@ -361,55 +369,203 @@
         <section class="form-section settings-wide">
             <h2>Membership access</h2>
             <p class="section-help">Paid plans redirect to Stripe checkout when selected. Upgrades are enabled after Stripe confirms payment. Downgrades and cancellations schedule Stripe period-end cancellation so access stays active through the paid term.</p>
-            @if (Model.MembershipSummaries.Count > 0)
+            @if (playerParentPlans.Length > 0)
             {
-                var primaryMembership = Model.MembershipSummaries.First();
+                var currentPlayerParentPlanName = playerParentMembership?.PlanName ?? "Free Player/Parent";
+                var currentPlayerParentStatus = playerParentMembership?.Status ?? "Active";
                 <div class="plan-list membership-summary-list">
                     <div class="plan-row">
                         <div>
-                            <strong>Current membership: @primaryMembership.PlanName</strong>
-                            <span>@primaryMembership.Scope scope</span>
-                            <p>Status: @primaryMembership.Status</p>
-                            @if (primaryMembership.CurrentPeriodEnd is not null)
+                            <strong>Parent/Player membership: @currentPlayerParentPlanName</strong>
+                            <span>@(playerParentMembership?.Scope ?? "Account") scope</span>
+                            <p>Status: @currentPlayerParentStatus</p>
+                            @if (playerParentMembership?.CurrentPeriodEnd is not null)
                             {
-                                var periodEndLabel = primaryMembership.CurrentPeriodEndLabel
-                                    ?? (primaryMembership.CancelAtPeriodEnd
+                                var periodEndLabel = playerParentMembership.CurrentPeriodEndLabel
+                                    ?? (playerParentMembership.CancelAtPeriodEnd
                                     ? "Access ends"
                                     : "Next billing date");
-                                <p>@periodEndLabel: @FormatLocalDate(primaryMembership.CurrentPeriodEnd.Value)</p>
+                                <p>@periodEndLabel: @FormatLocalDate(playerParentMembership.CurrentPeriodEnd.Value)</p>
                             }
-                            else
+                            else if (playerParentMembership is not null)
                             {
-                                <p>Last updated: @FormatLocalDate(primaryMembership.UpdatedAt)</p>
+                                <p>Last updated: @FormatLocalDate(playerParentMembership.UpdatedAt)</p>
                             }
                         </div>
                         <div class="plan-price">
-                            <strong>@primaryMembership.Price</strong>
-                            <span>@primaryMembership.BillingInterval</span>
-                            @if (primaryMembership.CancelAtPeriodEnd)
+                            <strong>@(playerParentMembership?.Price ?? "Free")</strong>
+                            <span>@(playerParentMembership?.BillingInterval ?? "Monthly")</span>
+                            @if (playerParentMembership?.CancelAtPeriodEnd == true)
                             {
                                 <span>Cancels at period end</span>
                             }
-                            else if (primaryMembership.HasActiveEntitlement)
+                            else if (playerParentMembership?.HasActiveEntitlement == true)
                             {
-                                <span>@(primaryMembership.ActiveEntitlementLabel ?? "Active entitlement")</span>
+                                <span>@(playerParentMembership.ActiveEntitlementLabel ?? "Active entitlement")</span>
+                            }
+                            else
+                            {
+                                <span>No payment required</span>
                             }
                         </div>
                     </div>
                 </div>
+                <div class="form-actions">
+                    <a class="btn btn-primary" href="/account/onboarding/choose-plan?bundle=@playerParentBundleCode">Choose or change Parent/Player plan</a>
+                    @if (Model.CanCancelPlayerParentPaidMembership)
+                    {
+                        <form asp-action="CancelMembership" asp-controller="Account" method="post" class="inline-form">
+                            <input type="hidden" name="bundleType" value="@playerParentBundleCode" />
+                            <button type="submit" class="btn btn-outline-danger">Cancel Parent/Player paid membership</button>
+                        </form>
+                    }
+                </div>
+                @if (Model.PlayerParentScheduledPaidCancellationAt is not null)
+                {
+                    <p class="section-help">Parent/Player paid cancellation is scheduled for @FormatLocalDate(Model.PlayerParentScheduledPaidCancellationAt.Value).</p>
+                }
+                <div class="plan-list">
+                    @foreach (var plan in playerParentPlans)
+                    {
+                        var isCurrentPlan = IsCurrentPlanForBundle(plan, playerParentMembership, TryOutSpotPlanCodes.FreePlayerParent);
+                        <div class="plan-row @(isCurrentPlan ? "plan-row-active" : null)">
+                            <div>
+                                <strong>@plan.Name</strong>
+                                <span>@plan.Audience</span>
+                                <p>@plan.Description</p>
+                                @if (isCurrentPlan)
+                                {
+                                    <span class="active-plan-badge">Active plan</span>
+                                }
+                            </div>
+                            <div class="plan-price">
+                                @if (TryOutSpotBillingCatalog.RequiresAnnualCommitment(plan.Code) && plan.AnnualAmount is not null)
+                                {
+                                    <strong>@($"{plan.AnnualAmount.Value:C0}/yr")</strong>
+                                    <span>Annual only</span>
+                                }
+                                else
+                                {
+                                    <strong>@FormatMonthlyAmount(plan.MonthlyAmount)</strong>
+                                }
+                                @if (plan.TrialDays is not null)
+                                {
+                                    <span>@plan.TrialDays-day trial</span>
+                                }
+                                else if (!plan.RequiresStripeSubscription)
+                                {
+                                    <span>No payment required</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
             }
+
+            @if (teamPlans.Length > 0)
+            {
+                var currentTeamPlanName = teamMembership?.PlanName ?? "Free Coach";
+                var currentTeamStatus = teamMembership?.Status ?? "Active";
+                <div class="plan-list membership-summary-list">
+                    <div class="plan-row">
+                        <div>
+                            <strong>Team membership: @currentTeamPlanName</strong>
+                            <span>@(teamMembership?.Scope ?? "Account") scope</span>
+                            <p>Status: @currentTeamStatus</p>
+                            @if (teamMembership?.CurrentPeriodEnd is not null)
+                            {
+                                var periodEndLabel = teamMembership.CurrentPeriodEndLabel
+                                    ?? (teamMembership.CancelAtPeriodEnd
+                                    ? "Access ends"
+                                    : "Next billing date");
+                                <p>@periodEndLabel: @FormatLocalDate(teamMembership.CurrentPeriodEnd.Value)</p>
+                            }
+                            else if (teamMembership is not null)
+                            {
+                                <p>Last updated: @FormatLocalDate(teamMembership.UpdatedAt)</p>
+                            }
+                        </div>
+                        <div class="plan-price">
+                            <strong>@(teamMembership?.Price ?? "Free")</strong>
+                            <span>@(teamMembership?.BillingInterval ?? "Monthly")</span>
+                            @if (teamMembership?.CancelAtPeriodEnd == true)
+                            {
+                                <span>Cancels at period end</span>
+                            }
+                            else if (teamMembership?.HasActiveEntitlement == true)
+                            {
+                                <span>@(teamMembership.ActiveEntitlementLabel ?? "Active entitlement")</span>
+                            }
+                            else
+                            {
+                                <span>No payment required</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <a class="btn btn-primary" href="/account/onboarding/choose-plan?bundle=@teamBundleCode">Choose or change Team plan</a>
+                    @if (Model.CanCancelTeamPaidMembership)
+                    {
+                        <form asp-action="CancelMembership" asp-controller="Account" method="post" class="inline-form">
+                            <input type="hidden" name="bundleType" value="@teamBundleCode" />
+                            <button type="submit" class="btn btn-outline-danger">Cancel Team paid membership</button>
+                        </form>
+                    }
+                </div>
+                @if (Model.TeamScheduledPaidCancellationAt is not null)
+                {
+                    <p class="section-help">Team paid cancellation is scheduled for @FormatLocalDate(Model.TeamScheduledPaidCancellationAt.Value).</p>
+                }
+                <div class="plan-list">
+                    @foreach (var plan in teamPlans)
+                    {
+                        var isCurrentPlan = IsCurrentPlanForBundle(plan, teamMembership, TryOutSpotPlanCodes.FreeCoach);
+                        <div class="plan-row @(isCurrentPlan ? "plan-row-active" : null)">
+                            <div>
+                                <strong>@plan.Name</strong>
+                                <span>@plan.Audience</span>
+                                <p>@plan.Description</p>
+                                @if (isCurrentPlan)
+                                {
+                                    <span class="active-plan-badge">Active plan</span>
+                                }
+                            </div>
+                            <div class="plan-price">
+                                @if (TryOutSpotBillingCatalog.RequiresAnnualCommitment(plan.Code) && plan.AnnualAmount is not null)
+                                {
+                                    <strong>@($"{plan.AnnualAmount.Value:C0}/yr")</strong>
+                                    <span>Annual only</span>
+                                }
+                                else
+                                {
+                                    <strong>@FormatMonthlyAmount(plan.MonthlyAmount)</strong>
+                                }
+                                @if (plan.TrialDays is not null)
+                                {
+                                    <span>@plan.TrialDays-day trial</span>
+                                }
+                                else if (!plan.RequiresStripeSubscription)
+                                {
+                                    <span>No payment required</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
             <div class="form-actions">
-                <a class="btn btn-primary" href="/account/onboarding/choose-plan">Choose or change plan</a>
                 @if (Model.HasStripeCustomer)
                 {
                     <form asp-action="OpenBillingPortal" asp-controller="Account" method="post" class="inline-form">
                         <button type="submit" class="btn btn-outline-primary">Manage billing in Stripe</button>
                     </form>
                 }
-                @if (Model.CanCancelPaidMembership)
+                @if (Model.CanCancelPaidMembership && Model.CanCancelPlayerParentPaidMembership && Model.CanCancelTeamPaidMembership)
                 {
                     <form asp-action="CancelMembership" asp-controller="Account" method="post" class="inline-form">
-                        <button type="submit" class="btn btn-outline-danger">Cancel paid membership</button>
+                        <button type="submit" class="btn btn-outline-danger">Cancel all paid memberships</button>
                     </form>
                 }
             </div>
@@ -427,44 +583,44 @@
             }
             @if (Model.HasScheduledPaidCancellation && Model.ScheduledPaidCancellationAt is not null)
             {
-                <p class="section-help">Paid cancellation is already scheduled. Premium access remains until @FormatLocalDate(Model.ScheduledPaidCancellationAt.Value).</p>
+                <p class="section-help">At least one paid cancellation is scheduled. Access remains until the matching paid period ends.</p>
             }
-            <div class="plan-list">
-                @foreach (var plan in Model.RecommendedPlans)
-                {
-                    var isCurrentPlan = IsCurrentRecommendedPlan(plan, Model);
-                    <div class="plan-row @(isCurrentPlan ? "plan-row-active" : null)">
-                        <div>
-                            <strong>@plan.Name</strong>
-                            <span>@plan.Audience</span>
-                            <p>@plan.Description</p>
-                            @if (isCurrentPlan)
-                            {
-                                <span class="active-plan-badge">Active plan</span>
+            @if (Model.MembershipSummaries.Count > 0)
+            {
+                <div class="plan-list membership-summary-list">
+                    @foreach (var membership in Model.MembershipSummaries)
+                    {
+                        <div class="plan-row">
+                            <div>
+                                <strong>Current membership: @membership.PlanName</strong>
+                                <span>@FormatBundleLabel(membership.BundleType) bundle</span>
+                                <p>Status: @membership.Status</p>
+                                @if (membership.CurrentPeriodEnd is not null)
+                                {
+                                    var periodEndLabel = membership.CurrentPeriodEndLabel
+                                        ?? (membership.CancelAtPeriodEnd
+                                        ? "Access ends"
+                                        : "Next billing date");
+                                    <p>@periodEndLabel: @FormatLocalDate(membership.CurrentPeriodEnd.Value)</p>
+                                }
+                            </div>
+                            <div class="plan-price">
+                                <strong>@membership.Price</strong>
+                                <span>@membership.BillingInterval</span>
+                                @if (membership.CancelAtPeriodEnd)
+                                {
+                                    <span>Cancels at period end</span>
+                                }
+                                else if (membership.HasActiveEntitlement)
+                                {
+                                    <span>@(membership.ActiveEntitlementLabel ?? "Active entitlement")</span>
+                                }
                             }
+                            </div>
                         </div>
-                        <div class="plan-price">
-                            @if (TryOutSpotBillingCatalog.RequiresAnnualCommitment(plan.Code) && plan.AnnualAmount is not null)
-                            {
-                                <strong>@($"{plan.AnnualAmount.Value:C0}/yr")</strong>
-                                <span>Annual only</span>
-                            }
-                            else
-                            {
-                                <strong>@FormatMonthlyAmount(plan.MonthlyAmount)</strong>
-                            }
-                            @if (plan.TrialDays is not null)
-                            {
-                                <span>@plan.TrialDays-day trial</span>
-                            }
-                            else if (!plan.RequiresStripeSubscription)
-                            {
-                                <span>No payment required</span>
-                            }
-                        </div>
-                    </div>
-                }
-            </div>
+                    }
+                </div>
+            }
             @if (Model.FeatureCodes.Count > 0)
             {
                 <div class="feature-code-list settings-feature-list">
@@ -491,6 +647,45 @@
     private static string FormatLocalDate(DateTime value)
     {
         return value.ToLocalTime().ToString("MMM d, yyyy h:mm tt");
+    }
+
+    private static bool IsPlayerParentPlan(string planCode)
+    {
+        return string.Equals(planCode, TryOutSpotPlanCodes.FreePlayerParent, StringComparison.Ordinal)
+            || string.Equals(planCode, TryOutSpotPlanCodes.PremiumPlayer, StringComparison.Ordinal);
+    }
+
+    private static bool IsTeamPlan(string planCode)
+    {
+        return string.Equals(planCode, TryOutSpotPlanCodes.FreeCoach, StringComparison.Ordinal)
+            || string.Equals(planCode, TryOutSpotPlanCodes.TeamBasic, StringComparison.Ordinal)
+            || string.Equals(planCode, TryOutSpotPlanCodes.TeamProfessional, StringComparison.Ordinal)
+            || string.Equals(planCode, TryOutSpotPlanCodes.EnterpriseOrganization, StringComparison.Ordinal);
+    }
+
+    private static AccountMembershipSummaryItem? FindMembershipForBundle(AccountSettingsPageModel model, string bundleType)
+    {
+        return model.MembershipSummaries.FirstOrDefault(membership =>
+                string.Equals(membership.BundleType, bundleType, StringComparison.Ordinal)
+                && membership.HasActiveEntitlement)
+            ?? model.MembershipSummaries.FirstOrDefault(membership =>
+                string.Equals(membership.BundleType, bundleType, StringComparison.Ordinal));
+    }
+
+    private static bool IsCurrentPlanForBundle(
+        BillingPlanResponse plan,
+        AccountMembershipSummaryItem? membership,
+        string fallbackPlanCode)
+    {
+        var currentPlanCode = membership?.PlanCode ?? fallbackPlanCode;
+        return string.Equals(plan.Code, currentPlanCode, StringComparison.Ordinal);
+    }
+
+    private static string FormatBundleLabel(string bundleType)
+    {
+        return string.Equals(bundleType, "team", StringComparison.Ordinal)
+            ? "Team"
+            : "Parent/Player";
     }
 
     private static bool IsCurrentRecommendedPlan(BillingPlanResponse plan, AccountSettingsPageModel model)

@@ -59,6 +59,8 @@ public sealed class AccountController(
     private const int FavoriteListLimit = 100;
     private const int DefaultSearchPageSize = 20;
     private const int MaxSearchPageSize = 50;
+    private const string PlayerParentBundleCode = "player_parent";
+    private const string TeamBundleCode = "team";
     private static readonly ListingReportReasonOptionPageItem[] ListingReportReasonOptions =
     [
         new("Inappropriate content", "Inappropriate content"),
@@ -4170,7 +4172,9 @@ public sealed class AccountController(
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
     [HttpGet("onboarding/choose-plan")]
-    public async Task<IActionResult> ChoosePlan(CancellationToken cancellationToken)
+    public async Task<IActionResult> ChoosePlan(
+        [FromQuery] string? bundle,
+        CancellationToken cancellationToken)
     {
         var user = await GetCurrentWebUserAsync();
         if (user is null)
@@ -4178,7 +4182,10 @@ public sealed class AccountController(
             return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(ChoosePlan)) });
         }
 
-        var model = await BuildChoosePlanPageModelAsync(user, new ChoosePlanPageModel(), cancellationToken);
+        var model = await BuildChoosePlanPageModelAsync(
+            user,
+            new ChoosePlanPageModel { BundleType = bundle },
+            cancellationToken);
         return View(model);
     }
 
@@ -4195,7 +4202,14 @@ public sealed class AccountController(
         }
 
         var roles = await GetCanonicalPublicRolesAsync(user);
-        var availablePlans = GetPlansForAccountTypes(roles);
+        var requestedBundleType = ParseBundleType(model.BundleType);
+        if (!string.IsNullOrWhiteSpace(model.BundleType) && requestedBundleType is null)
+        {
+            ModelState.AddModelError(nameof(model.BundleType), "Choose a supported membership bundle.");
+            return View(await BuildChoosePlanPageModelAsync(user, model, cancellationToken));
+        }
+
+        var availablePlans = GetPlansForAccountTypes(roles, requestedBundleType);
         if (availablePlans.Count == 0)
         {
             TempData["StatusMessage"] = "No plan options are available for the selected account types yet.";
@@ -4210,6 +4224,16 @@ public sealed class AccountController(
             ModelState.AddModelError(nameof(model.PlanCode), "Choose one of the available plans.");
             return View(await BuildChoosePlanPageModelAsync(user, model, cancellationToken));
         }
+
+        var selectedPlanBundleType = GetBundleTypeForPlan(selectedPlan.Code);
+        if (requestedBundleType is not null && selectedPlanBundleType != requestedBundleType.Value)
+        {
+            ModelState.AddModelError(nameof(model.PlanCode), "Choose a plan from the selected membership bundle.");
+            return View(await BuildChoosePlanPageModelAsync(user, model, cancellationToken));
+        }
+
+        var effectiveBundleType = requestedBundleType ?? selectedPlanBundleType;
+        model.BundleType = ToBundleCode(effectiveBundleType);
 
         var billingInterval = BillingIntervalCodes.Normalize(model.BillingInterval);
         if (billingInterval is null)
@@ -4259,7 +4283,10 @@ public sealed class AccountController(
 
         if (!selectedPlan.RequiresStripeSubscription)
         {
-            var activePaidMemberships = await GetActivePaidAccountMembershipsAsync(user.Id, cancellationToken);
+            var activePaidMemberships = await GetActivePaidMembershipsAsync(
+                user.Id,
+                effectiveBundleType,
+                cancellationToken);
             var cancelablePaidMemberships = activePaidMemberships
                 .Where(subscription => !subscription.CancelAtPeriodEnd)
                 .Where(subscription => !string.IsNullOrWhiteSpace(subscription.StripeSubscriptionId))
@@ -4299,11 +4326,11 @@ public sealed class AccountController(
 
                     TempData["StatusMessage"] = cancelablePaidMemberships.Length == 0
                         ? cancellationPeriodEnd is null
-                            ? "Your paid plan is already scheduled to end. Your account will move to free automatically when the current billing period closes."
-                            : $"Your paid plan is already scheduled to end on {FormatDisplayDate(cancellationPeriodEnd.Value)}. Your account will move to free automatically."
+                            ? $"Your paid {FormatBundleDisplayName(effectiveBundleType).ToLowerInvariant()} plan is already scheduled to end. That bundle will move to free automatically when the current billing period closes."
+                            : $"Your paid {FormatBundleDisplayName(effectiveBundleType).ToLowerInvariant()} plan is already scheduled to end on {FormatDisplayDate(cancellationPeriodEnd.Value)}. That bundle will move to free automatically."
                         : cancellationPeriodEnd is null
-                            ? "Downgrade scheduled. Your paid plan will remain active until the current Stripe billing period ends, then move to free."
-                            : $"Downgrade scheduled. Your paid plan remains active until {FormatDisplayDate(cancellationPeriodEnd.Value)}, then moves to free.";
+                            ? $"Downgrade scheduled. Your paid {FormatBundleDisplayName(effectiveBundleType).ToLowerInvariant()} plan will remain active until the current Stripe billing period ends, then move to free."
+                            : $"Downgrade scheduled. Your paid {FormatBundleDisplayName(effectiveBundleType).ToLowerInvariant()} plan remains active until {FormatDisplayDate(cancellationPeriodEnd.Value)}, then moves to free.";
                     return RedirectToAction(nameof(Settings));
                 }
                 catch (InvalidOperationException)
@@ -4327,6 +4354,37 @@ public sealed class AccountController(
 
             TempData["StatusMessage"] = $"{selectedPlan.Name} selected.";
             return RedirectToAction(nameof(Onboarding));
+        }
+
+        var activePaidBundleMemberships = await GetActivePaidMembershipsAsync(
+            user.Id,
+            effectiveBundleType,
+            cancellationToken);
+        var activeSamePlanMembership = activePaidBundleMemberships.FirstOrDefault(subscription =>
+            string.Equals(
+                TryOutSpotBillingCatalog.NormalizePlanCode(subscription.PlanType),
+                selectedPlan.Code,
+                StringComparison.Ordinal)
+            && !subscription.CancelAtPeriodEnd);
+        if (activeSamePlanMembership is not null)
+        {
+            TempData["StatusMessage"] = $"{selectedPlan.Name} is already active for {FormatBundleDisplayName(effectiveBundleType).ToLowerInvariant()} access.";
+            return RedirectToAction(nameof(Settings));
+        }
+
+        var activeDifferentPaidMemberships = activePaidBundleMemberships
+            .Where(subscription => !subscription.CancelAtPeriodEnd)
+            .Where(subscription => !string.Equals(
+                TryOutSpotBillingCatalog.NormalizePlanCode(subscription.PlanType),
+                selectedPlan.Code,
+                StringComparison.Ordinal))
+            .ToArray();
+        if (activeDifferentPaidMemberships.Length > 0)
+        {
+            ModelState.AddModelError(
+                nameof(model.PlanCode),
+                $"A paid {FormatBundleDisplayName(effectiveBundleType).ToLowerInvariant()} plan is already active. Downgrade that bundle to free or manage billing before choosing another paid plan for the same bundle.");
+            return View(await BuildChoosePlanPageModelAsync(user, model, cancellationToken));
         }
 
         var stripePriceId = stripeBillingOptions.GetPriceId(selectedPlan.Code, billingInterval);
@@ -4439,7 +4497,9 @@ public sealed class AccountController(
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
     [HttpPost("settings/cancel-membership")]
-    public async Task<IActionResult> CancelMembership(CancellationToken cancellationToken)
+    public async Task<IActionResult> CancelMembership(
+        [FromForm] string? bundleType,
+        CancellationToken cancellationToken)
     {
         var user = await GetCurrentWebUserAsync();
         if (user is null)
@@ -4447,10 +4507,23 @@ public sealed class AccountController(
             return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Settings)) });
         }
 
-        var activePaidMemberships = await GetActivePaidAccountMembershipsAsync(user.Id, cancellationToken);
+        var requestedBundleType = ParseBundleType(bundleType);
+        if (!string.IsNullOrWhiteSpace(bundleType) && requestedBundleType is null)
+        {
+            TempData["StatusMessage"] = "Choose a supported membership bundle to cancel.";
+            return RedirectToAction(nameof(Settings));
+        }
+
+        var activePaidMemberships = await GetActivePaidMembershipsAsync(
+            user.Id,
+            requestedBundleType,
+            cancellationToken);
+        var membershipLabel = requestedBundleType is null
+            ? "paid membership"
+            : $"paid {FormatBundleDisplayName(requestedBundleType.Value).ToLowerInvariant()} membership";
         if (activePaidMemberships.Count == 0)
         {
-            TempData["StatusMessage"] = "No active paid membership is available to cancel.";
+            TempData["StatusMessage"] = $"No active {membershipLabel} is available to cancel.";
             return RedirectToAction(nameof(Settings));
         }
 
@@ -4466,8 +4539,8 @@ public sealed class AccountController(
                 .OrderBy(date => date)
                 .FirstOrDefault();
             TempData["StatusMessage"] = alreadyScheduledAt is null
-                ? "Your paid cancellation is already scheduled."
-                : $"Your paid cancellation is already scheduled for {FormatDisplayDate(alreadyScheduledAt.Value)}.";
+                ? $"Your {membershipLabel} cancellation is already scheduled."
+                : $"Your {membershipLabel} cancellation is already scheduled for {FormatDisplayDate(alreadyScheduledAt.Value)}.";
             return RedirectToAction(nameof(Settings));
         }
 
@@ -4485,8 +4558,8 @@ public sealed class AccountController(
                 cancellationToken);
 
             TempData["StatusMessage"] = cancellationPeriodEnd is null
-                ? "Cancellation scheduled. Paid access remains active until the end of your current billing period."
-                : $"Cancellation scheduled. Paid access remains active until {FormatDisplayDate(cancellationPeriodEnd.Value)}.";
+                ? $"Cancellation scheduled. Your {membershipLabel} remains active until the end of the current billing period."
+                : $"Cancellation scheduled. Your {membershipLabel} remains active until {FormatDisplayDate(cancellationPeriodEnd.Value)}.";
         }
         catch (InvalidOperationException)
         {
@@ -6677,7 +6750,7 @@ public sealed class AccountController(
         else if (!hasTeamBasicOrHigherPlan)
         {
             actionLabel = "Choose Basic Team";
-            actionUrl = "/account/onboarding/choose-plan";
+            actionUrl = $"/account/onboarding/choose-plan?bundle={TeamBundleCode}";
         }
         else if (!hasTeamProfile)
         {
@@ -8407,16 +8480,25 @@ public sealed class AccountController(
         CancellationToken cancellationToken)
     {
         var roles = await GetCanonicalPublicRolesAsync(user);
-        var availablePlans = GetPlansForAccountTypes(roles);
-        var latestSelection = await dbContext.Subscriptions
+        var requestedBundleType = ParseBundleType(model.BundleType);
+        var availablePlans = GetPlansForAccountTypes(roles, requestedBundleType);
+        var latestSelections = await dbContext.Subscriptions
             .AsNoTracking()
-            .Where(subscription => subscription.UserId == user.Id
-                && subscription.ScopeType == TryOutSpotSubscriptionScopeTypes.Account)
+            .Where(subscription => subscription.UserId == user.Id)
             .OrderByDescending(subscription => subscription.UpdatedAt)
-            .FirstOrDefaultAsync(cancellationToken);
+            .ToArrayAsync(cancellationToken);
+        var latestSelection = latestSelections
+            .FirstOrDefault(subscription => requestedBundleType is null
+                || SubscriptionBelongsToBundle(subscription, requestedBundleType.Value));
 
         model.AvailablePlans = availablePlans;
         model.StripeIsConfigured = stripeBillingOptions.IsConfigured;
+        model.BundleType = requestedBundleType is null
+            ? null
+            : ToBundleCode(requestedBundleType.Value);
+        model.BundleName = requestedBundleType is null
+            ? "Membership"
+            : FormatBundleDisplayName(requestedBundleType.Value);
 
         if (string.IsNullOrWhiteSpace(model.PlanCode))
         {
@@ -10947,13 +11029,13 @@ public sealed class AccountController(
         return true;
     }
 
-    private async Task<IReadOnlyCollection<Subscription>> GetActivePaidAccountMembershipsAsync(
+    private async Task<IReadOnlyCollection<Subscription>> GetActivePaidMembershipsAsync(
         Guid userId,
+        BundleType? bundleType,
         CancellationToken cancellationToken)
     {
         var subscriptions = await dbContext.Subscriptions
             .Where(subscription => subscription.UserId == userId
-                && subscription.ScopeType == TryOutSpotSubscriptionScopeTypes.Account
                 && subscription.StripeSubscriptionId != null
                 && subscription.StripeSubscriptionId != string.Empty)
             .OrderByDescending(subscription => subscription.UpdatedAt)
@@ -10961,6 +11043,7 @@ public sealed class AccountController(
 
         return subscriptions
             .Where(IsActivePaidSubscription)
+            .Where(subscription => bundleType is null || SubscriptionBelongsToBundle(subscription, bundleType.Value))
             .ToArray();
     }
 
@@ -11010,11 +11093,13 @@ public sealed class AccountController(
         CancellationToken cancellationToken)
     {
         var subscription = await dbContext.Subscriptions
-            .SingleOrDefaultAsync(currentSubscription =>
+            .Where(currentSubscription =>
                 currentSubscription.UserId == user.Id
                 && currentSubscription.PlanType == planCode
                 && currentSubscription.ScopeType == TryOutSpotSubscriptionScopeTypes.Account
-                && currentSubscription.ScopeId == null,
+                && currentSubscription.ScopeId == null)
+            .OrderByDescending(currentSubscription => currentSubscription.UpdatedAt)
+            .FirstOrDefaultAsync(
                 cancellationToken);
         if (subscription is not null)
         {
@@ -11102,14 +11187,32 @@ public sealed class AccountController(
                 !subscription.CancelAtPeriodEnd
                 && !string.IsNullOrWhiteSpace(subscription.StripeSubscriptionId))
             .ToArray();
+        var cancelablePlayerParentPaidMemberships = cancelablePaidMemberships
+            .Where(subscription => SubscriptionBelongsToBundle(subscription, BundleType.PlayerParent))
+            .ToArray();
+        var cancelableTeamPaidMemberships = cancelablePaidMemberships
+            .Where(subscription => SubscriptionBelongsToBundle(subscription, BundleType.Team))
+            .ToArray();
         var scheduledPaidCancellationAt = activePaidSubscriptions
+            .Where(subscription => subscription.CancelAtPeriodEnd && subscription.CurrentPeriodEnd is not null)
+            .Select(subscription => subscription.CurrentPeriodEnd)
+            .OrderBy(date => date)
+            .FirstOrDefault();
+        var playerParentScheduledPaidCancellationAt = activePaidSubscriptions
+            .Where(subscription => SubscriptionBelongsToBundle(subscription, BundleType.PlayerParent))
+            .Where(subscription => subscription.CancelAtPeriodEnd && subscription.CurrentPeriodEnd is not null)
+            .Select(subscription => subscription.CurrentPeriodEnd)
+            .OrderBy(date => date)
+            .FirstOrDefault();
+        var teamScheduledPaidCancellationAt = activePaidSubscriptions
+            .Where(subscription => SubscriptionBelongsToBundle(subscription, BundleType.Team))
             .Where(subscription => subscription.CancelAtPeriodEnd && subscription.CurrentPeriodEnd is not null)
             .Select(subscription => subscription.CurrentPeriodEnd)
             .OrderBy(date => date)
             .FirstOrDefault();
         var hasStripeCustomer = subscriptions.Any(subscription =>
             !string.IsNullOrWhiteSpace(subscription.StripeCustomerId));
-        var hasPendingPaidPlanSelection = activePaidSubscriptions.Length == 0 && subscriptions.Any(subscription =>
+        var hasPendingPaidPlanSelection = subscriptions.Any(subscription =>
         {
             var plan = TryOutSpotBillingCatalog.GetPlan(subscription.PlanType);
             if (plan?.RequiresStripeSubscription != true)
@@ -11169,8 +11272,12 @@ public sealed class AccountController(
             HasPendingPaidPlanSelection = hasPendingPaidPlanSelection,
             MembershipSummaries = BuildMembershipSummaries(subscriptions, complimentaryGrants, now),
             CanCancelPaidMembership = cancelablePaidMemberships.Length > 0 && stripeBillingOptions.IsConfigured,
+            CanCancelPlayerParentPaidMembership = cancelablePlayerParentPaidMemberships.Length > 0 && stripeBillingOptions.IsConfigured,
+            CanCancelTeamPaidMembership = cancelableTeamPaidMemberships.Length > 0 && stripeBillingOptions.IsConfigured,
             HasScheduledPaidCancellation = scheduledPaidCancellationAt is not null,
             ScheduledPaidCancellationAt = scheduledPaidCancellationAt,
+            PlayerParentScheduledPaidCancellationAt = playerParentScheduledPaidCancellationAt,
+            TeamScheduledPaidCancellationAt = teamScheduledPaidCancellationAt,
             DashboardActivityPreferences = dashboardActivityPreferences
         };
     }
@@ -11292,7 +11399,9 @@ public sealed class AccountController(
         ];
     }
 
-    private static IReadOnlyCollection<BillingPlanResponse> GetPlansForAccountTypes(IEnumerable<string> accountTypes)
+    private static IReadOnlyCollection<BillingPlanResponse> GetPlansForAccountTypes(
+        IEnumerable<string> accountTypes,
+        BundleType? bundleType = null)
     {
         return TryOutSpotBillingCatalog.GetEligiblePlanCodesForAccountTypes(
                 accountTypes,
@@ -11300,6 +11409,7 @@ public sealed class AccountController(
             .Select(TryOutSpotBillingCatalog.GetPlan)
             .Where(plan => plan is not null)
             .Cast<BillingPlanDefinition>()
+            .Where(plan => bundleType is null || PlanBelongsToBundle(plan.Code, bundleType.Value))
             .Select(plan => new BillingPlanResponse(
                 plan.Code,
                 plan.Name,
@@ -11822,6 +11932,64 @@ public sealed class AccountController(
         }
     }
 
+    private static BundleType? ParseBundleType(string? bundleType)
+    {
+        if (string.IsNullOrWhiteSpace(bundleType))
+        {
+            return null;
+        }
+
+        return bundleType.Trim().Replace("-", "_").Replace(" ", "_").ToLowerInvariant() switch
+        {
+            PlayerParentBundleCode or "player" or "parent" or "parent_player" or "playerparent" =>
+                BundleType.PlayerParent,
+            TeamBundleCode or "coach" or "team_representative" or "teamrepresentative" =>
+                BundleType.Team,
+            _ => null
+        };
+    }
+
+    private static string ToBundleCode(BundleType bundleType)
+    {
+        return bundleType switch
+        {
+            BundleType.Team => TeamBundleCode,
+            _ => PlayerParentBundleCode
+        };
+    }
+
+    private static string FormatBundleDisplayName(BundleType bundleType)
+    {
+        return bundleType switch
+        {
+            BundleType.Team => "Team",
+            _ => "Parent/Player"
+        };
+    }
+
+    private static BundleType GetBundleTypeForPlan(string? planCode)
+    {
+        return TryOutSpotBillingCatalog.NormalizePlanCode(planCode) switch
+        {
+            TryOutSpotPlanCodes.FreeCoach
+                or TryOutSpotPlanCodes.TeamBasic
+                or TryOutSpotPlanCodes.TeamProfessional
+                or TryOutSpotPlanCodes.EnterpriseOrganization => BundleType.Team,
+            _ => BundleType.PlayerParent
+        };
+    }
+
+    private static bool PlanBelongsToBundle(string planCode, BundleType bundleType)
+    {
+        return GetBundleTypeForPlan(planCode) == bundleType;
+    }
+
+    private static bool SubscriptionBelongsToBundle(Subscription subscription, BundleType bundleType)
+    {
+        var normalizedPlanCode = TryOutSpotBillingCatalog.NormalizePlanCode(subscription.PlanType);
+        return normalizedPlanCode is not null && PlanBelongsToBundle(normalizedPlanCode, bundleType);
+    }
+
     private static bool IsActivePaidSubscription(Subscription subscription)
     {
         var plan = TryOutSpotBillingCatalog.GetPlan(subscription.PlanType);
@@ -11897,11 +12065,28 @@ public sealed class AccountController(
                 GetComplimentaryGrantMembershipSummaryRank(grant, now),
                 grant.UpdatedAt));
 
-        return subscriptionSummaries
+        var summaries = subscriptionSummaries
             .Concat(grantSummaries)
             .OrderByDescending(summary => summary.Rank)
             .ThenByDescending(summary => summary.UpdatedAt)
+            .ToArray();
+        var hasActivePlayerParentUpgrade = summaries.Any(summary =>
+            summary.Item.HasActiveEntitlement
+            && string.Equals(summary.Item.BundleType, PlayerParentBundleCode, StringComparison.Ordinal)
+            && !string.Equals(summary.Item.PlanCode, TryOutSpotPlanCodes.FreePlayerParent, StringComparison.Ordinal));
+        var hasActiveTeamUpgrade = summaries.Any(summary =>
+            summary.Item.HasActiveEntitlement
+            && string.Equals(summary.Item.BundleType, TeamBundleCode, StringComparison.Ordinal)
+            && !string.Equals(summary.Item.PlanCode, TryOutSpotPlanCodes.FreeCoach, StringComparison.Ordinal));
+
+        return summaries
             .Select(summary => summary.Item)
+            .Where(item => !(hasActivePlayerParentUpgrade
+                && string.Equals(item.PlanCode, TryOutSpotPlanCodes.FreePlayerParent, StringComparison.Ordinal)
+                && item.HasActiveEntitlement))
+            .Where(item => !(hasActiveTeamUpgrade
+                && string.Equals(item.PlanCode, TryOutSpotPlanCodes.FreeCoach, StringComparison.Ordinal)
+                && item.HasActiveEntitlement))
             .ToArray();
     }
 
@@ -11912,8 +12097,11 @@ public sealed class AccountController(
             ? null
             : TryOutSpotBillingCatalog.GetPlan(normalizedPlanCode);
         var hasActiveEntitlement = TryOutSpotBillingCatalog.IsEntitlingSubscriptionStatus(subscription.Status);
+        var planCode = normalizedPlanCode ?? subscription.PlanType;
 
         return new AccountMembershipSummaryItem(
+            planCode,
+            ToBundleCode(GetBundleTypeForPlan(planCode)),
             plan?.Name ?? subscription.PlanType,
             FormatSubscriptionStatus(subscription.Status),
             FormatBillingIntervalDisplay(subscription.BillingInterval),
@@ -11935,8 +12123,11 @@ public sealed class AccountController(
             ? null
             : TryOutSpotBillingCatalog.GetPlan(normalizedPlanCode);
         var hasActiveEntitlement = ComplimentaryPlanGrantMapper.IsActive(grant, now);
+        var planCode = normalizedPlanCode ?? grant.PlanType;
 
         return new AccountMembershipSummaryItem(
+            planCode,
+            ToBundleCode(GetBundleTypeForPlan(planCode)),
             plan?.Name ?? grant.PlanType,
             FormatSubscriptionStatus(ComplimentaryPlanGrantMapper.GetStatus(grant, now)),
             "Complimentary",
