@@ -22,6 +22,10 @@
         && (!string.IsNullOrWhiteSpace(Model.ContactEmail)
             || !string.IsNullOrWhiteSpace(Model.ContactPhone));
     var showSharePanel = Model.ViewerIsAuthenticated;
+    var topProfileLinks = Model.SocialLinks
+        .Concat(Model.ProfileVideoLinks)
+        .Concat(Model.RecruitingLinks)
+        .ToArray();
 
     ViewData["MetaDescription"] = metaDescription;
     ViewData["CanonicalUrl"] = shareUrl;
@@ -43,10 +47,10 @@
                 <img class="listing-hero-avatar" src="@Model.ProfileImageUrl" alt="@Model.PlayerName profile photo" loading="lazy" onerror="this.style.display='none'" />
             </div>
         }
-        @if (Model.SocialLinks.Count > 0)
+        @if (topProfileLinks.Length > 0)
         {
-            <div class="profile-top-links" aria-label="Social pages">
-                @await Html.PartialAsync("_ExternalProfileLinks", Model.SocialLinks)
+            <div class="profile-top-links" aria-label="Profile links">
+                @await Html.PartialAsync("_ExternalProfileLinks", topProfileLinks)
             </div>
         }
     </div>
@@ -208,28 +212,6 @@
                     </div>
                 }
             </div>
-        </section>
-    }
-
-    @if (Model.ProfileVideoLinks.Count > 0 || Model.RecruitingLinks.Count > 0)
-    {
-        <section class="form-section">
-            <h2>Videos and recruiting links</h2>
-            @if (Model.ProfileVideoLinks.Count > 0)
-            {
-                <div class="mb-2">
-                    @await Html.PartialAsync("_ExternalProfileLinks", Model.ProfileVideoLinks)
-                </div>
-            }
-            @if (Model.RecruitingLinks.Count > 0)
-            {
-                <ul class="listing-link-list mb-0">
-                    @foreach (var link in Model.RecruitingLinks)
-                    {
-                        <li><a href="@link.Url" target="_blank" rel="noopener">@link.Label</a></li>
-                    }
-                </ul>
-            }
         </section>
     }
 

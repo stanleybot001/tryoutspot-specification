@@ -47,6 +47,11 @@
 
     private static string GetLinkDisplayText(ExternalProfileLinkPageItem link)
     {
+        if (NormalizeIconKey(link.Label) == "link")
+        {
+            return link.Label;
+        }
+
         if (Uri.TryCreate(link.Url, UriKind.Absolute, out var uri))
         {
             var segment = uri.Segments.LastOrDefault()?.Trim('/');
