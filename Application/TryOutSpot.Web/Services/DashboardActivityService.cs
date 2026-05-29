@@ -16,7 +16,6 @@ public sealed class DashboardActivityService(
     private const int DefaultFirstVisitLookbackDays = 14;
     private const string OpportunityItemKind = "opportunity";
     private const string PlayerListingItemKind = "player_listing";
-    private const string PlayerProfileItemKind = "player_profile";
     private const string PublicVisibility = "Public";
     private const string CoachOnlyVisibility = "VerifiedCoachesOnly";
 
@@ -77,19 +76,9 @@ public sealed class DashboardActivityService(
             RequiredFeatureCodes: [TryOutSpotFeatureCodes.AdvancedOpportunitySearch],
             IsDefaultSelected: true),
         new(
-            DashboardActivityTypeCodes.TeamNewPlayers,
-            "New players",
-            "New searchable player profiles for team representatives.",
-            "Team",
-            AppliesToPlayerParent: false,
-            AppliesToTeam: true,
-            RequiredFeatureCodes: [TryOutSpotFeatureCodes.BasicPlayerSearch, TryOutSpotFeatureCodes.AdvancedPlayerSearch],
-            IsDefaultSelected: true,
-            RequireAnyFeature: true),
-        new(
             DashboardActivityTypeCodes.TeamNewListings,
             "New player listings",
-            "New player availability and team-search listings for team representatives.",
+            "New published player listings for team representatives.",
             "Team",
             AppliesToPlayerParent: false,
             AppliesToTeam: true,
@@ -199,24 +188,6 @@ public sealed class DashboardActivityService(
                     includeTeamRelevantListings: false,
                     since,
                     now,
-                    take,
-                    token)));
-        }
-
-        if (effectiveActivityTypes.Contains(DashboardActivityTypeCodes.TeamNewPlayers))
-        {
-            var playerCount = await CountNewPlayerActivityItemsAsync(
-                userId,
-                since,
-                cancellationToken);
-            sectionSources.Add(new DashboardActivitySectionSource(
-                "team_new_players",
-                "New player profiles",
-                "No new searchable players have been added in this window.",
-                playerCount,
-                (take, token) => GetNewPlayerActivityItemsAsync(
-                    userId,
-                    since,
                     take,
                     token)));
         }
@@ -434,57 +405,6 @@ public sealed class DashboardActivityService(
             .CountAsync(cancellationToken);
     }
 
-    private async Task<IReadOnlyCollection<DashboardActivityItemResponse>> GetNewPlayerActivityItemsAsync(
-        Guid userId,
-        DateTime since,
-        int take,
-        CancellationToken cancellationToken)
-    {
-        var players = await BuildNewPlayerActivityQuery(userId, since)
-            .Include(player => player.PlayerSports)
-                .ThenInclude(playerSport => playerSport.Sport)
-            .OrderByDescending(player => player.CreatedAt)
-            .ThenByDescending(player => player.UpdatedAt)
-            .Take(take)
-            .ToArrayAsync(cancellationToken);
-
-        return players
-            .Select(player =>
-            {
-                var sports = player.PlayerSports
-                    .Where(playerSport => playerSport.IsActive)
-                    .OrderBy(playerSport => playerSport.Sport.Name)
-                    .Select(playerSport =>
-                        string.IsNullOrWhiteSpace(playerSport.PrimaryPosition)
-                            ? playerSport.Sport.Name
-                            : $"{playerSport.Sport.Name} - {playerSport.PrimaryPosition}")
-                    .ToArray();
-                var detail = sports.Length == 0 ? player.CurrentTeamName : string.Join(", ", sports);
-
-                return new DashboardActivityItemResponse(
-                    DashboardActivityTypeCodes.TeamNewPlayers,
-                    GetActivityTypeLabel(DashboardActivityTypeCodes.TeamNewPlayers),
-                    PlayerProfileItemKind,
-                    player.Id,
-                    $"{player.FirstName} {player.LastName}".Trim(),
-                    player.SchoolName ?? player.CurrentTeamName,
-                    detail,
-                    FormatLocation(player.City, player.State),
-                    "/account/search/players",
-                    MaxDate(null, player.UpdatedAt, player.CreatedAt));
-            })
-            .ToArray();
-    }
-
-    private async Task<int> CountNewPlayerActivityItemsAsync(
-        Guid userId,
-        DateTime since,
-        CancellationToken cancellationToken)
-    {
-        return await BuildNewPlayerActivityQuery(userId, since)
-            .CountAsync(cancellationToken);
-    }
-
     private IQueryable<Opportunity> BuildOpportunityActivityQuery(
         IReadOnlySet<string> effectiveActivityTypes,
         DateTime since,
@@ -553,17 +473,6 @@ public sealed class DashboardActivityService(
                         || listing.ListingType == TryOutSpotPlayerListingTypes.PickupPlayer
                         || listing.ListingType == TryOutSpotPlayerListingTypes.TrainingPartner
                         || listing.ListingType == TryOutSpotPlayerListingTypes.PrivateLessons)));
-    }
-
-    private IQueryable<Player> BuildNewPlayerActivityQuery(Guid userId, DateTime since)
-    {
-        return dbContext.Players
-            .AsNoTracking()
-            .Where(player => player.IsActive)
-            .Where(player => player.IsSearchable)
-            .Where(player => player.ContactVisibility == PublicVisibility || player.ContactVisibility == CoachOnlyVisibility)
-            .Where(player => player.CreatedAt >= since || player.UpdatedAt >= since)
-            .Where(player => !player.UserPlayerRelationships.Any(relationship => relationship.UserId == userId));
     }
 
     private DashboardActivityPreferencesResponse BuildPreferencesResponse(
@@ -686,6 +595,9 @@ public sealed class DashboardActivityService(
             .Where(activityType => !string.IsNullOrWhiteSpace(activityType))
             .Cast<string>()
             .Select(activityType => activityType.Replace("-", "_").Replace(" ", "_").ToLowerInvariant())
+            .Select(activityType => activityType == "team_new_players"
+                ? DashboardActivityTypeCodes.TeamNewListings
+                : activityType)
             .Where(supportedCodes.Contains)
             .Distinct(StringComparer.Ordinal)
             .OrderBy(activityType => activityType, StringComparer.Ordinal)
@@ -763,7 +675,6 @@ public sealed class DashboardActivityService(
             DashboardActivityTypeCodes.ForSaleItems => "For sale",
             DashboardActivityTypeCodes.RosterOpenings => "Roster opening",
             DashboardActivityTypeCodes.CampsAndClinics => "Camp or clinic",
-            DashboardActivityTypeCodes.TeamNewPlayers => "New player",
             DashboardActivityTypeCodes.TeamNewListings => "Player listing",
             _ => "Activity"
         };

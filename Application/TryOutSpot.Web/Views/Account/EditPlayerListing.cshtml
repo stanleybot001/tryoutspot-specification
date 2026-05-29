@@ -13,7 +13,7 @@
     <div class="account-heading">
         <p class="account-kicker">Player listings</p>
         <h1>@(Model.IsEditMode ? "Edit listing" : "Create a new listing")</h1>
-        <p>Use listings to share player availability, team interest, equipment, private lesson needs, and training partner requests. Searchable player listings should be tied to the player, not the parent or guardian account holder.</p>
+        <p>Use listings to share player availability, team interest, equipment, private lesson needs, and training partner requests. Published, searchable listings are what teams find in player search.</p>
         <p class="required-note"><span class="required-marker">*</span> Required field</p>
     </div>
 
@@ -208,7 +208,8 @@
                     <input asp-for="IsSearchable" class="form-check-input" />
                     <span>Allow this player-linked listing to appear in search results.</span>
                 </label>
-                <p class="section-help">Choose a player profile before enabling search visibility. Parent and guardian account holder details are not searchable.</p>
+                <p class="section-help">Choose a player profile and turn on that player's public profile visibility before enabling search. Parent and guardian account holder details are not searchable.</p>
+                <span asp-validation-for="IsSearchable" class="text-danger"></span>
 
                 <label class="sms-consent-option" for="IsPublished">
                     <input asp-for="IsPublished" class="form-check-input" />

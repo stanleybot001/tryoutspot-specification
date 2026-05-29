@@ -6,8 +6,8 @@
         ? "Manage child/player profiles."
         : "Manage your player profiles.";
     var headingDescription = Model.IsParentOrGuardianAccount
-        ? "These are the player profiles tied to your parent/guardian account. Your adult account holder profile stays separate."
-        : "Edit, deactivate, and add players from one place.";
+        ? "These are the player profiles tied to your parent/guardian account. Teams discover players through published player listings, not completed profiles alone."
+        : "Edit, deactivate, and add players from one place. Teams discover players through published player listings, not completed profiles alone.";
     var addButtonLabel = Model.IsParentOrGuardianAccount ? "Add another child/player" : "Add another player";
 }
 
@@ -49,7 +49,7 @@
                                 <span>@FormatRelationship(profile.Relationship)</span>
                             </div>
                             <div class="team-metric-inline">
-                                <span>@(profile.IsSearchable ? "Player searchable" : "Hidden from player search")</span>
+                                <span>@(profile.IsSearchable ? "Public profile enabled" : "Public profile hidden")</span>
                                 <span>@FormatContactVisibility(profile.ContactVisibility)</span>
                             </div>
                         </div>
@@ -63,8 +63,17 @@
                             <div><span>Active listings</span><strong>@profile.ActiveListingCount</strong></div>
                             <div><span>Last updated</span><strong>@profile.UpdatedAt.ToLocalTime().ToString("MMM d, yyyy")</strong></div>
                         </div>
+                        @if (profile.ActiveListingCount == 0)
+                        {
+                            <p class="section-help mb-1">Not appearing in team search yet. Create a player listing to make this player discoverable.</p>
+                        }
+                        else
+                        {
+                            <p class="section-help mb-1">This player has active listings. Published, searchable listings tied to a public profile can appear in team search.</p>
+                        }
 
                         <div class="form-actions">
+                            <a class="btn btn-primary" href="/account/onboarding/player-listings/new?playerId=@profile.PlayerId">Create listing for this player</a>
                             @if (profile.IsSearchable)
                             {
                                 <a class="btn btn-outline-primary" href="@publicProfileUrl" target="_blank" rel="noopener">View public profile</a>

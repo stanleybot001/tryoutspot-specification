@@ -76,7 +76,7 @@ public sealed class DashboardActivityApiTests
     }
 
     [Fact]
-    public async Task RecentActivity_TeamRepresentative_IncludesNewPlayersAndListings()
+    public async Task RecentActivity_TeamRepresentative_IncludesNewPlayerListingsOnly()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
         var teamUser = await factory.CreateUserAsync("dashboard-team@example.com", [TryOutSpotRoles.TeamRepresentative]);
@@ -90,10 +90,41 @@ public sealed class DashboardActivityApiTests
         var payload = await response.Content.ReadFromJsonAsync<DashboardRecentActivityResponse>();
         Assert.NotNull(payload);
         var items = payload.Sections.SelectMany(section => section.Items).ToArray();
-        Assert.Contains(items, item => item.Title == "Avery Blake");
+        Assert.DoesNotContain(items, item => item.Title == "Avery Blake");
         Assert.Contains(items, item => item.Title == "2027 shortstop looking for fall roster");
-        Assert.Contains(DashboardActivityTypeCodes.TeamNewPlayers, payload.EffectiveActivityTypes);
-        Assert.Contains(DashboardActivityTypeCodes.TeamNewListings, payload.EffectiveActivityTypes);
+        Assert.Equal([DashboardActivityTypeCodes.TeamNewListings], payload.EffectiveActivityTypes);
+    }
+
+    [Fact]
+    public async Task Preferences_TeamRepresentative_MapsLegacyNewPlayersPreferenceToListings()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var teamUser = await factory.CreateUserAsync("dashboard-team-legacy-preference@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var parentUser = await factory.CreateUserAsync("dashboard-player-owner-legacy-preference@example.com", [TryOutSpotRoles.Parent]);
+        SeedTeamActivity(factory, parentUser.Id);
+        var client = await CreateAuthorizedClientAsync(factory, teamUser.Email!);
+
+        var updateResponse = await client.PostAsJsonAsync(
+            "/api/dashboard/preferences",
+            new UpdateDashboardActivityPreferencesRequest
+            {
+                ActivityTypes = ["team_new_players"]
+            });
+
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+        var preferences = await updateResponse.Content.ReadFromJsonAsync<DashboardActivityPreferencesResponse>();
+        Assert.NotNull(preferences);
+        Assert.Equal([DashboardActivityTypeCodes.TeamNewListings], preferences.SelectedActivityTypes);
+
+        var response = await client.GetAsync("/api/dashboard/recent-activity");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<DashboardRecentActivityResponse>();
+        Assert.NotNull(payload);
+        Assert.Equal([DashboardActivityTypeCodes.TeamNewListings], payload.EffectiveActivityTypes);
+        Assert.Contains(
+            payload.Sections.SelectMany(section => section.Items),
+            item => item.Title == "2027 shortstop looking for fall roster");
     }
 
     private static void SeedPlayerParentActivity(TryOutSpotWebApplicationFactory factory, Guid listingOwnerId)

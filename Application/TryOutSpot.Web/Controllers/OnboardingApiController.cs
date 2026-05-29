@@ -213,7 +213,7 @@ public sealed class OnboardingApiController(
             steps.Add(new OnboardingStepResponse(
                 "add_player_profile",
                 "Add player profile",
-                "Add a player profile when you are ready to register for tryouts or improve matching.",
+                "Add a player profile for registrations and listings. Teams discover players through published player listings.",
                 IsRequired: false,
                 IsComplete: hasLinkedPlayers,
                 null));

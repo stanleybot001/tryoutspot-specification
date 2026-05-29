@@ -8,7 +8,7 @@
             ? "Add a child/player profile"
             : "Add player profile";
     var headingDescription = isEditMode
-        ? "Update the player's details, visibility, sports, and recruiting links."
+        ? "Update the player's details, public profile visibility, sports, and recruiting links."
         : Model.IsParentOrGuardianAccount
             ? "Enter the player's information here. This is not your parent/guardian account profile."
             : "Create a player profile so you can start registering for tryouts and opportunities.";
@@ -92,8 +92,8 @@
             </fieldset>
 
             <fieldset class="form-fieldset">
-                <legend>Contact, location, and visibility</legend>
-                <p class="section-help">Set how teams can contact the player and where the profile appears.</p>
+                <legend>Contact, location, and public profile</legend>
+                <p class="section-help">Set how teams can contact the player and whether this profile can be shown on profile links and player listings.</p>
                 <div class="form-grid two-column">
                     <div class="form-field">
                         <label asp-for="ContactEmail" class="form-label">Contact email</label>
@@ -133,9 +133,9 @@
                 </div>
                 <label class="sms-consent-option" for="IsSearchable">
                     <input asp-for="IsSearchable" class="form-check-input" />
-                    <span>Allow this player profile to appear in player search results.</span>
+                    <span>Allow this profile to be shown on public profile links and player listings.</span>
                 </label>
-                <p class="section-help">Leave this off until the profile clearly belongs to the player, not the parent or guardian account holder.</p>
+                <p class="section-help">A complete profile alone will not appear in team search. Teams discover players through published player listings tied to this profile.</p>
             </fieldset>
 
             <fieldset class="form-fieldset">

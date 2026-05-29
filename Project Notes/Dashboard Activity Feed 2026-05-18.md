@@ -7,7 +7,7 @@ TryOutSpot now has a personalized post-login dashboard activity feed.
 - Parent/player accounts see new activity after login on the existing onboarding/dashboard page.
 - Free parent/player access is intentionally constrained to tryout opportunities.
 - Premium Player access can add tournaments, pickup opportunities, for-sale equipment, roster openings, camps, and clinics to the dashboard feed.
-- Team representative accounts see newly added searchable player profiles and player listings.
+- Team representative accounts see newly added player listings. Completed player profiles alone are not surfaced in team discovery.
 - Account settings include dashboard activity checkboxes. These preferences only narrow what a user wants to see; they never grant access.
 
 ## Technical behavior
@@ -28,4 +28,4 @@ TryOutSpot now has a personalized post-login dashboard activity feed.
 - Dashboard activity is built server-side from `IEntitlementService`.
 - Saved preference codes are intersected with current entitlements before any feed query runs.
 - Opportunity queries still require published, active, non-expired listings from active/searchable teams.
-- Player listing and player profile queries still honor active/searchable visibility and coach-only player visibility for team users.
+- Player listing queries still require published, active, searchable listings tied to active public player profiles. Coach-only contact visibility is honored for team users.

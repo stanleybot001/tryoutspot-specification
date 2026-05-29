@@ -319,7 +319,7 @@ public sealed class AddPlayerProfilePageModel
     [Display(Name = "Can manage this player profile")]
     public bool CanManage { get; set; } = true;
 
-    [Display(Name = "Allow this player to appear in search")]
+    [Display(Name = "Allow this profile on public links and listings")]
     public bool IsSearchable { get; set; }
 
     [Required]

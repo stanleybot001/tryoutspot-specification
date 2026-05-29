@@ -1416,6 +1416,87 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task CreatePlayerListing_SearchableListingRequiresPublicPlayerProfile()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("player-listing-public-profile@example.com", [TryOutSpotRoles.Parent]);
+        await AddSubscriptionAsync(factory, user.Id, TryOutSpotPlanCodes.PremiumPlayer, "active");
+
+        Guid playerId;
+        Guid sportId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            sportId = await dbContext.Sports
+                .Where(sport => sport.IsActive && sport.Name == "Softball")
+                .Select(sport => sport.Id)
+                .SingleAsync();
+            var now = DateTime.UtcNow;
+            playerId = Guid.NewGuid();
+            dbContext.Players.Add(new Player
+            {
+                Id = playerId,
+                FirstName = "Jordan",
+                LastName = "Miller",
+                DateOfBirth = new DateTime(2011, 4, 12, 0, 0, 0, DateTimeKind.Utc),
+                ContactVisibility = "VerifiedCoachesOnly",
+                City = "Wichita",
+                State = "KS",
+                ZipCode = "67202",
+                IsSearchable = false,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+            dbContext.UserPlayerRelationships.Add(new UserPlayerRelationship
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                PlayerId = playerId,
+                Relationship = "Parent",
+                CanManage = true,
+                CreatedAt = now
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(
+            client,
+            $"/account/onboarding/player-listings/new?playerId={playerId}");
+
+        var response = await client.PostAsync(
+            "/account/onboarding/player-listings/new",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("ListingType", TryOutSpotPlayerListingTypes.LookingForTeam),
+                new("PlayerId", playerId.ToString()),
+                new("SportId", sportId.ToString()),
+                new("Title", "Looking for a fall roster"),
+                new("City", "Wichita"),
+                new("State", "KS"),
+                new("ZipCode", "67202"),
+                new("IsSearchable", "true"),
+                new("IsPublished", "true")
+            ]));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains(
+            "Turn on public profile visibility for this player before making the listing searchable.",
+            html);
+
+        using var verifyScope = factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Empty(await verifyDb.PlayerListings.ToArrayAsync());
+    }
+
+    [Fact]
     public async Task AddAndEditTeamOpportunityPages_GroupInputsBySection()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -2284,7 +2365,7 @@ public sealed class AccountPageTests
     private static void AssertPlayerProfileSections(string html)
     {
         Assert.Contains("<legend>Player identity</legend>", html);
-        Assert.Contains("<legend>Contact, location, and visibility</legend>", html);
+        Assert.Contains("<legend>Contact, location, and public profile</legend>", html);
         Assert.Contains("<legend>School and team</legend>", html);
         Assert.Contains("<legend>Baseball and softball details</legend>", html);
         Assert.Contains("<legend>Sport metrics</legend>", html);

@@ -1437,7 +1437,9 @@ public sealed class AccountController(
         AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
         Policy = TryOutSpotAuthorizationPolicies.FeaturePolicyPrefix + TryOutSpotFeatureCodes.CreatePlayerListings)]
     [HttpGet("onboarding/player-listings/new")]
-    public async Task<IActionResult> CreatePlayerListing(CancellationToken cancellationToken = default)
+    public async Task<IActionResult> CreatePlayerListing(
+        [FromQuery] Guid? playerId,
+        CancellationToken cancellationToken = default)
     {
         var user = await GetCurrentWebUserAsync();
         if (user is null)
@@ -1445,7 +1447,12 @@ public sealed class AccountController(
             return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(CreatePlayerListing)) });
         }
 
-        var model = await BuildPlayerListingEditorPageModelAsync(user, null, null, cancellationToken);
+        var model = await BuildPlayerListingEditorPageModelAsync(
+            user,
+            null,
+            null,
+            cancellationToken,
+            preselectedPlayerId: playerId);
         return View("EditPlayerListing", model);
     }
 
@@ -6401,7 +6408,7 @@ public sealed class AccountController(
                 ? "Add child/player profile"
                 : "Complete player profile";
             var playerProfileStepDescription = hasParentRole && !hasSelfPlayerRole
-                ? "Add the player's name, birth date, sports, and visibility. This is not your parent/guardian account profile."
+                ? "Add the player's name, birth date, sports, and public profile settings. Create a listing when you want teams to discover them."
                 : "Add your player profile before registering for tryouts.";
             steps.Add(new OnboardingStepPageItem(
                 "add_player_profile",
@@ -6414,7 +6421,7 @@ public sealed class AccountController(
                 steps.Add(new OnboardingStepPageItem(
                     "manage_player_listings",
                     "Manage player listings",
-                    "Create and manage pickup, team search, equipment, lesson, and training partner listings.",
+                    "Create and manage the published listings teams can find in player search.",
                     false,
                     hasManagedPlayerListings));
             }
@@ -7725,7 +7732,8 @@ public sealed class AccountController(
         User user,
         Guid? listingId,
         PlayerListingEditorPageModel? model,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? preselectedPlayerId = null)
     {
         PlayerListing? listing = null;
         if (listingId.HasValue)
@@ -7786,6 +7794,19 @@ public sealed class AccountController(
         model.ListingId = listingId;
         model.AvailableListingTypes = PlayerListingTypeOptions;
         model.AvailablePlayers = await GetManagedPlayersAsync(user.Id, cancellationToken);
+        if (!model.IsEditMode && !model.PlayerId.HasValue && preselectedPlayerId.HasValue)
+        {
+            var selectedPlayer = model.AvailablePlayers
+                .FirstOrDefault(player => player.PlayerId == preselectedPlayerId.Value);
+            if (selectedPlayer is not null)
+            {
+                model.PlayerId = selectedPlayer.PlayerId;
+                model.City = string.IsNullOrWhiteSpace(model.City) ? selectedPlayer.City : model.City;
+                model.State = string.IsNullOrWhiteSpace(model.State) ? selectedPlayer.State : model.State;
+                model.ZipCode = string.IsNullOrWhiteSpace(model.ZipCode) ? selectedPlayer.ZipCode : model.ZipCode;
+            }
+        }
+
         model.AvailableSports = await dbContext.Sports
             .AsNoTracking()
             .Where(sport => sport.IsActive)
@@ -7869,6 +7890,12 @@ public sealed class AccountController(
         if (model.IsSearchable && player is null)
         {
             ModelState.AddModelError(nameof(model.IsSearchable), "Choose a player profile before making this listing searchable.");
+        }
+        else if (model.IsSearchable && player is not null && !player.IsSearchable)
+        {
+            ModelState.AddModelError(
+                nameof(model.IsSearchable),
+                "Turn on public profile visibility for this player before making the listing searchable.");
         }
 
         if (model.SportId.HasValue)

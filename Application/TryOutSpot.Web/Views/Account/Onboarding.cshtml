@@ -49,7 +49,7 @@
     var pageIntro = hasCompletedTeamOrganizationDetails
         ? "Keep team details, listings, favorites, and account settings ready for everyday work."
         : isParentOrGuardianAccount && !isSelfPlayerAccount
-            ? "This is your parent/guardian account. Add a separate player profile for each child or player you manage; your account holder details are not shown in player search."
+            ? "This is your parent/guardian account. Add a separate player profile for each child or player you manage; teams discover players through published player listings."
         : "TryOutSpot keeps signup light. These items help tailor the next screens for players, parents, coaches, and organization staff.";
     const string phoneVerificationReturnUrl = "/account/onboarding#verify-phone";
     var showPhoneVerificationPrompt = !Model.PhoneNumberConfirmed;

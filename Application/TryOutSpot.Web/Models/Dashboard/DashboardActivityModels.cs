@@ -8,7 +8,6 @@ public static class DashboardActivityTypeCodes
     public const string ForSaleItems = "for_sale_items";
     public const string RosterOpenings = "roster_openings";
     public const string CampsAndClinics = "camps_and_clinics";
-    public const string TeamNewPlayers = "team_new_players";
     public const string TeamNewListings = "team_new_listings";
 
     public static IReadOnlyCollection<string> All { get; } =
@@ -19,7 +18,6 @@ public static class DashboardActivityTypeCodes
         ForSaleItems,
         RosterOpenings,
         CampsAndClinics,
-        TeamNewPlayers,
         TeamNewListings
     ];
 }
