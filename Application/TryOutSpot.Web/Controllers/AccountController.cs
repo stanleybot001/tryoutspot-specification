@@ -33,6 +33,7 @@ public sealed class AccountController(
     IAccountSmsSender accountSmsSender,
     IEntitlementService entitlementService,
     IDashboardActivityService dashboardActivityService,
+    IActivationAssistanceService activationAssistanceService,
     IZipRadiusSearchService zipRadiusSearchService,
     IPdfStorageService pdfStorageService,
     IImageStorageService imageStorageService,
@@ -898,6 +899,28 @@ public sealed class AccountController(
 
         await dashboardActivityService.MarkViewedAsync(user.Id, cancellationToken);
         TempData["StatusMessage"] = "What's new will start from this moment the next time new items are added.";
+        return RedirectToAction(nameof(Onboarding));
+    }
+
+    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [HttpPost("onboarding/activation-assistance/dismiss")]
+    public async Task<IActionResult> DismissActivationAssistance(
+        [FromForm] string? promptKey,
+        [FromForm] Guid? teamId,
+        CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Onboarding)) });
+        }
+
+        await activationAssistanceService.DismissTeamFirstListingPromptAsync(
+            user.Id,
+            promptKey,
+            teamId,
+            cancellationToken);
+        TempData["StatusMessage"] = "No problem. We will keep the team setup shortcuts available when you are ready.";
         return RedirectToAction(nameof(Onboarding));
     }
 
@@ -6401,6 +6424,9 @@ public sealed class AccountController(
             activityPage,
             activityPageSize,
             cancellationToken);
+        var activationAssistance = await activationAssistanceService.GetTeamFirstListingPromptAsync(
+            user.Id,
+            cancellationToken);
 
         var hasLinkedPlayers = hasPlayerOrParentRole
             && await dbContext.UserPlayerRelationships
@@ -6556,6 +6582,7 @@ public sealed class AccountController(
             FavoritePlayerListings = favoritePlayerListings,
             FavoriteOpportunities = favoriteOpportunities,
             RecentActivity = recentActivity,
+            ActivationAssistance = activationAssistance,
             Steps = steps
         };
     }

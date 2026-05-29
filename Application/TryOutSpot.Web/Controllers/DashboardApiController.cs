@@ -15,7 +15,9 @@ namespace TryOutSpot.Web.Controllers;
 [Produces("application/json")]
 [Route("api/dashboard")]
 [Authorize(Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
-public sealed class DashboardApiController(IDashboardActivityService dashboardActivityService) : ControllerBase
+public sealed class DashboardApiController(
+    IDashboardActivityService dashboardActivityService,
+    IActivationAssistanceService activationAssistanceService) : ControllerBase
 {
     /// <summary>
     /// Returns recent dashboard activity using the signed-in account's entitlements and preferences.
@@ -55,6 +57,45 @@ public sealed class DashboardApiController(IDashboardActivityService dashboardAc
         }
 
         return Ok(await dashboardActivityService.MarkViewedAsync(userId, cancellationToken));
+    }
+
+    /// <summary>
+    /// Returns the signed-in account's activation assistance prompt eligibility.
+    /// </summary>
+    [HttpGet("activation-assistance")]
+    [ProducesResponseType<ActivationAssistancePromptResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<ActivationAssistancePromptResponse>> ActivationAssistance(
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+        {
+            return Unauthorized();
+        }
+
+        return Ok(await activationAssistanceService.GetTeamFirstListingPromptAsync(userId, cancellationToken));
+    }
+
+    /// <summary>
+    /// Suppresses the team activation assistance prompt for the signed-in account.
+    /// </summary>
+    [HttpPost("activation-assistance/dismiss")]
+    [ProducesResponseType<ActivationAssistanceActionResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<ActivationAssistanceActionResponse>> DismissActivationAssistance(
+        DismissActivationAssistanceRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+        {
+            return Unauthorized();
+        }
+
+        return Ok(await activationAssistanceService.DismissTeamFirstListingPromptAsync(
+            userId,
+            request.PromptKey,
+            request.TeamId,
+            cancellationToken));
     }
 
     /// <summary>

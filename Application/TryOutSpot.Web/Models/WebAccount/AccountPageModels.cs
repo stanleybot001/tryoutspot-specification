@@ -239,6 +239,8 @@ public sealed class OnboardingPageModel
     public IReadOnlyCollection<DashboardOpportunityFavoritePageItem> FavoriteOpportunities { get; set; } = [];
 
     public DashboardRecentActivityResponse? RecentActivity { get; set; }
+
+    public ActivationAssistancePromptResponse? ActivationAssistance { get; set; }
 }
 
 public sealed class FavoritesPageModel

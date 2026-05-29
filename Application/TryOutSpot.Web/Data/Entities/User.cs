@@ -57,6 +57,8 @@ public partial class User : IdentityUser<Guid>
 
     public virtual ICollection<Comment> Comments { get; set; } = new List<Comment>();
 
+    public virtual ICollection<ActivationAssistanceEvent> ActivationAssistanceEvents { get; set; } = new List<ActivationAssistanceEvent>();
+
     public virtual ICollection<ListingReport> ListingReportsReviewed { get; set; } = new List<ListingReport>();
 
     public virtual ICollection<ListingReport> ListingReportsSubmitted { get; set; } = new List<ListingReport>();

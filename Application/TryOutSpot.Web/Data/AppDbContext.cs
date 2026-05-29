@@ -17,6 +17,8 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
     {
     }
 
+    public virtual DbSet<ActivationAssistanceEvent> ActivationAssistanceEvents { get; set; }
+
     public virtual DbSet<Comment> Comments { get; set; }
 
     public virtual DbSet<ComplimentaryPlanGrant> ComplimentaryPlanGrants { get; set; }
@@ -74,6 +76,30 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<ActivationAssistanceEvent>(entity =>
+        {
+            entity.HasIndex(e => e.TeamId, "IX_ActivationAssistanceEvents_TeamId");
+
+            entity.HasIndex(
+                e => new { e.UserId, e.PromptKey, e.EventType, e.CreatedAt },
+                "IX_ActivationAssistanceEvents_User_Prompt_Event_CreatedAt");
+
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.EventType).HasMaxLength(40);
+            entity.Property(e => e.PromptKey).HasMaxLength(100);
+
+            entity.HasOne(d => d.Team)
+                .WithMany()
+                .HasForeignKey(d => d.TeamId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(d => d.User)
+                .WithMany(p => p.ActivationAssistanceEvents)
+                .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
 
         modelBuilder.Entity<Comment>(entity =>
         {

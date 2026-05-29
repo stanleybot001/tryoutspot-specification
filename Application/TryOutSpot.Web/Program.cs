@@ -61,6 +61,7 @@ builder.Services.Configure<AccountSmsOptions>(builder.Configuration.GetSection(A
 builder.Services.Configure<TwilioSmsOptions>(builder.Configuration.GetSection(TwilioSmsOptions.SectionName));
 builder.Services.Configure<StripeBillingOptions>(builder.Configuration.GetSection(StripeBillingOptions.SectionName));
 builder.Services.Configure<R2StorageOptions>(builder.Configuration.GetSection(R2StorageOptions.SectionName));
+builder.Services.Configure<ActivationAssistanceOptions>(builder.Configuration.GetSection(ActivationAssistanceOptions.SectionName));
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -294,6 +295,7 @@ else
 builder.Services.AddScoped<IAuthTokenService, AuthTokenService>();
 builder.Services.AddSingleton<IExternalLoginTicketService, ExternalLoginTicketService>();
 builder.Services.AddScoped<IEntitlementService, EntitlementService>();
+builder.Services.AddScoped<IActivationAssistanceService, ActivationAssistanceService>();
 builder.Services.AddScoped<IDashboardActivityService, DashboardActivityService>();
 builder.Services.AddScoped<IZipRadiusSearchService, ZipRadiusSearchService>();
 builder.Services.AddScoped<IStripeBillingService, StripeBillingService>();

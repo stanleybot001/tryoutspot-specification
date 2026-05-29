@@ -833,6 +833,89 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task Onboarding_WithIncompleteTeamAndNoListings_ShowsActivationAssistanceAndCanDismiss()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync(
+            "web-onboarding-activation-assist@example.com",
+            [TryOutSpotRoles.TeamRepresentative]);
+        Guid teamId;
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var now = DateTime.UtcNow;
+            var currentUser = await dbContext.Users.SingleAsync(current => current.Id == user.Id);
+            currentUser.CreatedAt = now.AddDays(-2);
+
+            teamId = Guid.NewGuid();
+            dbContext.Teams.Add(new Team
+            {
+                Id = teamId,
+                Name = "Activation Dashboard Aces",
+                GeographicScope = "Regional",
+                IsSearchable = true,
+                IsContactInfoVisible = true,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+            dbContext.UserTeamRoles.Add(new UserTeamRole
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                TeamId = teamId,
+                Role = TryOutSpotRoles.TeamRepresentative,
+                StartDate = now,
+                IsActive = true,
+                CreatedAt = now
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var response = await client.GetAsync("/account/onboarding");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Need help getting Activation Dashboard Aces ready?", html);
+        Assert.Contains("Add age group or team level", html);
+        Assert.Contains("Add a team contact method", html);
+        Assert.Contains($"href=\"/account/onboarding/team-opportunities/{teamId}/edit-profile\"", html);
+        Assert.Contains($"href=\"/account/onboarding/team-opportunities/{teamId}/new?type=tryout\"", html);
+        Assert.Contains("Email support", html);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/onboarding");
+        var dismissResponse = await client.PostAsync(
+            "/account/onboarding/activation-assistance/dismiss",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("promptKey", ActivationAssistancePromptKeys.TeamFirstListing),
+                new("teamId", teamId.ToString())
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, dismissResponse.StatusCode);
+        Assert.Equal("/account/onboarding", dismissResponse.Headers.Location?.ToString());
+
+        var dismissedPageResponse = await client.GetAsync("/account/onboarding");
+        Assert.Equal(HttpStatusCode.OK, dismissedPageResponse.StatusCode);
+        var dismissedHtml = await dismissedPageResponse.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("Need help getting Activation Dashboard Aces ready?", dismissedHtml);
+
+        using var verifyScope = factory.Services.CreateScope();
+        var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var assistanceEvent = await verifyDbContext.ActivationAssistanceEvents.SingleAsync();
+        Assert.Equal(user.Id, assistanceEvent.UserId);
+        Assert.Equal(teamId, assistanceEvent.TeamId);
+    }
+
+    [Fact]
     public async Task Onboarding_PaginatesRecentActivityAndOnlyResetsWindowOnRequest()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();

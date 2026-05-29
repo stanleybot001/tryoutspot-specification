@@ -573,6 +573,34 @@ body.splash-page {
   color: #64748b;
 }
 
+.activation-assistance-panel {
+  border-color: #bfdbfe;
+  background: #f8fbff;
+  display: grid;
+  gap: 1rem;
+}
+
+.activation-assistance-panel .account-kicker,
+.activation-assistance-panel h2,
+.activation-assistance-panel .section-help {
+  margin-bottom: 0;
+}
+
+.activation-assistance-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.activation-assistance-reasons span {
+  border: 1px solid #d7dee8;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.9rem;
+  padding: 0.35rem 0.65rem;
+}
+
 .settings-layout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
