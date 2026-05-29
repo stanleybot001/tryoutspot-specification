@@ -1417,12 +1417,21 @@ body.splash-page {
   gap: 0.65rem;
 }
 
+.profile-top-links {
+  max-width: 760px;
+  margin-top: 1rem;
+}
+
+.profile-top-links .profile-link-grid {
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+}
+
 .profile-link-card {
   display: flex;
   align-items: center;
   gap: 0.55rem;
   border: 1px solid #d7dee8;
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 0.55rem 0.7rem;
   text-decoration: none;
   color: #0f172a;
@@ -1439,15 +1448,56 @@ body.splash-page {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 28px;
   min-width: 28px;
   height: 28px;
   border-radius: 999px;
   border: 1px solid #c7d2fe;
   color: #1e3a8a;
-  font-size: 0.76rem;
-  font-weight: 700;
-  text-transform: uppercase;
   background: #e0e7ff;
+}
+
+.profile-link-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  fill: currentColor;
+}
+
+.profile-link-card-facebook .profile-link-icon {
+  color: #1877f2;
+  border-color: #bfd7ff;
+  background: #eaf2ff;
+}
+
+.profile-link-card-x .profile-link-icon {
+  color: #111827;
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+}
+
+.profile-link-card-instagram .profile-link-icon {
+  color: #c13584;
+  border-color: #f9a8d4;
+  background: #fff1f7;
+}
+
+.profile-link-card-youtube .profile-link-icon {
+  color: #ff0000;
+  border-color: #fecaca;
+  background: #fff1f2;
+}
+
+.profile-link-card-tiktok .profile-link-icon {
+  color: #111827;
+  border-color: #a7f3d0;
+  background: #f0fdfa;
+}
+
+.profile-link-card-video .profile-link-icon {
+  color: #0f766e;
+  border-color: #99f6e4;
+  background: #ecfeff;
 }
 
 .profile-link-text {

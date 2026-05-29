@@ -1,0 +1,61 @@
+@model IReadOnlyCollection<ExternalProfileLinkPageItem>
+
+<div class="profile-link-grid">
+    @foreach (var link in Model)
+    {
+        <a class="profile-link-card profile-link-card-@NormalizeIconKey(link.Label)" href="@link.Url" target="_blank" rel="noopener">
+            <span class="profile-link-icon" aria-hidden="true">@Html.Raw(GetLinkIconSvg(link.Label))</span>
+            <span class="profile-link-text">@GetLinkDisplayText(link)</span>
+        </a>
+    }
+</div>
+
+@functions {
+    private static string NormalizeIconKey(string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            return "link";
+        }
+
+        var normalized = label.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "facebook" => "facebook",
+            "x" => "x",
+            "instagram" => "instagram",
+            "youtube" => "youtube",
+            "tiktok" => "tiktok",
+            _ when normalized.Contains("video", StringComparison.OrdinalIgnoreCase) => "video",
+            _ => "link"
+        };
+    }
+
+    private static string GetLinkIconSvg(string? label)
+    {
+        return NormalizeIconKey(label) switch
+        {
+            "facebook" => "<svg viewBox=\"0 0 24 24\" focusable=\"false\" role=\"img\"><path d=\"M13.5 21v-7h2.4l.4-3h-2.8V9.1c0-.9.2-1.5 1.5-1.5h1.6V4.9c-.3 0-1.3-.1-2.4-.1-2.4 0-4 1.5-4 4.1V11H7.5v3h2.7v7h3.3Z\" /></svg>",
+            "x" => "<svg viewBox=\"0 0 24 24\" focusable=\"false\" role=\"img\"><path d=\"M17.7 3.5h3.1l-6.8 7.8 8 9.2h-6.3l-4.9-5.6-5.6 5.6H1.1l7.3-8.4-7.7-8.6h6.5l4.4 5.1 6.1-5.1Zm-1.1 15.4h1.7L6.3 5H4.5l12.1 13.9Z\" /></svg>",
+            "instagram" => "<svg viewBox=\"0 0 24 24\" focusable=\"false\" role=\"img\"><path d=\"M7.5 2.8h9A4.7 4.7 0 0 1 21.2 7.5v9a4.7 4.7 0 0 1-4.7 4.7h-9a4.7 4.7 0 0 1-4.7-4.7v-9a4.7 4.7 0 0 1 4.7-4.7Zm0 2A2.7 2.7 0 0 0 4.8 7.5v9a2.7 2.7 0 0 0 2.7 2.7h9a2.7 2.7 0 0 0 2.7-2.7v-9a2.7 2.7 0 0 0-2.7-2.7h-9Zm4.5 3.1a4.1 4.1 0 1 1 0 8.2 4.1 4.1 0 0 1 0-8.2Zm0 2a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2Zm4.4-2.9a.9.9 0 1 1 0 1.8.9.9 0 0 1 0-1.8Z\" /></svg>",
+            "youtube" => "<svg viewBox=\"0 0 24 24\" focusable=\"false\" role=\"img\"><path d=\"M21.4 7.1a3 3 0 0 0-2.1-2.1C17.4 4.5 12 4.5 12 4.5s-5.4 0-7.3.5a3 3 0 0 0-2.1 2.1A31.2 31.2 0 0 0 2.1 12c0 1.7.2 3.4.5 4.9a3 3 0 0 0 2.1 2.1c1.9.5 7.3.5 7.3.5s5.4 0 7.3-.5a3 3 0 0 0 2.1-2.1c.3-1.5.5-3.2.5-4.9s-.2-3.4-.5-4.9ZM10 15.5v-7l6 3.5-6 3.5Z\" /></svg>",
+            "tiktok" => "<svg viewBox=\"0 0 24 24\" focusable=\"false\" role=\"img\"><path d=\"M16.1 3.2c.3 2.4 1.7 3.9 4 4.1v3.7a7 7 0 0 1-4-1.2v5.9a5.6 5.6 0 1 1-5.6-5.6c.4 0 .8 0 1.2.1v3.8a2.1 2.1 0 1 0 1.4 2v-12.8h3Z\" /></svg>",
+            "video" => "<svg viewBox=\"0 0 24 24\" focusable=\"false\" role=\"img\"><path d=\"M4.5 6.5h10A2.5 2.5 0 0 1 17 9v6a2.5 2.5 0 0 1-2.5 2.5h-10A2.5 2.5 0 0 1 2 15V9a2.5 2.5 0 0 1 2.5-2.5Zm13.3 2.8 4.2-2.4v10.2l-4.2-2.4V9.3Z\" /></svg>",
+            _ => "<svg viewBox=\"0 0 24 24\" focusable=\"false\" role=\"img\"><path d=\"M10.6 13.4a1.4 1.4 0 0 1 0-2l3.8-3.8a3.1 3.1 0 0 1 4.4 4.4l-1.1 1.1a1.1 1.1 0 0 1-1.6-1.6l1.1-1.1a.9.9 0 0 0-1.3-1.3l-3.8 3.8a1.4 1.4 0 0 1-1.5.5Zm2.8-2.8a1.4 1.4 0 0 1 0 2l-3.8 3.8a3.1 3.1 0 0 1-4.4-4.4l1.1-1.1a1.1 1.1 0 0 1 1.6 1.6l-1.1 1.1a.9.9 0 0 0 1.3 1.3l3.8-3.8a1.4 1.4 0 0 1 1.5-.5Z\" /></svg>"
+        };
+    }
+
+    private static string GetLinkDisplayText(ExternalProfileLinkPageItem link)
+    {
+        if (Uri.TryCreate(link.Url, UriKind.Absolute, out var uri))
+        {
+            var segment = uri.Segments.LastOrDefault()?.Trim('/');
+            if (!string.IsNullOrWhiteSpace(segment))
+            {
+                return $"@{segment}";
+            }
+        }
+
+        return link.Label;
+    }
+}

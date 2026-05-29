@@ -21,6 +21,7 @@
     var hasVisibleContactDetails = Model.CanViewContactDetails
         && (!string.IsNullOrWhiteSpace(Model.ContactEmail)
             || !string.IsNullOrWhiteSpace(Model.ContactPhone));
+    var showSharePanel = Model.ViewerIsAuthenticated;
 
     ViewData["MetaDescription"] = metaDescription;
     ViewData["CanonicalUrl"] = shareUrl;
@@ -42,20 +43,29 @@
                 <img class="listing-hero-avatar" src="@Model.ProfileImageUrl" alt="@Model.PlayerName profile photo" loading="lazy" onerror="this.style.display='none'" />
             </div>
         }
+        @if (Model.SocialLinks.Count > 0)
+        {
+            <div class="profile-top-links" aria-label="Social pages">
+                @await Html.PartialAsync("_ExternalProfileLinks", Model.SocialLinks)
+            </div>
+        }
     </div>
 
-    <section class="form-section share-panel">
-        <div>
-            <h2>Share this profile</h2>
-            <p class="section-help">Copy the TryOutSpot profile link or a ready-to-post caption.</p>
-        </div>
-        <div class="share-input-row">
-            <input class="form-control" value="@shareUrl" readonly aria-label="Public profile link" />
-            <button type="button" class="btn btn-outline-primary" data-copy-text="@shareUrl" data-copy-status="#profileShareStatus">Copy link</button>
-            <button type="button" class="btn btn-primary" data-copy-text="@shareText" data-copy-status="#profileShareStatus">Copy post</button>
-        </div>
-        <p class="copy-status section-help" id="profileShareStatus" aria-live="polite"></p>
-    </section>
+    @if (showSharePanel)
+    {
+        <section class="form-section share-panel">
+            <div>
+                <h2>Share this profile</h2>
+                <p class="section-help">Copy the TryOutSpot profile link or a ready-to-post caption.</p>
+            </div>
+            <div class="share-input-row">
+                <input class="form-control" value="@shareUrl" readonly aria-label="Public profile link" />
+                <button type="button" class="btn btn-outline-primary" data-copy-text="@shareUrl" data-copy-status="#profileShareStatus">Copy link</button>
+                <button type="button" class="btn btn-primary" data-copy-text="@shareText" data-copy-status="#profileShareStatus">Copy post</button>
+            </div>
+            <p class="copy-status section-help" id="profileShareStatus" aria-live="polite"></p>
+        </section>
+    }
 
     <section class="form-section">
         <div class="team-summary-grid opportunity-summary-grid">
@@ -128,6 +138,40 @@
         </section>
     }
 
+    @if (Model.ActiveListings.Count > 0)
+    {
+        <section class="form-section">
+            <h2>Active listings</h2>
+            <div class="plan-list">
+                @foreach (var listing in Model.ActiveListings)
+                {
+                    <article class="plan-row plan-row-stack opportunity-row published">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@listing.Title</strong>
+                                <span>@listing.ListingTypeLabel</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                @if (!string.IsNullOrWhiteSpace(listing.SportName))
+                                {
+                                    <span>@listing.SportName</span>
+                                }
+                                <span>@FormatLocation(listing.City, listing.State, listing.ZipCode)</span>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(listing.Description))
+                        {
+                            <p class="section-help mb-1">@listing.Description</p>
+                        }
+                        <div class="form-actions">
+                            <a class="btn btn-outline-primary btn-sm" href="/player-listings/@listing.ListingId">View listing</a>
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+
     @if (Model.Sports.Count > 0)
     {
         <section class="form-section">
@@ -167,66 +211,14 @@
         </section>
     }
 
-    @if (Model.ActiveListings.Count > 0)
+    @if (Model.ProfileVideoLinks.Count > 0 || Model.RecruitingLinks.Count > 0)
     {
         <section class="form-section">
-            <h2>Active listings</h2>
-            <div class="plan-list">
-                @foreach (var listing in Model.ActiveListings)
-                {
-                    <article class="plan-row plan-row-stack opportunity-row published">
-                        <div class="opportunity-row-head">
-                            <div>
-                                <strong>@listing.Title</strong>
-                                <span>@listing.ListingTypeLabel</span>
-                            </div>
-                            <div class="team-metric-inline">
-                                @if (!string.IsNullOrWhiteSpace(listing.SportName))
-                                {
-                                    <span>@listing.SportName</span>
-                                }
-                                <span>@FormatLocation(listing.City, listing.State, listing.ZipCode)</span>
-                            </div>
-                        </div>
-                        @if (!string.IsNullOrWhiteSpace(listing.Description))
-                        {
-                            <p class="section-help mb-1">@listing.Description</p>
-                        }
-                        <div class="form-actions">
-                            <a class="btn btn-outline-primary btn-sm" href="/player-listings/@listing.ListingId">View listing</a>
-                        </div>
-                    </article>
-                }
-            </div>
-        </section>
-    }
-
-    @if (Model.SocialLinks.Count > 0 || Model.ProfileVideoLinks.Count > 0 || Model.RecruitingLinks.Count > 0)
-    {
-        <section class="form-section">
-            <h2>Links</h2>
-            @if (Model.SocialLinks.Count > 0)
-            {
-                <div class="profile-link-grid mb-2">
-                    @foreach (var link in Model.SocialLinks)
-                    {
-                        <a class="profile-link-card" href="@link.Url" target="_blank" rel="noopener">
-                            <span class="profile-link-icon">@GetLinkIcon(link.Label)</span>
-                            <span class="profile-link-text">@GetLinkDisplayText(link)</span>
-                        </a>
-                    }
-                </div>
-            }
+            <h2>Videos and recruiting links</h2>
             @if (Model.ProfileVideoLinks.Count > 0)
             {
-                <div class="profile-link-grid mb-2">
-                    @foreach (var link in Model.ProfileVideoLinks)
-                    {
-                        <a class="profile-link-card" href="@link.Url" target="_blank" rel="noopener">
-                            <span class="profile-link-icon">@GetLinkIcon(link.Label)</span>
-                            <span class="profile-link-text">@GetLinkDisplayText(link)</span>
-                        </a>
-                    }
+                <div class="mb-2">
+                    @await Html.PartialAsync("_ExternalProfileLinks", Model.ProfileVideoLinks)
                 </div>
             }
             @if (Model.RecruitingLinks.Count > 0)
@@ -242,7 +234,7 @@
     }
 
     <section class="form-section">
-        <h2>Contact</h2>
+        <h2>Contact details</h2>
         @if (hasVisibleContactDetails)
         {
             <div class="team-summary-grid">
@@ -316,36 +308,4 @@
         return $"{height.Trim()} / {weight.Trim()}";
     }
 
-    private static string GetLinkIcon(string? label)
-    {
-        if (string.IsNullOrWhiteSpace(label))
-        {
-            return "L";
-        }
-
-        return label.Trim().ToLowerInvariant() switch
-        {
-            "facebook" => "f",
-            "x" => "x",
-            "instagram" => "ig",
-            "youtube" => "yt",
-            "tiktok" => "tt",
-            _ when label.Contains("video", StringComparison.OrdinalIgnoreCase) => "vd",
-            _ => "ln"
-        };
-    }
-
-    private static string GetLinkDisplayText(ExternalProfileLinkPageItem link)
-    {
-        if (Uri.TryCreate(link.Url, UriKind.Absolute, out var uri))
-        {
-            var segment = uri.Segments.LastOrDefault()?.Trim('/');
-            if (!string.IsNullOrWhiteSpace(segment))
-            {
-                return $"@{segment}";
-            }
-        }
-
-        return link.Label;
-    }
 }

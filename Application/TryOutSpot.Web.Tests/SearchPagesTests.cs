@@ -194,7 +194,7 @@ public sealed class SearchPagesTests
     }
 
     [Fact]
-    public async Task PublicPlayerProfilePage_RendersShareableProfileAndHidesCoachOnlyContactForAnonymous()
+    public async Task PublicPlayerProfilePage_HidesShareControlsAndCoachOnlyContactForAnonymous()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
         var owner = await factory.CreateUserAsync("public-profile-owner@example.com", [TryOutSpotRoles.Parent]);
@@ -208,9 +208,9 @@ public sealed class SearchPagesTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
-        Assert.Contains("Share this profile", html);
-        Assert.Contains("Copy post", html);
-        Assert.Contains($"http://localhost/players/{playerId}", html);
+        Assert.DoesNotContain("Share this profile", html);
+        Assert.DoesNotContain("Copy post", html);
+        Assert.DoesNotContain("Public profile link", html);
         Assert.Contains("Shareable Profile", html);
         Assert.Contains("Public profile listing", html);
         Assert.Contains("Contact details are limited", html);
@@ -223,6 +223,39 @@ public sealed class SearchPagesTests
         var manageHtml = WebUtility.HtmlDecode(await manageResponse.Content.ReadAsStringAsync());
         Assert.Contains("View public profile", manageHtml);
         Assert.Contains($"http://localhost/players/{playerId}", manageHtml);
+    }
+
+    [Fact]
+    public async Task PublicPlayerProfilePage_PremiumProfileMovesSocialAndListingSections()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var owner = await factory.CreateUserAsync("premium-public-profile-owner@example.com", [TryOutSpotRoles.Parent]);
+        await AddSubscriptionAsync(factory, owner.Id, TryOutSpotPlanCodes.PremiumPlayer, "active");
+        var playerId = SeedPublicPlayerProfile(factory, owner.Id);
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/players/{playerId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+        var socialIndex = html.IndexOf("profile-top-links", StringComparison.Ordinal);
+        var summaryIndex = html.IndexOf("<span>Birthday</span>", StringComparison.Ordinal);
+        var metricsIndex = html.IndexOf("Performance metrics", StringComparison.Ordinal);
+        var activeListingsIndex = html.IndexOf("Active listings", StringComparison.Ordinal);
+        var sportsIndex = html.IndexOf("Sports and positions", StringComparison.Ordinal);
+
+        Assert.NotEqual(-1, socialIndex);
+        Assert.NotEqual(-1, summaryIndex);
+        Assert.NotEqual(-1, metricsIndex);
+        Assert.NotEqual(-1, activeListingsIndex);
+        Assert.NotEqual(-1, sportsIndex);
+        Assert.True(socialIndex < summaryIndex);
+        Assert.True(metricsIndex < activeListingsIndex);
+        Assert.True(activeListingsIndex < sportsIndex);
+        Assert.Contains("profile-link-card-facebook", html);
+        Assert.Contains("profile-link-card-x", html);
+        Assert.Contains("profile-link-card-instagram", html);
+        Assert.Contains("<svg viewBox=\"0 0 24 24\"", html);
     }
 
     private static void SeedTeamItemSearchData(TryOutSpotWebApplicationFactory factory)
@@ -449,6 +482,11 @@ public sealed class SearchPagesTests
         var player = CreatePlayer("Shareable", "Profile", true, "VerifiedCoachesOnly", now);
         player.ContactPhone = "555-777-0000";
         player.ContactEmail = "shareable.profile@example.com";
+        player.ExitVelocity = "78 mph";
+        player.ThrowingVelocity = "63 mph";
+        player.SocialMediaLinks = """
+            {"facebook":"https://facebook.com/shareable.profile","x":"https://x.com/shareableprofile","instagram":"https://instagram.com/shareable.profile"}
+            """;
 
         dbContext.Players.Add(player);
         dbContext.PlayerSports.Add(CreatePlayerSport(player.Id, sportId, now));

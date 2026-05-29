@@ -269,34 +269,18 @@
             @if (Model.SocialLinks.Count > 0)
             {
                 <h3 class="mt-3">Social pages</h3>
-                <div class="profile-link-grid">
-                    @foreach (var link in Model.SocialLinks)
-                    {
-                        <a class="profile-link-card" href="@link.Url" target="_blank" rel="noopener">
-                            <span class="profile-link-icon">@GetLinkIcon(link.Label)</span>
-                            <span class="profile-link-text">@GetLinkDisplayText(link)</span>
-                        </a>
-                    }
-                </div>
+                @await Html.PartialAsync("_ExternalProfileLinks", Model.SocialLinks)
             }
 
             @if (Model.ProfileVideoLinks.Count > 0)
             {
                 <h3 class="mt-3">Profile videos</h3>
-                <div class="profile-link-grid">
-                    @foreach (var link in Model.ProfileVideoLinks)
-                    {
-                        <a class="profile-link-card" href="@link.Url" target="_blank" rel="noopener">
-                            <span class="profile-link-icon">@GetLinkIcon(link.Label)</span>
-                            <span class="profile-link-text">@GetLinkDisplayText(link)</span>
-                        </a>
-                    }
-                </div>
+                @await Html.PartialAsync("_ExternalProfileLinks", Model.ProfileVideoLinks)
             }
 
             @if (hasVisibleContactDetails || !Model.CanViewContactDetails)
             {
-                <h3 class="mt-3">Contact</h3>
+                <h3 class="mt-3">Contact details</h3>
                 @if (hasVisibleContactDetails)
                 {
                     <div class="team-summary-grid">
@@ -439,36 +423,4 @@
         return $"{title} is a {listingType} listing{playerText}{locationText}. View details through TryOutSpot.";
     }
 
-    private static string GetLinkIcon(string? label)
-    {
-        if (string.IsNullOrWhiteSpace(label))
-        {
-            return "L";
-        }
-
-        return label.Trim().ToLowerInvariant() switch
-        {
-            "facebook" => "f",
-            "x" => "x",
-            "instagram" => "ig",
-            "youtube" => "yt",
-            "tiktok" => "tt",
-            _ when label.Contains("video", StringComparison.OrdinalIgnoreCase) => "vd",
-            _ => "ln"
-        };
-    }
-
-    private static string GetLinkDisplayText(ExternalProfileLinkPageItem link)
-    {
-        if (Uri.TryCreate(link.Url, UriKind.Absolute, out var uri))
-        {
-            var segment = uri.Segments.LastOrDefault()?.Trim('/');
-            if (!string.IsNullOrWhiteSpace(segment))
-            {
-                return $"@{segment}";
-            }
-        }
-
-        return link.Label;
-    }
 }
