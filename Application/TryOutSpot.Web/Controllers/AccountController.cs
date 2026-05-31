@@ -145,7 +145,8 @@ public sealed class AccountController(
         "camp",
         "clinic",
         "tournament",
-        "private_workout"
+        "private_workout",
+        "other"
     ];
     private static readonly int[] SearchRadiusOptions = [10, 25, 30, 60, 120, 250];
     private static readonly int[] SearchSuggestionRadiusMiles = [30, 60, 120, 250];
@@ -6379,6 +6380,7 @@ public sealed class AccountController(
             "clinic" => "Clinic",
             "tournament" => "Tournament",
             "private workout" => "Private workout",
+            "other" => "Other",
             _ => char.ToUpperInvariant(normalized[0]) + normalized[1..]
         };
     }
@@ -9987,6 +9989,7 @@ public sealed class AccountController(
             "clinic" => "Clinic",
             "tournament" => "Tournament",
             "private workout" => "Private workout",
+            "other" => "Other",
             _ => $"{char.ToUpperInvariant(normalized[0])}{normalized[1..]}"
         };
     }

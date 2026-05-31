@@ -297,6 +297,7 @@ builder.Services.AddSingleton<IExternalLoginTicketService, ExternalLoginTicketSe
 builder.Services.AddScoped<IEntitlementService, EntitlementService>();
 builder.Services.AddScoped<IActivationAssistanceService, ActivationAssistanceService>();
 builder.Services.AddScoped<IDashboardActivityService, DashboardActivityService>();
+builder.Services.AddScoped<IFlyerImportService, FlyerImportService>();
 builder.Services.AddScoped<IZipRadiusSearchService, ZipRadiusSearchService>();
 builder.Services.AddScoped<IStripeBillingService, StripeBillingService>();
 builder.Services.AddScoped<IStripeSubscriptionSyncService, StripeSubscriptionSyncService>();

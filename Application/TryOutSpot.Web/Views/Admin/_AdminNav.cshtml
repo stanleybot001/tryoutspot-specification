@@ -6,6 +6,7 @@
     <a class="@(string.Equals(action, "Index", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin">Overview</a>
     <a class="@(string.Equals(action, "Promotions", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin/promotions">Promotions</a>
     <a class="@(string.Equals(action, "Reports", StringComparison.OrdinalIgnoreCase) || string.Equals(action, "ReportDetail", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin/reports">Reports</a>
+    <a class="@(string.Equals(action, "FlyerImports", StringComparison.OrdinalIgnoreCase) || string.Equals(action, "FlyerImportDetail", StringComparison.OrdinalIgnoreCase) || string.Equals(action, "NewFlyerImport", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin/flyer-imports">Flyer imports</a>
     <a class="@(string.Equals(action, "Users", StringComparison.OrdinalIgnoreCase) || string.Equals(action, "UserDetail", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin/users">Users</a>
     <a class="@(string.Equals(action, "Teams", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin/teams">Teams</a>
     <a class="@(string.Equals(action, "PlayerListings", StringComparison.OrdinalIgnoreCase) ? "active" : null)" href="/admin/player-listings">Player listings</a>

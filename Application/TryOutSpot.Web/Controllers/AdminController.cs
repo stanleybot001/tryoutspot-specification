@@ -22,7 +22,8 @@ namespace TryOutSpot.Web.Controllers;
 public sealed class AdminController(
     AppDbContext dbContext,
     UserManager<User> userManager,
-    ILaunchPromotionStatusService launchPromotionStatusService) : Controller
+    ILaunchPromotionStatusService launchPromotionStatusService,
+    IFlyerImportService flyerImportService) : Controller
 {
     private const int DefaultPageSize = 25;
     private const int MaxPageSize = 100;
@@ -36,6 +37,9 @@ public sealed class AdminController(
         var inReviewReportCount = await dbContext.ListingReports
             .AsNoTracking()
             .CountAsync(report => report.Status == TryOutSpotListingReportStatuses.InReview, cancellationToken);
+        var pendingFlyerImportCount = await dbContext.FlyerImports
+            .AsNoTracking()
+            .CountAsync(flyerImport => flyerImport.Status == TryOutSpotFlyerImportStatuses.PendingReview, cancellationToken);
         var activeUserCount = await dbContext.Users
             .AsNoTracking()
             .CountAsync(user => user.IsActive, cancellationToken);
@@ -60,6 +64,7 @@ public sealed class AdminController(
         return View(new AdminDashboardPageModel(
             pendingReportCount,
             inReviewReportCount,
+            pendingFlyerImportCount,
             activeUserCount,
             activeTeamCount,
             activePlayerListingCount,
@@ -1041,6 +1046,516 @@ public sealed class AdminController(
 
         TempData["StatusMessage"] = "Team opportunity deleted from public and owner-facing listings. The record is retained for admin audit history.";
         return RedirectToLocalOrAdmin(returnUrl, nameof(TeamOpportunities));
+    }
+
+    [HttpGet("flyer-imports")]
+    public async Task<IActionResult> FlyerImports(
+        [FromQuery(Name = "q")] string? search,
+        [FromQuery] string? status,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
+        var normalizedStatus = TryOutSpotFlyerImportStatuses.Normalize(status);
+        var query = BuildFlyerImportQuery(search, normalizedStatus);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var imports = await query
+            .OrderBy(flyerImport => flyerImport.Status == TryOutSpotFlyerImportStatuses.PendingReview ? 0 : 1)
+            .ThenByDescending(flyerImport => flyerImport.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToArrayAsync(cancellationToken);
+
+        return View(new AdminFlyerImportListPageModel
+        {
+            Imports = imports.Select(ToFlyerImportListItem).ToArray(),
+            Search = NormalizeOptional(search),
+            Status = normalizedStatus,
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount,
+            TotalPages = CalculateTotalPages(totalCount, pageSize),
+            StatusOptions = TryOutSpotFlyerImportStatuses.Values
+        });
+    }
+
+    [HttpGet("flyer-imports/new")]
+    public async Task<IActionResult> NewFlyerImport(CancellationToken cancellationToken = default)
+    {
+        return View("FlyerImportDetail", new AdminFlyerImportDetailPageModel
+        {
+            Import = new AdminFlyerImportDetailItem(
+                Guid.Empty,
+                TryOutSpotFlyerImportStatuses.PendingReview,
+                "manual",
+                null,
+                null,
+                false,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                DateTime.UtcNow,
+                DateTime.UtcNow),
+            Form = new AdminFlyerImportForm
+            {
+                SourcePlatform = "manual",
+                OpportunityType = "tryout"
+            },
+            SportOptions = await GetSportOptionsAsync(cancellationToken)
+        });
+    }
+
+    [HttpPost("flyer-imports")]
+    public async Task<IActionResult> CreateFlyerImport(
+        [Bind(Prefix = "Form")] AdminFlyerImportForm form,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var adminUserId))
+        {
+            return Unauthorized();
+        }
+
+        var upload = await FlyerImportUploadHelper.ParseAsync(form.FlyerFile, cancellationToken);
+        if (!upload.Succeeded)
+        {
+            AddModelErrors(upload.Errors);
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return View("FlyerImportDetail", new AdminFlyerImportDetailPageModel
+            {
+                Import = BuildNewFlyerImportDetailItem(),
+                Form = form,
+                SportOptions = await GetSportOptionsAsync(cancellationToken)
+            });
+        }
+
+        var result = await flyerImportService.CreateAsync(
+            ToFlyerImportInput(form),
+            upload.File,
+            adminUserId,
+            cancellationToken);
+        if (!result.Succeeded || result.FlyerImport is null)
+        {
+            AddModelErrors(result.Errors);
+            return View("FlyerImportDetail", new AdminFlyerImportDetailPageModel
+            {
+                Import = BuildNewFlyerImportDetailItem(),
+                Form = form,
+                SportOptions = await GetSportOptionsAsync(cancellationToken)
+            });
+        }
+
+        TempData["StatusMessage"] = "Flyer import queued for review.";
+        return RedirectToAction(nameof(FlyerImportDetail), new { flyerImportId = result.FlyerImport.Id });
+    }
+
+    [HttpGet("flyer-imports/{flyerImportId:guid}")]
+    public async Task<IActionResult> FlyerImportDetail(
+        Guid flyerImportId,
+        CancellationToken cancellationToken = default)
+    {
+        var flyerImport = await LoadFlyerImportDetailQuery()
+            .AsNoTracking()
+            .SingleOrDefaultAsync(currentImport => currentImport.Id == flyerImportId, cancellationToken);
+        if (flyerImport is null)
+        {
+            return NotFound();
+        }
+
+        return View(await BuildFlyerImportDetailPageModelAsync(flyerImport, cancellationToken));
+    }
+
+    [HttpGet("flyer-imports/{flyerImportId:guid}/file")]
+    public async Task<IActionResult> FlyerImportFile(
+        Guid flyerImportId,
+        CancellationToken cancellationToken = default)
+    {
+        var flyerImport = await dbContext.FlyerImports
+            .AsNoTracking()
+            .Where(currentImport => currentImport.Id == flyerImportId)
+            .Select(currentImport => new
+            {
+                currentImport.StoredObjectKey,
+                currentImport.StoredFileName,
+                currentImport.StoredContentType
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (flyerImport is null || string.IsNullOrWhiteSpace(flyerImport.StoredObjectKey))
+        {
+            return NotFound();
+        }
+
+        var payload = await flyerImportService.DownloadFlyerAsync(flyerImportId, cancellationToken);
+        if (payload is null || payload.Content.Length == 0)
+        {
+            return NotFound();
+        }
+
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return File(payload.Content, ResolveFlyerImportContentType(
+            payload.ContentType,
+            flyerImport.StoredContentType,
+            flyerImport.StoredFileName));
+    }
+
+    [HttpPost("flyer-imports/{flyerImportId:guid}/update")]
+    public async Task<IActionResult> UpdateFlyerImport(
+        Guid flyerImportId,
+        [Bind(Prefix = "Form")] AdminFlyerImportForm form,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var adminUserId))
+        {
+            return Unauthorized();
+        }
+
+        var existingImport = await LoadFlyerImportDetailQuery()
+            .AsNoTracking()
+            .SingleOrDefaultAsync(currentImport => currentImport.Id == flyerImportId, cancellationToken);
+        if (existingImport is null)
+        {
+            return NotFound();
+        }
+
+        var upload = await FlyerImportUploadHelper.ParseAsync(form.FlyerFile, cancellationToken);
+        if (!upload.Succeeded)
+        {
+            AddModelErrors(upload.Errors);
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return View("FlyerImportDetail", new AdminFlyerImportDetailPageModel
+            {
+                Import = ToFlyerImportDetailItem(existingImport),
+                Form = form,
+                SportOptions = await GetSportOptionsAsync(cancellationToken)
+            });
+        }
+
+        var result = await flyerImportService.UpdateAsync(
+            flyerImportId,
+            ToFlyerImportInput(form),
+            upload.File,
+            adminUserId,
+            cancellationToken);
+        if (!result.Succeeded)
+        {
+            AddModelErrors(result.Errors);
+            return View("FlyerImportDetail", new AdminFlyerImportDetailPageModel
+            {
+                Import = ToFlyerImportDetailItem(existingImport),
+                Form = form,
+                SportOptions = await GetSportOptionsAsync(cancellationToken)
+            });
+        }
+
+        TempData["StatusMessage"] = "Flyer import updated.";
+        return RedirectToAction(nameof(FlyerImportDetail), new { flyerImportId });
+    }
+
+    [HttpPost("flyer-imports/{flyerImportId:guid}/create-listing")]
+    public async Task<IActionResult> CreateListingFromFlyerImport(
+        Guid flyerImportId,
+        AdminCreateListingFromFlyerImportForm form,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var adminUserId))
+        {
+            return Unauthorized();
+        }
+
+        var result = await flyerImportService.CreateListingAsync(
+            flyerImportId,
+            adminUserId,
+            form.PublishImmediately,
+            cancellationToken);
+        if (!result.Succeeded)
+        {
+            TempData["StatusMessage"] = string.Join(" ", result.Errors);
+            return RedirectToAction(nameof(FlyerImportDetail), new { flyerImportId });
+        }
+
+        TempData["StatusMessage"] = form.PublishImmediately
+            ? "Listing created and published from flyer."
+            : "Draft listing created from flyer.";
+        return RedirectToAction(nameof(FlyerImportDetail), new { flyerImportId });
+    }
+
+    [HttpPost("flyer-imports/{flyerImportId:guid}/reject")]
+    public async Task<IActionResult> RejectFlyerImport(
+        Guid flyerImportId,
+        AdminRejectFlyerImportForm form,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var adminUserId))
+        {
+            return Unauthorized();
+        }
+
+        var result = await flyerImportService.RejectAsync(
+            flyerImportId,
+            adminUserId,
+            form.AdminNotes,
+            cancellationToken);
+        if (!result.Succeeded)
+        {
+            TempData["StatusMessage"] = string.Join(" ", result.Errors);
+            return RedirectToAction(nameof(FlyerImportDetail), new { flyerImportId });
+        }
+
+        TempData["StatusMessage"] = "Flyer import rejected.";
+        return RedirectToAction(nameof(FlyerImportDetail), new { flyerImportId });
+    }
+
+    private IQueryable<FlyerImport> BuildFlyerImportQuery(string? search, string? status)
+    {
+        var query = dbContext.FlyerImports
+            .AsNoTracking()
+            .Include(flyerImport => flyerImport.Sport)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query = query.Where(flyerImport => flyerImport.Status == status);
+        }
+
+        var normalizedSearch = NormalizeOptional(search);
+        if (!string.IsNullOrWhiteSpace(normalizedSearch))
+        {
+            var loweredSearch = normalizedSearch.ToLowerInvariant();
+            query = query.Where(flyerImport =>
+                (flyerImport.Title != null && flyerImport.Title.ToLower().Contains(loweredSearch))
+                || (flyerImport.TeamName != null && flyerImport.TeamName.ToLower().Contains(loweredSearch))
+                || (flyerImport.OrganizationName != null && flyerImport.OrganizationName.ToLower().Contains(loweredSearch))
+                || (flyerImport.City != null && flyerImport.City.ToLower().Contains(loweredSearch))
+                || (flyerImport.State != null && flyerImport.State.ToLower().Contains(loweredSearch))
+                || (flyerImport.ZipCode != null && flyerImport.ZipCode.ToLower().Contains(loweredSearch))
+                || (flyerImport.SourceUrl != null && flyerImport.SourceUrl.ToLower().Contains(loweredSearch))
+                || (flyerImport.OriginalExternalImageUrl != null && flyerImport.OriginalExternalImageUrl.ToLower().Contains(loweredSearch)));
+        }
+
+        return query;
+    }
+
+    private IQueryable<FlyerImport> LoadFlyerImportDetailQuery()
+    {
+        return dbContext.FlyerImports
+            .Include(flyerImport => flyerImport.Sport)
+            .Include(flyerImport => flyerImport.ReviewedByUser)
+            .Include(flyerImport => flyerImport.Team)
+            .Include(flyerImport => flyerImport.Opportunity);
+    }
+
+    private async Task<AdminFlyerImportDetailPageModel> BuildFlyerImportDetailPageModelAsync(
+        FlyerImport flyerImport,
+        CancellationToken cancellationToken)
+    {
+        return new AdminFlyerImportDetailPageModel
+        {
+            Import = ToFlyerImportDetailItem(flyerImport),
+            Form = ToFlyerImportForm(flyerImport),
+            SportOptions = await GetSportOptionsAsync(cancellationToken)
+        };
+    }
+
+    private async Task<IReadOnlyCollection<AdminSportOption>> GetSportOptionsAsync(CancellationToken cancellationToken)
+    {
+        return await dbContext.Sports
+            .AsNoTracking()
+            .Where(sport => sport.IsActive)
+            .OrderBy(sport => sport.Name)
+            .Select(sport => new AdminSportOption(sport.Id, sport.Name))
+            .ToArrayAsync(cancellationToken);
+    }
+
+    private static AdminFlyerImportListItem ToFlyerImportListItem(FlyerImport flyerImport)
+    {
+        return new AdminFlyerImportListItem(
+            flyerImport.Id,
+            flyerImport.Status,
+            flyerImport.SourcePlatform,
+            flyerImport.Title,
+            flyerImport.TeamName ?? flyerImport.OrganizationName,
+            flyerImport.Sport?.Name ?? flyerImport.SportName,
+            flyerImport.EventDate,
+            flyerImport.City,
+            flyerImport.State,
+            flyerImport.ZipCode,
+            !string.IsNullOrWhiteSpace(flyerImport.StoredObjectKey),
+            flyerImport.TeamId,
+            flyerImport.OpportunityId,
+            flyerImport.CreatedAt,
+            flyerImport.UpdatedAt);
+    }
+
+    private static AdminFlyerImportDetailItem ToFlyerImportDetailItem(FlyerImport flyerImport)
+    {
+        return new AdminFlyerImportDetailItem(
+            flyerImport.Id,
+            flyerImport.Status,
+            flyerImport.SourcePlatform,
+            flyerImport.SourceUrl,
+            flyerImport.OriginalExternalImageUrl,
+            !string.IsNullOrWhiteSpace(flyerImport.StoredObjectKey),
+            flyerImport.StoredFileName,
+            flyerImport.StoredContentType,
+            flyerImport.ContentHash,
+            flyerImport.TeamId,
+            flyerImport.OpportunityId,
+            flyerImport.ReviewedByUser is null ? null : GetDisplayName(flyerImport.ReviewedByUser),
+            flyerImport.ReviewedAt,
+            flyerImport.CreatedAt,
+            flyerImport.UpdatedAt);
+    }
+
+    private static AdminFlyerImportForm ToFlyerImportForm(FlyerImport flyerImport)
+    {
+        return new AdminFlyerImportForm
+        {
+            SourcePlatform = flyerImport.SourcePlatform,
+            SourceUrl = flyerImport.SourceUrl,
+            OriginalExternalImageUrl = flyerImport.OriginalExternalImageUrl,
+            SportId = flyerImport.SportId,
+            SportName = flyerImport.SportName,
+            OpportunityType = flyerImport.OpportunityType,
+            Title = flyerImport.Title,
+            TeamName = flyerImport.TeamName,
+            OrganizationName = flyerImport.OrganizationName,
+            AgeGroup = flyerImport.AgeGroup,
+            CompetitionLevel = flyerImport.CompetitionLevel,
+            EventDate = flyerImport.EventDate,
+            EventEndDate = flyerImport.EventEndDate,
+            RegistrationDeadline = flyerImport.RegistrationDeadline,
+            RegistrationFee = flyerImport.RegistrationFee,
+            Location = flyerImport.Location,
+            Address = flyerImport.Address,
+            City = flyerImport.City,
+            State = flyerImport.State,
+            ZipCode = flyerImport.ZipCode,
+            ContactEmail = flyerImport.ContactEmail,
+            ContactPhone = flyerImport.ContactPhone,
+            WebsiteUrl = flyerImport.WebsiteUrl,
+            Description = flyerImport.Description,
+            RequiredEquipment = flyerImport.RequiredEquipment,
+            WhatToBring = flyerImport.WhatToBring,
+            SpecialInstructions = flyerImport.SpecialInstructions,
+            ExtractedJson = flyerImport.ExtractedJson,
+            ConfidenceJson = flyerImport.ConfidenceJson,
+            AdminNotes = flyerImport.AdminNotes
+        };
+    }
+
+    private static FlyerImportCreateInput ToFlyerImportInput(AdminFlyerImportForm form)
+    {
+        return new FlyerImportCreateInput(
+            form.SourcePlatform,
+            form.SourceUrl,
+            form.OriginalExternalImageUrl,
+            form.SportId,
+            form.SportName,
+            form.OpportunityType,
+            form.Title,
+            form.TeamName,
+            form.OrganizationName,
+            form.AgeGroup,
+            form.CompetitionLevel,
+            form.EventDate,
+            form.EventEndDate,
+            form.RegistrationDeadline,
+            form.RegistrationFee,
+            form.Location,
+            form.Address,
+            form.City,
+            form.State,
+            form.ZipCode,
+            form.ContactEmail,
+            form.ContactPhone,
+            form.WebsiteUrl,
+            form.Description,
+            form.RequiredEquipment,
+            form.WhatToBring,
+            form.SpecialInstructions,
+            form.ExtractedJson,
+            form.ConfidenceJson,
+            form.AdminNotes);
+    }
+
+    private static AdminFlyerImportDetailItem BuildNewFlyerImportDetailItem()
+    {
+        var now = DateTime.UtcNow;
+        return new AdminFlyerImportDetailItem(
+            Guid.Empty,
+            TryOutSpotFlyerImportStatuses.PendingReview,
+            "manual",
+            null,
+            null,
+            false,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            now,
+            now);
+    }
+
+    private void AddModelErrors(IReadOnlyCollection<string> errors)
+    {
+        foreach (var error in errors)
+        {
+            ModelState.AddModelError(string.Empty, error);
+        }
+    }
+
+    private static string ResolveFlyerImportContentType(
+        string? downloadedContentType,
+        string? storedContentType,
+        string? fileName)
+    {
+        return NormalizeContentType(downloadedContentType)
+            ?? NormalizeContentType(storedContentType)
+            ?? ResolveContentTypeFromExtension(fileName)
+            ?? "application/octet-stream";
+    }
+
+    private static string? NormalizeContentType(string? contentType)
+    {
+        var normalizedContentType = NormalizeOptional(contentType)?.Split(';', 2)[0].Trim().ToLowerInvariant();
+        if (string.Equals(normalizedContentType, "image/jpg", StringComparison.Ordinal))
+        {
+            normalizedContentType = "image/jpeg";
+        }
+
+        return normalizedContentType is "application/pdf" or "image/jpeg" or "image/png" or "image/webp"
+            ? normalizedContentType
+            : null;
+    }
+
+    private static string? ResolveContentTypeFromExtension(string? fileName)
+    {
+        var normalizedFileName = NormalizeOptional(fileName);
+        return normalizedFileName is null
+            ? null
+            : Path.GetExtension(normalizedFileName).ToLowerInvariant() switch
+            {
+                ".pdf" => "application/pdf",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".png" => "image/png",
+                ".webp" => "image/webp",
+                _ => null
+            };
     }
 
     private IQueryable<ListingReport> BuildReportQuery(string? status, string? targetType, string? search)

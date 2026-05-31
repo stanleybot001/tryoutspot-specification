@@ -1,0 +1,178 @@
+@model AdminFlyerImportListPageModel
+
+@{
+    ViewData["Title"] = "Admin Flyer Imports";
+}
+
+<section class="account-page admin-page">
+    <div class="account-heading">
+        <p class="account-kicker">Automation queue</p>
+        <h1>Flyer imports</h1>
+        <p>Review imported flyers before turning them into team opportunity drafts.</p>
+    </div>
+
+    @await Html.PartialAsync("_AdminNav")
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    <section class="form-section">
+        <form method="get" class="admin-filter-form">
+            <div class="form-field">
+                <label class="form-label" for="flyer-search">Search</label>
+                <input id="flyer-search" class="form-control" name="q" value="@Model.Search" />
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="flyer-status">Status</label>
+                <select id="flyer-status" class="form-select" name="status">
+                    <option value="">All</option>
+                    @foreach (var status in Model.StatusOptions)
+                    {
+                        <option value="@status" selected="@(string.Equals(Model.Status, status, StringComparison.Ordinal))">@FormatStatus(status)</option>
+                    }
+                </select>
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="flyer-page-size">Rows</label>
+                <select id="flyer-page-size" class="form-select" name="pageSize">
+                    @foreach (var size in PageSizeOptions())
+                    {
+                        <option value="@size" selected="@(Model.PageSize == size)">@size</option>
+                    }
+                </select>
+            </div>
+            <div class="form-actions admin-filter-actions">
+                <button type="submit" class="btn btn-primary">Filter</button>
+                <a class="btn btn-outline-secondary" href="/admin/flyer-imports">Reset</a>
+                <a class="btn btn-outline-primary" href="/admin/flyer-imports/new">Add flyer</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="form-section">
+        <div class="opportunity-row-head">
+            <h2>Queue</h2>
+            <span class="section-help">@Model.TotalCount total</span>
+        </div>
+
+        @if (Model.Imports.Count == 0)
+        {
+            <p class="section-help">No flyer imports match these filters.</p>
+        }
+        else
+        {
+            <div class="plan-list">
+                @foreach (var flyerImport in Model.Imports)
+                {
+                    <article class="plan-row plan-row-stack admin-list-row">
+                        <div class="opportunity-row-head">
+                            <div>
+                                <strong>@(flyerImport.Title ?? flyerImport.TeamName ?? "Untitled flyer")</strong>
+                                <span>@(flyerImport.TeamName ?? "Team not set") - @(flyerImport.SportName ?? "Sport not set")</span>
+                            </div>
+                            <div class="team-metric-inline">
+                                <span>@FormatStatus(flyerImport.Status)</span>
+                                <span>@(flyerImport.HasStoredFlyer ? "Stored flyer" : "URL only")</span>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mt-2 small text-muted">
+                            <span><strong class="text-body">Source:</strong> @flyerImport.SourcePlatform</span>
+                            <span><strong class="text-body">Event:</strong> @FormatDate(flyerImport.EventDateUtc)</span>
+                            <span><strong class="text-body">Location:</strong> @FormatLocation(flyerImport.City, flyerImport.State, flyerImport.ZipCode)</span>
+                            <span><strong class="text-body">Updated:</strong> @flyerImport.UpdatedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</span>
+                        </div>
+                        <div class="form-actions admin-row-actions mt-2">
+                            <a class="btn btn-outline-primary btn-sm" href="/admin/flyer-imports/@flyerImport.ImportId">Review</a>
+                            @if (flyerImport.OpportunityId.HasValue)
+                            {
+                                <a class="btn btn-outline-secondary btn-sm" href="/admin/team-opportunities?q=@Uri.EscapeDataString(flyerImport.Title ?? flyerImport.TeamName ?? string.Empty)">Listing</a>
+                            }
+                            @if (flyerImport.TeamId.HasValue)
+                            {
+                                <a class="btn btn-outline-secondary btn-sm" href="/admin/teams?q=@Uri.EscapeDataString(flyerImport.TeamName ?? string.Empty)">Team</a>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        @if (Model.TotalPages > 1)
+        {
+            <div class="form-actions mt-3">
+                @if (Model.Page > 1)
+                {
+                    <a class="btn btn-outline-secondary" href="@BuildPageUrl(Model.Page - 1)">Previous</a>
+                }
+                <span class="section-help">Page @Model.Page of @Model.TotalPages</span>
+                @if (Model.Page < Model.TotalPages)
+                {
+                    <a class="btn btn-outline-secondary" href="@BuildPageUrl(Model.Page + 1)">Next</a>
+                }
+            </div>
+        }
+    </section>
+</section>
+
+@functions {
+    private static int[] PageSizeOptions()
+    {
+        return [10, 25, 50, 100];
+    }
+
+    private string BuildPageUrl(int page)
+    {
+        var values = new List<string> { $"page={page}", $"pageSize={Model.PageSize}" };
+        if (!string.IsNullOrWhiteSpace(Model.Search))
+        {
+            values.Add($"q={Uri.EscapeDataString(Model.Search)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(Model.Status))
+        {
+            values.Add($"status={Uri.EscapeDataString(Model.Status)}");
+        }
+
+        return "/admin/flyer-imports?" + string.Join("&", values);
+    }
+
+    private static string FormatStatus(string status)
+    {
+        return status.Replace("_", " ", StringComparison.Ordinal).Trim() switch
+        {
+            "pending review" => "Pending review",
+            "draft created" => "Draft created",
+            "published" => "Published",
+            "rejected" => "Rejected",
+            _ => status
+        };
+    }
+
+    private static string FormatDate(DateTime? value)
+    {
+        return value.HasValue ? value.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt") : "Not set";
+    }
+
+    private static string FormatLocation(string? city, string? state, string? zipCode)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            parts.Add(city.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            parts.Add(state.Trim().ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(zipCode))
+        {
+            parts.Add(zipCode.Trim());
+        }
+
+        return parts.Count == 0 ? "Not set" : string.Join(", ", parts);
+    }
+}

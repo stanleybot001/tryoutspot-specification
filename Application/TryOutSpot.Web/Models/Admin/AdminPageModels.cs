@@ -5,6 +5,7 @@ namespace TryOutSpot.Web.Models.Admin;
 public sealed record AdminDashboardPageModel(
     int PendingReportCount,
     int InReviewReportCount,
+    int PendingFlyerImportCount,
     int ActiveUserCount,
     int ActiveTeamCount,
     int ActivePlayerListingCount,

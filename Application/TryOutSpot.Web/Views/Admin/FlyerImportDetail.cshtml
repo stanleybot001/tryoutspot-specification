@@ -1,0 +1,300 @@
+@model AdminFlyerImportDetailPageModel
+
+@{
+    var isNew = Model.Import.ImportId == Guid.Empty;
+    ViewData["Title"] = isNew ? "New Flyer Import" : "Review Flyer Import";
+    var formAction = isNew
+        ? Url.Action("CreateFlyerImport", "Admin")
+        : Url.Action("UpdateFlyerImport", "Admin", new { flyerImportId = Model.Import.ImportId });
+}
+
+<section class="account-page admin-page">
+    <div class="account-heading">
+        <p class="account-kicker">Flyer import</p>
+        <h1>@(isNew ? "Add flyer" : "Review flyer")</h1>
+        <p>Use this queue for tryouts, roster needs, guest players, tournaments, camps, clinics, private workouts, and other team-side flyers.</p>
+    </div>
+
+    @await Html.PartialAsync("_AdminNav")
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    <div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+    <section class="admin-detail-layout">
+        <form action="@formAction" method="post" enctype="multipart/form-data" class="account-form">
+            @Html.AntiForgeryToken()
+
+            <section class="form-section">
+                <h2>Flyer source</h2>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="Form.FlyerFile" class="form-label">Flyer file</label>
+                        <input asp-for="Form.FlyerFile" class="form-control" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" />
+                        <span class="field-hint">PDF, JPG, PNG, or WEBP up to 10 MB.</span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.SourcePlatform" class="form-label">Source platform</label>
+                        <input asp-for="Form.SourcePlatform" class="form-control" placeholder="facebook" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.SourceUrl" class="form-label">Source post URL</label>
+                        <input asp-for="Form.SourceUrl" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.OriginalExternalImageUrl" class="form-label">External image URL</label>
+                        <input asp-for="Form.OriginalExternalImageUrl" class="form-control" />
+                    </div>
+                </div>
+            </section>
+
+            <section class="form-section">
+                <h2>Listing fields</h2>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="Form.Title" class="form-label">Title</label>
+                        <input asp-for="Form.Title" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.OpportunityType" class="form-label">Type</label>
+                        <select asp-for="Form.OpportunityType" class="form-select">
+                            @foreach (var option in OpportunityTypeOptions())
+                            {
+                                <option value="@option.Code">@option.Label</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.TeamName" class="form-label">Team name</label>
+                        <input asp-for="Form.TeamName" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.OrganizationName" class="form-label">Organization name</label>
+                        <input asp-for="Form.OrganizationName" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.SportId" class="form-label">Sport</label>
+                        <select asp-for="Form.SportId" class="form-select">
+                            <option value="">Choose sport</option>
+                            @foreach (var sport in Model.SportOptions)
+                            {
+                                <option value="@sport.SportId">@sport.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.SportName" class="form-label">Sport name from AI</label>
+                        <input asp-for="Form.SportName" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.AgeGroup" class="form-label">Age group</label>
+                        <input asp-for="Form.AgeGroup" class="form-control" placeholder="14U" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.CompetitionLevel" class="form-label">Competition level</label>
+                        <input asp-for="Form.CompetitionLevel" class="form-control" placeholder="A, AA, Majors" />
+                    </div>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.Description" class="form-label">Description</label>
+                    <textarea asp-for="Form.Description" class="form-control" rows="5"></textarea>
+                </div>
+            </section>
+
+            <section class="form-section">
+                <h2>Date and place</h2>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="Form.EventDate" class="form-label">Event starts</label>
+                        <input asp-for="Form.EventDate" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.EventEndDate" class="form-label">Event ends</label>
+                        <input asp-for="Form.EventEndDate" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.RegistrationDeadline" class="form-label">Registration deadline</label>
+                        <input asp-for="Form.RegistrationDeadline" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.RegistrationFee" class="form-label">Fee</label>
+                        <input asp-for="Form.RegistrationFee" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.Location" class="form-label">Location name</label>
+                        <input asp-for="Form.Location" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.Address" class="form-label">Address</label>
+                        <input asp-for="Form.Address" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.City" class="form-label">City</label>
+                        <input asp-for="Form.City" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.State" class="form-label">State</label>
+                        <input asp-for="Form.State" class="form-control" maxlength="2" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.ZipCode" class="form-label">ZIP code</label>
+                        <input asp-for="Form.ZipCode" class="form-control" />
+                    </div>
+                </div>
+            </section>
+
+            <section class="form-section">
+                <h2>Contact and details</h2>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="Form.ContactEmail" class="form-label">Contact email</label>
+                        <input asp-for="Form.ContactEmail" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.ContactPhone" class="form-label">Contact phone</label>
+                        <input asp-for="Form.ContactPhone" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.WebsiteUrl" class="form-label">Website URL</label>
+                        <input asp-for="Form.WebsiteUrl" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.RequiredEquipment" class="form-label">Required equipment</label>
+                        <input asp-for="Form.RequiredEquipment" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.WhatToBring" class="form-label">What to bring</label>
+                        <input asp-for="Form.WhatToBring" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.SpecialInstructions" class="form-label">Special instructions</label>
+                        <input asp-for="Form.SpecialInstructions" class="form-control" />
+                    </div>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.AdminNotes" class="form-label">Admin notes</label>
+                    <textarea asp-for="Form.AdminNotes" class="form-control" rows="3"></textarea>
+                </div>
+            </section>
+
+            <section class="form-section">
+                <h2>AI payload</h2>
+                <div class="form-field">
+                    <label asp-for="Form.ExtractedJson" class="form-label">Extracted JSON</label>
+                    <textarea asp-for="Form.ExtractedJson" class="form-control code-textarea" rows="8"></textarea>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.ConfidenceJson" class="form-label">Confidence JSON</label>
+                    <textarea asp-for="Form.ConfidenceJson" class="form-control code-textarea" rows="5"></textarea>
+                </div>
+            </section>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">@(isNew ? "Queue flyer" : "Save review")</button>
+                <a class="btn btn-outline-secondary" href="/admin/flyer-imports">Back to queue</a>
+            </div>
+        </form>
+
+        <aside class="form-section">
+            <h2>Status</h2>
+            <dl class="admin-detail-grid">
+                <dt>Status</dt>
+                <dd>@FormatStatus(Model.Import.Status)</dd>
+                <dt>Created</dt>
+                <dd>@Model.Import.CreatedAtUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</dd>
+                <dt>Updated</dt>
+                <dd>@Model.Import.UpdatedAtUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</dd>
+                <dt>Reviewed by</dt>
+                <dd>@(Model.Import.ReviewedByName ?? "Not reviewed")</dd>
+                <dt>Flyer</dt>
+                <dd>@(Model.Import.HasStoredFlyer ? Model.Import.StoredFileName ?? "Stored" : "Not stored")</dd>
+            </dl>
+
+            @if (!isNew && Model.Import.HasStoredFlyer)
+            {
+                <div class="flyer-preview">
+                    @if (IsImage(Model.Import.StoredContentType, Model.Import.StoredFileName))
+                    {
+                        <img src="/admin/flyer-imports/@Model.Import.ImportId/file" alt="Imported flyer preview" />
+                    }
+                    else
+                    {
+                        <a class="btn btn-outline-primary btn-sm" href="/admin/flyer-imports/@Model.Import.ImportId/file" target="_blank" rel="noopener">Open flyer</a>
+                    }
+                </div>
+            }
+
+            @if (!isNew)
+            {
+                @if (Model.Import.OpportunityId.HasValue)
+                {
+                    <div class="form-actions mt-3">
+                        <a class="btn btn-outline-primary btn-sm" href="/admin/team-opportunities?q=@Uri.EscapeDataString(Model.Form.Title ?? Model.Form.TeamName ?? string.Empty)">Open listing queue</a>
+                        <a class="btn btn-outline-secondary btn-sm" href="/admin/teams?q=@Uri.EscapeDataString(Model.Form.TeamName ?? string.Empty)">Open team</a>
+                    </div>
+                }
+                else if (!string.Equals(Model.Import.Status, TryOutSpotFlyerImportStatuses.Rejected, StringComparison.Ordinal))
+                {
+                    <form asp-action="CreateListingFromFlyerImport" asp-controller="Admin" asp-route-flyerImportId="@Model.Import.ImportId" method="post" class="mt-3">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="PublishImmediately" value="true" id="publish-immediately" />
+                            <label class="form-check-label" for="publish-immediately">Publish immediately</label>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm">Create listing</button>
+                    </form>
+
+                    <form asp-action="RejectFlyerImport" asp-controller="Admin" asp-route-flyerImportId="@Model.Import.ImportId" method="post" class="mt-3">
+                        <div class="form-field">
+                            <label class="form-label" for="reject-admin-notes">Reject notes</label>
+                            <textarea id="reject-admin-notes" name="AdminNotes" class="form-control" rows="3">@Model.Form.AdminNotes</textarea>
+                        </div>
+                        <button type="submit" class="btn btn-outline-danger btn-sm">Reject import</button>
+                    </form>
+                }
+            }
+        </aside>
+    </section>
+</section>
+
+@functions {
+    private static IReadOnlyCollection<(string Code, string Label)> OpportunityTypeOptions()
+    {
+        return
+        [
+            ("tryout", "Tryout"),
+            ("roster_opening", "Roster opening / adding players"),
+            ("pickup_player", "Guest or pickup player"),
+            ("tournament", "Tournament"),
+            ("camp", "Camp"),
+            ("clinic", "Clinic"),
+            ("private_workout", "Private workout"),
+            ("other", "Other")
+        ];
+    }
+
+    private static string FormatStatus(string status)
+    {
+        return status.Replace("_", " ", StringComparison.Ordinal).Trim() switch
+        {
+            "pending review" => "Pending review",
+            "draft created" => "Draft created",
+            "published" => "Published",
+            "rejected" => "Rejected",
+            _ => status
+        };
+    }
+
+    private static bool IsImage(string? contentType, string? fileName)
+    {
+        if (!string.IsNullOrWhiteSpace(contentType)
+            && contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return System.IO.Path.GetExtension(fileName ?? string.Empty).ToLowerInvariant() is ".jpg" or ".jpeg" or ".png" or ".webp";
+    }
+}

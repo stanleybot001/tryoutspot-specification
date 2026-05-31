@@ -23,6 +23,8 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
 
     public virtual DbSet<ComplimentaryPlanGrant> ComplimentaryPlanGrants { get; set; }
 
+    public virtual DbSet<FlyerImport> FlyerImports { get; set; }
+
     public virtual DbSet<Medium> Media { get; set; }
 
     public virtual DbSet<ListingReport> ListingReports { get; set; }
@@ -156,6 +158,76 @@ public partial class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, 
                 .WithMany()
                 .HasForeignKey(e => e.RevokedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<FlyerImport>(entity =>
+        {
+            entity.HasIndex(e => e.CreatedByUserId, "IX_FlyerImports_CreatedByUserId");
+            entity.HasIndex(e => e.OpportunityId, "IX_FlyerImports_OpportunityId");
+            entity.HasIndex(e => e.ReviewedByUserId, "IX_FlyerImports_ReviewedByUserId");
+            entity.HasIndex(e => e.SportId, "IX_FlyerImports_SportId");
+            entity.HasIndex(e => new { e.Status, e.CreatedAt }, "IX_FlyerImports_Status_CreatedAt");
+            entity.HasIndex(e => e.TeamId, "IX_FlyerImports_TeamId");
+
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Address).HasMaxLength(500);
+            entity.Property(e => e.AdminNotes).HasMaxLength(2000);
+            entity.Property(e => e.AgeGroup).HasMaxLength(50);
+            entity.Property(e => e.City).HasMaxLength(100);
+            entity.Property(e => e.CompetitionLevel).HasMaxLength(100);
+            entity.Property(e => e.ConfidenceJson).HasColumnType("jsonb");
+            entity.Property(e => e.ContactEmail).HasMaxLength(255);
+            entity.Property(e => e.ContactPhone).HasMaxLength(20);
+            entity.Property(e => e.ContentHash).HasMaxLength(128);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.Description).HasMaxLength(4000);
+            entity.Property(e => e.ExtractedJson).HasColumnType("jsonb");
+            entity.Property(e => e.Location).HasMaxLength(500);
+            entity.Property(e => e.OpportunityType).HasMaxLength(50);
+            entity.Property(e => e.OrganizationName).HasMaxLength(200);
+            entity.Property(e => e.OriginalExternalImageUrl).HasMaxLength(2000);
+            entity.Property(e => e.RegistrationFee).HasColumnType("numeric(10,2)");
+            entity.Property(e => e.RequiredEquipment).HasMaxLength(1000);
+            entity.Property(e => e.SourcePlatform).HasMaxLength(40).HasDefaultValue("manual");
+            entity.Property(e => e.SourceUrl).HasMaxLength(2000);
+            entity.Property(e => e.SpecialInstructions).HasMaxLength(2000);
+            entity.Property(e => e.SportName).HasMaxLength(100);
+            entity.Property(e => e.State).HasMaxLength(2);
+            entity.Property(e => e.Status).HasMaxLength(30).HasDefaultValue(TryOutSpotFlyerImportStatuses.PendingReview);
+            entity.Property(e => e.StoredContentType).HasMaxLength(100);
+            entity.Property(e => e.StoredFileName).HasMaxLength(260);
+            entity.Property(e => e.StoredObjectKey).HasMaxLength(500);
+            entity.Property(e => e.TeamName).HasMaxLength(200);
+            entity.Property(e => e.Title).HasMaxLength(300);
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.WebsiteUrl).HasMaxLength(500);
+            entity.Property(e => e.WhatToBring).HasMaxLength(1000);
+            entity.Property(e => e.ZipCode).HasMaxLength(10);
+
+            entity.HasOne(d => d.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.ReviewedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.ReviewedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.Sport)
+                .WithMany()
+                .HasForeignKey(d => d.SportId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(d => d.Team)
+                .WithMany()
+                .HasForeignKey(d => d.TeamId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(d => d.Opportunity)
+                .WithMany()
+                .HasForeignKey(d => d.OpportunityId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<ListingReport>(entity =>

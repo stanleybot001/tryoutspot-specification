@@ -81,6 +81,8 @@ public sealed class AdminCenterPageTests
         await AssertPageContainsAsync(client, "/admin/promotions", "Reset promo counter");
         await AssertPageContainsAsync(client, "/admin/reports", "Admin UI reported pickup listing");
         await AssertPageContainsAsync(client, $"/admin/reports/{reportId}", "Review action");
+        await AssertPageContainsAsync(client, "/admin/flyer-imports", "Flyer imports");
+        await AssertPageContainsAsync(client, "/admin/flyer-imports/new", "Add flyer");
         await AssertPageContainsAsync(client, "/admin/users", owner.Email!);
         await AssertPageContainsAsync(client, $"/admin/users/{owner.Id}", "Player profiles");
         await AssertPageContainsAsync(client, $"/admin/users/{owner.Id}", "Complimentary access");
