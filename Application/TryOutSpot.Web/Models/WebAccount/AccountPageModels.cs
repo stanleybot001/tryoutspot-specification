@@ -1623,7 +1623,7 @@ public sealed class SearchTeamItemsPageModel
     [Display(Name = "ZIP code")]
     public string? OriginZipCode { get; set; }
 
-    [Range(1, 250)]
+    [Range(0, 800)]
     [Display(Name = "Radius")]
     public int? RadiusMiles { get; set; } = 25;
 
@@ -1673,6 +1673,8 @@ public sealed class SearchTeamItemsPageModel
 
     public string? SearchOriginZipCode { get; set; }
 
+    public bool IsEntireUsSearch => SearchRadiusMiles == 0;
+
     public IReadOnlyCollection<SportSelectionPageItem> AvailableSports { get; set; } = [];
 
     public IReadOnlyCollection<SearchFilterOptionPageItem> AvailableOpportunityTypes { get; set; } = [];
@@ -1721,7 +1723,7 @@ public sealed class SearchPlayersPageModel
     [Display(Name = "ZIP code")]
     public string? OriginZipCode { get; set; }
 
-    [Range(1, 250)]
+    [Range(0, 800)]
     [Display(Name = "Radius")]
     public int? RadiusMiles { get; set; } = 25;
 
@@ -1766,6 +1768,8 @@ public sealed class SearchPlayersPageModel
     public int? SearchRadiusMiles { get; set; }
 
     public string? SearchOriginZipCode { get; set; }
+
+    public bool IsEntireUsSearch => SearchRadiusMiles == 0;
 
     public IReadOnlyCollection<SportSelectionPageItem> AvailableSports { get; set; } = [];
 

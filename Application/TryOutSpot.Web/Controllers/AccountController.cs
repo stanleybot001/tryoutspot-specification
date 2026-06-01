@@ -63,6 +63,7 @@ public sealed class AccountController(
     private const int MaxSearchPageSize = 50;
     private const string PlayerParentBundleCode = "player_parent";
     private const string TeamBundleCode = "team";
+    private const int EntireUsRadiusMiles = 0;
     private static readonly ListingReportReasonOptionPageItem[] ListingReportReasonOptions =
     [
         new("Inappropriate content", "Inappropriate content"),
@@ -149,8 +150,8 @@ public sealed class AccountController(
         "private_workout",
         "other"
     ];
-    private static readonly int[] SearchRadiusOptions = [10, 25, 30, 60, 120, 250];
-    private static readonly int[] SearchSuggestionRadiusMiles = [30, 60, 120, 250];
+    private static readonly int[] SearchRadiusOptions = [10, 25, 30, 60, 120, 250, 500, 800, EntireUsRadiusMiles];
+    private static readonly int[] SearchSuggestionRadiusMiles = [30, 60, 120, 250, 500, 800];
     private static readonly PlayerListingTypeSelectionPageItem[] PlayerListingTypeOptions =
     [
         new(
@@ -5296,15 +5297,27 @@ public sealed class AccountController(
             model.RadiusMiles,
             maxRadiusMiles,
             nameof(SearchTeamItemsPageModel.OriginZipCode),
+            allowEntireUs: hasAdvancedOpportunitySearch,
             constrained: () => model.RadiusWasConstrained = true,
             cancellationToken);
-        model.SearchOriginZipCode = zipRadius?.OriginZipCode;
-        model.SearchRadiusMiles = zipRadius?.RadiusMiles;
-        if (zipRadius is not null)
+        if (IsEntireUsRadius(model.RadiusMiles) && hasAdvancedOpportunitySearch && ModelState.IsValid)
         {
-            model.OriginZipCode = zipRadius.OriginZipCode;
-            model.RadiusMiles = zipRadius.RadiusMiles;
+            model.OriginZipCode = null;
+            model.RadiusMiles = EntireUsRadiusMiles;
+            model.SearchOriginZipCode = null;
+            model.SearchRadiusMiles = EntireUsRadiusMiles;
             model.AvailableRadiusOptions = BuildRadiusSearchOptions(model.RadiusMiles, maxRadiusMiles);
+        }
+        else
+        {
+            model.SearchOriginZipCode = zipRadius?.OriginZipCode;
+            model.SearchRadiusMiles = zipRadius?.RadiusMiles;
+            if (zipRadius is not null)
+            {
+                model.OriginZipCode = zipRadius.OriginZipCode;
+                model.RadiusMiles = zipRadius.RadiusMiles;
+                model.AvailableRadiusOptions = BuildRadiusSearchOptions(model.RadiusMiles, maxRadiusMiles);
+            }
         }
 
         if (!ModelState.IsValid)
@@ -5424,15 +5437,27 @@ public sealed class AccountController(
             model.RadiusMiles,
             maxRadiusMiles,
             nameof(SearchPlayersPageModel.OriginZipCode),
+            allowEntireUs: hasAdvancedPlayerSearch,
             constrained: () => model.RadiusWasConstrained = true,
             cancellationToken);
-        model.SearchOriginZipCode = zipRadius?.OriginZipCode;
-        model.SearchRadiusMiles = zipRadius?.RadiusMiles;
-        if (zipRadius is not null)
+        if (IsEntireUsRadius(model.RadiusMiles) && hasAdvancedPlayerSearch && ModelState.IsValid)
         {
-            model.OriginZipCode = zipRadius.OriginZipCode;
-            model.RadiusMiles = zipRadius.RadiusMiles;
+            model.OriginZipCode = null;
+            model.RadiusMiles = EntireUsRadiusMiles;
+            model.SearchOriginZipCode = null;
+            model.SearchRadiusMiles = EntireUsRadiusMiles;
             model.AvailableRadiusOptions = BuildRadiusSearchOptions(model.RadiusMiles, maxRadiusMiles);
+        }
+        else
+        {
+            model.SearchOriginZipCode = zipRadius?.OriginZipCode;
+            model.SearchRadiusMiles = zipRadius?.RadiusMiles;
+            if (zipRadius is not null)
+            {
+                model.OriginZipCode = zipRadius.OriginZipCode;
+                model.RadiusMiles = zipRadius.RadiusMiles;
+                model.AvailableRadiusOptions = BuildRadiusSearchOptions(model.RadiusMiles, maxRadiusMiles);
+            }
         }
 
         if (!ModelState.IsValid)
@@ -5568,9 +5593,21 @@ public sealed class AccountController(
         int? radiusMiles,
         int maxRadiusMiles,
         string originZipCodeModelStateKey,
+        bool allowEntireUs,
         Action constrained,
         CancellationToken cancellationToken)
     {
+        if (IsEntireUsRadius(radiusMiles))
+        {
+            if (allowEntireUs)
+            {
+                return null;
+            }
+
+            radiusMiles = maxRadiusMiles;
+            constrained();
+        }
+
         if (string.IsNullOrWhiteSpace(originZipCode))
         {
             return null;
@@ -5602,6 +5639,11 @@ public sealed class AccountController(
         }
 
         return zipRadiusResult;
+    }
+
+    private static bool IsEntireUsRadius(int? radiusMiles)
+    {
+        return radiusMiles == EntireUsRadiusMiles;
     }
 
     private IQueryable<Opportunity> BuildTeamItemSearchQuery(
@@ -6243,13 +6285,37 @@ public sealed class AccountController(
     {
         var selected = selectedRadiusMiles ?? ZipRadiusSearchService.DefaultRadiusMiles;
         return SearchRadiusOptions
-            .Where(radius => radius <= maxRadiusMiles || radius == selected)
+            .Where(radius => IsRadiusOptionVisible(radius, selected, maxRadiusMiles))
             .Select(radius => new SearchRadiusOptionPageItem(
                 radius,
-                $"{radius} miles",
+                FormatRadiusOptionLabel(radius),
                 radius == selected,
-                radius <= maxRadiusMiles))
+                IsRadiusOptionEnabled(radius, maxRadiusMiles)))
             .ToArray();
+    }
+
+    private static bool IsRadiusOptionVisible(
+        int radiusMiles,
+        int selectedRadiusMiles,
+        int maxRadiusMiles)
+    {
+        return IsEntireUsRadius(radiusMiles)
+            ? maxRadiusMiles >= ZipRadiusSearchService.MaxRadiusMiles || radiusMiles == selectedRadiusMiles
+            : radiusMiles <= maxRadiusMiles || radiusMiles == selectedRadiusMiles;
+    }
+
+    private static bool IsRadiusOptionEnabled(int radiusMiles, int maxRadiusMiles)
+    {
+        return IsEntireUsRadius(radiusMiles)
+            ? maxRadiusMiles >= ZipRadiusSearchService.MaxRadiusMiles
+            : radiusMiles <= maxRadiusMiles;
+    }
+
+    private static string FormatRadiusOptionLabel(int radiusMiles)
+    {
+        return IsEntireUsRadius(radiusMiles)
+            ? "Entire US"
+            : $"{radiusMiles} miles";
     }
 
     private static IReadOnlyCollection<int> GetSearchSuggestionRadii(int currentRadiusMiles, int maxRadiusMiles)

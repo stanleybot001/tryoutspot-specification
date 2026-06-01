@@ -55,6 +55,33 @@ public sealed class SearchPagesTests
         var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
         Assert.Contains("Free parent visible tryout", html);
         Assert.Contains("Free parent visible tournament", html);
+        Assert.Contains("500 miles", html);
+        Assert.Contains("800 miles", html);
+        Assert.Contains("Entire US", html);
+    }
+
+    [Fact]
+    public async Task SearchTeamItems_PremiumParent_CanSearchEntireUsWithoutZipCatalog()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var parent = await factory.CreateUserAsync("premium-parent-entire-us-search@example.com", [TryOutSpotRoles.Parent]);
+        await AddSubscriptionAsync(factory, parent.Id, TryOutSpotPlanCodes.PremiumPlayer, "active");
+        SeedTeamItemSearchData(factory);
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, parent.Email!);
+
+        var response = await client.GetAsync("/account/search/team-items?originZipCode=67460&radiusMiles=0&type=all");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+        Assert.Contains("Entire US", html);
+        Assert.Contains("Free parent visible tryout", html);
+        Assert.Contains("Free parent visible tournament", html);
+        Assert.DoesNotContain("That ZIP code is not in the geographic catalog yet.", html);
     }
 
     [Fact]

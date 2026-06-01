@@ -121,7 +121,14 @@
                 <h2>Results</h2>
                 <span>@FormatResultRange(Model.FirstItemNumber, Model.LastItemNumber, Model.TotalCount)</span>
             </div>
-            @if (!string.IsNullOrWhiteSpace(Model.SearchOriginZipCode) && Model.SearchRadiusMiles.HasValue)
+            @if (Model.IsEntireUsSearch)
+            {
+                <div class="team-metric-inline">
+                    <span>Entire US</span>
+                    <span>Premium filters</span>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(Model.SearchOriginZipCode) && Model.SearchRadiusMiles.HasValue)
             {
                 <div class="team-metric-inline">
                     <span>@Model.SearchRadiusMiles miles from @Model.SearchOriginZipCode</span>

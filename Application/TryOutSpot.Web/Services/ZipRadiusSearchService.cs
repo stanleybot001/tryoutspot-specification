@@ -8,7 +8,7 @@ public sealed class ZipRadiusSearchService(AppDbContext dbContext) : IZipRadiusS
 {
     public const int MinRadiusMiles = 1;
     public const int DefaultRadiusMiles = 25;
-    public const int MaxRadiusMiles = 250;
+    public const int MaxRadiusMiles = 800;
 
     public string? NormalizeZipCode(string? zipCode)
     {
