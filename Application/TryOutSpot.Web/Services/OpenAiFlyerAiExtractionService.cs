@@ -444,6 +444,59 @@ public sealed class OpenAiFlyerAiExtractionService(
 
         public decimal? ConfidenceScore { get; set; }
 
+        [JsonConverter(typeof(WarningTextJsonConverter))]
         public string? Warnings { get; set; }
+    }
+
+    private sealed class WarningTextJsonConverter : JsonConverter<string?>
+    {
+        public override string? Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null)
+            {
+                return null;
+            }
+
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                return reader.GetString();
+            }
+
+            if (reader.TokenType != JsonTokenType.StartArray)
+            {
+                using var valueDocument = JsonDocument.ParseValue(ref reader);
+                return valueDocument.RootElement.GetRawText();
+            }
+
+            using var arrayDocument = JsonDocument.ParseValue(ref reader);
+            var warnings = arrayDocument.RootElement
+                .EnumerateArray()
+                .Select(warningElement => warningElement.ValueKind == JsonValueKind.String
+                    ? warningElement.GetString()
+                    : warningElement.GetRawText())
+                .Where(warning => !string.IsNullOrWhiteSpace(warning))
+                .ToArray();
+
+            return warnings.Length == 0
+                ? null
+                : string.Join("; ", warnings);
+        }
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            string? value,
+            JsonSerializerOptions options)
+        {
+            if (value is null)
+            {
+                writer.WriteNullValue();
+                return;
+            }
+
+            writer.WriteStringValue(value);
+        }
     }
 }

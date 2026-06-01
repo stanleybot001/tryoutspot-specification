@@ -154,6 +154,83 @@ public sealed class OpenAiFlyerAiExtractionServiceTests
         Assert.Contains("\"type\":\"image_url\"", handler.RequestBody);
     }
 
+    [Fact]
+    public async Task ExtractAsync_AllowsWarningArrayFromOpenAiCompatibleModels()
+    {
+        var currentYear = DateTime.UtcNow.Year;
+        var flyerPayload = $$"""
+            {
+              "title": "TN Mojo Jones 2032 Tryouts",
+              "teamName": "TN Mojo Jones",
+              "organizationName": null,
+              "sportName": "Softball",
+              "opportunityType": "tryout",
+              "ageGroup": "2032",
+              "competitionLevel": "PGF & Alliance",
+              "eventDate": "{{currentYear}}-06-21",
+              "eventDateYearSpecified": false,
+              "eventEndDate": "{{currentYear}}-07-12",
+              "eventEndDateYearSpecified": false,
+              "registrationDeadline": null,
+              "registrationDeadlineYearSpecified": false,
+              "registrationFee": null,
+              "location": "Wallace State Community College",
+              "address": null,
+              "city": "Hanceville",
+              "state": "Alabama",
+              "zipCode": null,
+              "contactEmail": null,
+              "contactPhone": "256-778-2040",
+              "websiteUrl": null,
+              "description": "Immediate roster opportunities available.",
+              "requiredEquipment": null,
+              "whatToBring": null,
+              "specialInstructions": null,
+              "confidenceScore": 0.95,
+              "warnings": []
+            }
+            """;
+        var responseBody = JsonSerializer.Serialize(new
+        {
+            choices = new[]
+            {
+                new
+                {
+                    message = new
+                    {
+                        content = flyerPayload
+                    }
+                }
+            }
+        });
+        var handler = new StubOpenAiHandler(responseBody);
+        var service = new OpenAiFlyerAiExtractionService(
+            new HttpClient(handler),
+            Options.Create(new OpenAiOptions
+            {
+                ApiKey = "dummy-key-for-compatibility",
+                ApiMode = "chat_completions",
+                ResponsesEndpoint = "http://local-vllm.test/v1",
+                FlyerExtractionModel = "Qwen/Qwen3.5-397B-A17B-GPTQ-Int4",
+                DisableThinking = true
+            }),
+            NullLogger<OpenAiFlyerAiExtractionService>.Instance);
+
+        var result = await service.ExtractAsync(
+            new UploadedFlyerImportFile("tn-mojo.jpg", [0xFF, 0xD8, 0xFF, 0xE0], "image/jpeg"),
+            sourceUrl: "https://facebook.test/posts/tn-mojo",
+            externalImageUrl: null,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(", ", result.Errors));
+        Assert.NotNull(result.Input);
+        Assert.Equal("TN Mojo Jones", result.Input.TeamName);
+        Assert.Equal("Softball", result.Input.SportName);
+        Assert.Equal("Wallace State Community College", result.Input.Location);
+        Assert.Equal("256-778-2040", result.Input.ContactPhone);
+        Assert.Null(result.Input.AdminNotes);
+    }
+
     private sealed class StubOpenAiHandler(string responseBody) : HttpMessageHandler
     {
         public string RequestBody { get; private set; } = string.Empty;
