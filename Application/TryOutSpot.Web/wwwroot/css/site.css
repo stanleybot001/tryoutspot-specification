@@ -2108,6 +2108,15 @@ body.splash-page {
   background: #f8fafc;
 }
 
+.admin-flyer-reference {
+  position: sticky;
+  top: 1rem;
+}
+
+.admin-flyer-reference .flyer-preview img {
+  max-height: 72vh;
+}
+
 .code-textarea {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.9rem;
@@ -2141,6 +2150,10 @@ body.splash-page {
   .admin-filter-form,
   .admin-detail-layout {
     grid-template-columns: 1fr;
+  }
+
+  .admin-flyer-reference {
+    position: static;
   }
 
   .step-status,

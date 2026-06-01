@@ -343,6 +343,59 @@ public sealed class AdminCenterPageTests
     }
 
     [Fact]
+    public async Task PlatformAdmin_CanViewFlyerFromTeamOpportunityEditPage()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory(services =>
+        {
+            services.RemoveAll<IPdfStorageService>();
+            services.AddSingleton<TestFlyerStorageService>();
+            services.AddScoped<IPdfStorageService>(serviceProvider =>
+                serviceProvider.GetRequiredService<TestFlyerStorageService>());
+        });
+        var teamOwner = await factory.CreateUserAsync("admin-flyer-edit-team-owner@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var admin = await factory.CreateUserAsync("admin-flyer-edit-admin@example.com", [TryOutSpotRoles.PlatformAdmin]);
+        var sportId = GetActiveSportId(factory);
+        var (teamId, opportunityId) = SeedTeamOpportunity(
+            factory,
+            teamOwner.Id,
+            sportId,
+            "Admin Flyer Eagles",
+            "Admin Flyer Eagles 12U tryout");
+        var flyerObjectKey = $"opportunities/{opportunityId}/eagles-flyer.jpg";
+        var flyerBytes = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x01 };
+        using (var scope = factory.Services.CreateScope())
+        {
+            var storage = scope.ServiceProvider.GetRequiredService<TestFlyerStorageService>();
+            await storage.UploadFileAsync(flyerObjectKey, flyerBytes, "image/jpeg", CancellationToken.None);
+
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var opportunity = await dbContext.Opportunities.SingleAsync(currentOpportunity => currentOpportunity.Id == opportunityId);
+            opportunity.UploadedPdfObjectKey = flyerObjectKey;
+            opportunity.UploadedPdfFileName = "eagles-flyer.jpg";
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, admin.Email!);
+
+        var editPath = $"/admin/team-opportunities/{opportunityId}/edit";
+        var editResponse = await client.GetAsync(editPath);
+        Assert.Equal(HttpStatusCode.OK, editResponse.StatusCode);
+        var html = await editResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Flyer reference", html);
+        Assert.Contains($"/admin/team-opportunities/{opportunityId}/flyer", html);
+        Assert.Contains("Open full size", html);
+
+        var flyerResponse = await client.GetAsync($"/admin/team-opportunities/{opportunityId}/flyer");
+        Assert.Equal(HttpStatusCode.OK, flyerResponse.StatusCode);
+        Assert.Equal("image/jpeg", flyerResponse.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(flyerBytes, await flyerResponse.Content.ReadAsByteArrayAsync());
+    }
+
+    [Fact]
     public async Task PlatformAdmin_CanSuspendUsersTeamsAndRemoveListings()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();

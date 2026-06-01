@@ -25,7 +25,8 @@ public sealed class AdminController(
     ILaunchPromotionStatusService launchPromotionStatusService,
     IFlyerImportService flyerImportService,
     IFlyerAiExtractionService flyerAiExtractionService,
-    IFlyerImportRemoteFileFetcher flyerImportRemoteFileFetcher) : Controller
+    IFlyerImportRemoteFileFetcher flyerImportRemoteFileFetcher,
+    IPdfStorageService pdfStorageService) : Controller
 {
     private const int DefaultPageSize = 25;
     private const int MaxPageSize = 100;
@@ -1161,6 +1162,32 @@ public sealed class AdminController(
         return RedirectToLocalOrAdmin(returnUrl, nameof(TeamOpportunities), new { q = opportunity.Title });
     }
 
+    [HttpGet("team-opportunities/{opportunityId:guid}/flyer")]
+    public async Task<IActionResult> TeamOpportunityFlyer(
+        Guid opportunityId,
+        CancellationToken cancellationToken = default)
+    {
+        var flyer = await ResolveTeamOpportunityFlyerDownloadAsync(opportunityId, cancellationToken);
+        if (flyer is null)
+        {
+            return NotFound();
+        }
+
+        var payload = await pdfStorageService.DownloadFileAsync(flyer.ObjectKey, cancellationToken);
+        if (payload is null || payload.Content.Length == 0)
+        {
+            return NotFound();
+        }
+
+        var contentType = ResolveFlyerImportContentType(
+            payload.ContentType,
+            flyer.ContentType,
+            flyer.FileName ?? flyer.ObjectKey);
+
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return File(payload.Content, contentType, enableRangeProcessing: false);
+    }
+
     [HttpPost("team-opportunities/{opportunityId:guid}/publish")]
     public async Task<IActionResult> PublishTeamOpportunity(
         Guid opportunityId,
@@ -1852,6 +1879,7 @@ public sealed class AdminController(
             TeamId = opportunity.TeamId,
             ReturnUrl = returnUrl,
             Form = form,
+            Flyer = await BuildTeamOpportunityFlyerReferenceAsync(opportunity, cancellationToken),
             SportOptions = await GetSportOptionsAsync(cancellationToken)
         };
     }
@@ -1986,6 +2014,97 @@ public sealed class AdminController(
                 : TryOutSpotFlyerImportStatuses.DraftCreated;
             flyerImport.UpdatedAt = now;
         }
+    }
+
+    private async Task<AdminTeamOpportunityFlyerReference?> BuildTeamOpportunityFlyerReferenceAsync(
+        Opportunity opportunity,
+        CancellationToken cancellationToken)
+    {
+        var flyerImport = await dbContext.FlyerImports
+            .AsNoTracking()
+            .Where(currentImport => currentImport.OpportunityId == opportunity.Id)
+            .OrderByDescending(currentImport => currentImport.UpdatedAt)
+            .Select(currentImport => new
+            {
+                currentImport.StoredObjectKey,
+                currentImport.StoredFileName,
+                currentImport.StoredContentType,
+                currentImport.SourceUrl,
+                currentImport.OriginalExternalImageUrl
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var hasOpportunityFlyer = !string.IsNullOrWhiteSpace(opportunity.UploadedPdfObjectKey);
+        var hasImportFlyer = !string.IsNullOrWhiteSpace(flyerImport?.StoredObjectKey);
+        var storedFlyerUrl = hasOpportunityFlyer || hasImportFlyer
+            ? $"/admin/team-opportunities/{opportunity.Id}/flyer"
+            : null;
+        var fileName = hasOpportunityFlyer
+            ? opportunity.UploadedPdfFileName
+            : flyerImport?.StoredFileName;
+        var contentType = hasOpportunityFlyer
+            ? ResolveFlyerImportContentType(null, null, opportunity.UploadedPdfFileName ?? opportunity.UploadedPdfObjectKey)
+            : ResolveFlyerImportContentType(null, flyerImport?.StoredContentType, flyerImport?.StoredFileName);
+
+        if (storedFlyerUrl is null
+            && string.IsNullOrWhiteSpace(flyerImport?.SourceUrl)
+            && string.IsNullOrWhiteSpace(flyerImport?.OriginalExternalImageUrl))
+        {
+            return null;
+        }
+
+        return new AdminTeamOpportunityFlyerReference(
+            fileName,
+            contentType,
+            storedFlyerUrl,
+            flyerImport?.SourceUrl,
+            flyerImport?.OriginalExternalImageUrl);
+    }
+
+    private async Task<TeamOpportunityFlyerDownload?> ResolveTeamOpportunityFlyerDownloadAsync(
+        Guid opportunityId,
+        CancellationToken cancellationToken)
+    {
+        var opportunity = await dbContext.Opportunities
+            .AsNoTracking()
+            .Where(currentOpportunity => currentOpportunity.Id == opportunityId)
+            .Select(currentOpportunity => new
+            {
+                currentOpportunity.UploadedPdfObjectKey,
+                currentOpportunity.UploadedPdfFileName
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (opportunity is null)
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(opportunity.UploadedPdfObjectKey))
+        {
+            return new TeamOpportunityFlyerDownload(
+                opportunity.UploadedPdfObjectKey,
+                opportunity.UploadedPdfFileName,
+                null);
+        }
+
+        var flyerImport = await dbContext.FlyerImports
+            .AsNoTracking()
+            .Where(currentImport => currentImport.OpportunityId == opportunityId)
+            .OrderByDescending(currentImport => currentImport.UpdatedAt)
+            .Select(currentImport => new
+            {
+                currentImport.StoredObjectKey,
+                currentImport.StoredFileName,
+                currentImport.StoredContentType
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return string.IsNullOrWhiteSpace(flyerImport?.StoredObjectKey)
+            ? null
+            : new TeamOpportunityFlyerDownload(
+                flyerImport.StoredObjectKey,
+                flyerImport.StoredFileName,
+                flyerImport.StoredContentType);
     }
 
     private static AdminFlyerImportDetailItem BuildNewFlyerImportDetailItem()
@@ -2673,4 +2792,9 @@ public sealed class AdminController(
         Guid TeamId,
         int TotalCount,
         int ActiveCount);
+
+    private sealed record TeamOpportunityFlyerDownload(
+        string ObjectKey,
+        string? FileName,
+        string? ContentType);
 }

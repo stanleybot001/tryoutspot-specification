@@ -21,183 +21,231 @@
 
     <div asp-validation-summary="All" class="text-danger mb-3"></div>
 
-    <form asp-action="EditTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@Model.OpportunityId" method="post" class="account-form">
-        @Html.AntiForgeryToken()
-        <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+    <section class="admin-detail-layout">
+        <form asp-action="EditTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@Model.OpportunityId" method="post" class="account-form">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
 
-        <section class="form-section">
-            <h2>Team profile</h2>
-            <div class="form-grid two-column">
-                <div class="form-field">
-                    <label asp-for="Form.TeamName" class="form-label"></label>
-                    <input asp-for="Form.TeamName" class="form-control" />
-                    <span asp-validation-for="Form.TeamName" class="text-danger"></span>
+            <section class="form-section">
+                <h2>Team profile</h2>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="Form.TeamName" class="form-label"></label>
+                        <input asp-for="Form.TeamName" class="form-control" />
+                        <span asp-validation-for="Form.TeamName" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.TeamLevel" class="form-label"></label>
+                        <input asp-for="Form.TeamLevel" class="form-control" placeholder="12U" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.TeamAddress" class="form-label"></label>
+                        <input asp-for="Form.TeamAddress" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.TeamCity" class="form-label"></label>
+                        <input asp-for="Form.TeamCity" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.TeamState" class="form-label"></label>
+                        <input asp-for="Form.TeamState" class="form-control" maxlength="2" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.TeamZipCode" class="form-label"></label>
+                        <input asp-for="Form.TeamZipCode" class="form-control" />
+                    </div>
+                </div>
+            </section>
+
+            <section class="form-section">
+                <h2>Listing details</h2>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="Form.Title" class="form-label"></label>
+                        <input asp-for="Form.Title" class="form-control" />
+                        <span asp-validation-for="Form.Title" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.Type" class="form-label"></label>
+                        <select asp-for="Form.Type" class="form-select">
+                            @foreach (var option in OpportunityTypeOptions())
+                            {
+                                <option value="@option.Code">@option.Label</option>
+                            }
+                        </select>
+                        <span asp-validation-for="Form.Type" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.SportId" class="form-label"></label>
+                        <select asp-for="Form.SportId" class="form-select">
+                            @foreach (var sport in Model.SportOptions)
+                            {
+                                <option value="@sport.SportId">@sport.Name</option>
+                            }
+                        </select>
+                        <span asp-validation-for="Form.SportId" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.AgeGroup" class="form-label"></label>
+                        <input asp-for="Form.AgeGroup" class="form-control" placeholder="12U" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.CompetitionLevel" class="form-label"></label>
+                        <input asp-for="Form.CompetitionLevel" class="form-control" />
+                    </div>
                 </div>
                 <div class="form-field">
-                    <label asp-for="Form.TeamLevel" class="form-label"></label>
-                    <input asp-for="Form.TeamLevel" class="form-control" placeholder="12U" />
+                    <label asp-for="Form.Description" class="form-label"></label>
+                    <textarea asp-for="Form.Description" class="form-control" rows="5"></textarea>
                 </div>
-                <div class="form-field">
-                    <label asp-for="Form.TeamAddress" class="form-label"></label>
-                    <input asp-for="Form.TeamAddress" class="form-control" />
+            </section>
+
+            <section class="form-section">
+                <h2>Date and listing window</h2>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="Form.EventDate" class="form-label"></label>
+                        <input asp-for="Form.EventDate" class="form-control" />
+                        <span asp-validation-for="Form.EventDate" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.EventEndDate" class="form-label"></label>
+                        <input asp-for="Form.EventEndDate" class="form-control" />
+                        <span asp-validation-for="Form.EventEndDate" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.ListingStartDate" class="form-label"></label>
+                        <input asp-for="Form.ListingStartDate" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.ListingEndDate" class="form-label"></label>
+                        <input asp-for="Form.ListingEndDate" class="form-control" />
+                        <span asp-validation-for="Form.ListingEndDate" class="text-danger"></span>
+                    </div>
                 </div>
-                <div class="form-field">
-                    <label asp-for="Form.TeamCity" class="form-label"></label>
-                    <input asp-for="Form.TeamCity" class="form-control" />
+            </section>
+
+            <section class="form-section">
+                <h2>Listing location</h2>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="Form.Location" class="form-label"></label>
+                        <input asp-for="Form.Location" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.Address" class="form-label"></label>
+                        <input asp-for="Form.Address" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.City" class="form-label"></label>
+                        <input asp-for="Form.City" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.State" class="form-label"></label>
+                        <input asp-for="Form.State" class="form-control" maxlength="2" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.ZipCode" class="form-label"></label>
+                        <input asp-for="Form.ZipCode" class="form-control" />
+                        <span asp-validation-for="Form.ZipCode" class="text-danger"></span>
+                    </div>
                 </div>
-                <div class="form-field">
-                    <label asp-for="Form.TeamState" class="form-label"></label>
-                    <input asp-for="Form.TeamState" class="form-control" maxlength="2" />
+            </section>
+
+            <section class="form-section">
+                <h2>Contact and notes</h2>
+                <div class="form-grid two-column">
+                    <div class="form-field">
+                        <label asp-for="Form.ContactEmail" class="form-label"></label>
+                        <input asp-for="Form.ContactEmail" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.ContactPhone" class="form-label"></label>
+                        <input asp-for="Form.ContactPhone" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.WebsiteUrl" class="form-label"></label>
+                        <input asp-for="Form.WebsiteUrl" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.RequiredEquipment" class="form-label"></label>
+                        <input asp-for="Form.RequiredEquipment" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.WhatToBring" class="form-label"></label>
+                        <input asp-for="Form.WhatToBring" class="form-control" />
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="Form.SpecialInstructions" class="form-label"></label>
+                        <input asp-for="Form.SpecialInstructions" class="form-control" />
+                    </div>
                 </div>
-                <div class="form-field">
-                    <label asp-for="Form.TeamZipCode" class="form-label"></label>
-                    <input asp-for="Form.TeamZipCode" class="form-control" />
+            </section>
+
+            <section class="form-section">
+                <h2>Status</h2>
+                <div class="form-check">
+                    <input asp-for="Form.IsActive" class="form-check-input" />
+                    <label asp-for="Form.IsActive" class="form-check-label"></label>
                 </div>
+                <div class="form-check">
+                    <input asp-for="Form.IsPublished" class="form-check-input" />
+                    <label asp-for="Form.IsPublished" class="form-check-label"></label>
+                </div>
+            </section>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Save listing</button>
+                <a class="btn btn-outline-secondary" href="@backUrl">Back</a>
             </div>
-        </section>
+        </form>
 
-        <section class="form-section">
-            <h2>Listing details</h2>
-            <div class="form-grid two-column">
-                <div class="form-field">
-                    <label asp-for="Form.Title" class="form-label"></label>
-                    <input asp-for="Form.Title" class="form-control" />
-                    <span asp-validation-for="Form.Title" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="Form.Type" class="form-label"></label>
-                    <select asp-for="Form.Type" class="form-select">
-                        @foreach (var option in OpportunityTypeOptions())
+        <aside class="form-section admin-flyer-reference">
+            <h2>Flyer reference</h2>
+            @if (Model.Flyer is null)
+            {
+                <p class="section-help">No flyer is linked to this listing.</p>
+            }
+            else
+            {
+                @if (!string.IsNullOrWhiteSpace(Model.Flyer.StoredFlyerUrl))
+                {
+                    <div class="flyer-preview">
+                        @if (IsImage(Model.Flyer.ContentType, Model.Flyer.FileName ?? Model.Flyer.StoredFlyerUrl))
                         {
-                            <option value="@option.Code">@option.Label</option>
+                            <img src="@Model.Flyer.StoredFlyerUrl" alt="Imported flyer preview" />
                         }
-                    </select>
-                    <span asp-validation-for="Form.Type" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="Form.SportId" class="form-label"></label>
-                    <select asp-for="Form.SportId" class="form-select">
-                        @foreach (var sport in Model.SportOptions)
+                        else
                         {
-                            <option value="@sport.SportId">@sport.Name</option>
+                            <a class="btn btn-outline-primary btn-sm" href="@Model.Flyer.StoredFlyerUrl" target="_blank" rel="noopener">Open flyer</a>
                         }
-                    </select>
-                    <span asp-validation-for="Form.SportId" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="Form.AgeGroup" class="form-label"></label>
-                    <input asp-for="Form.AgeGroup" class="form-control" placeholder="12U" />
-                </div>
-                <div class="form-field">
-                    <label asp-for="Form.CompetitionLevel" class="form-label"></label>
-                    <input asp-for="Form.CompetitionLevel" class="form-control" />
-                </div>
-            </div>
-            <div class="form-field">
-                <label asp-for="Form.Description" class="form-label"></label>
-                <textarea asp-for="Form.Description" class="form-control" rows="5"></textarea>
-            </div>
-        </section>
+                    </div>
+                }
+                else if (!string.IsNullOrWhiteSpace(Model.Flyer.ExternalImageUrl)
+                    && IsImage(null, Model.Flyer.ExternalImageUrl))
+                {
+                    <div class="flyer-preview">
+                        <img src="@Model.Flyer.ExternalImageUrl" alt="Imported flyer preview" />
+                    </div>
+                }
 
-        <section class="form-section">
-            <h2>Date and listing window</h2>
-            <div class="form-grid two-column">
-                <div class="form-field">
-                    <label asp-for="Form.EventDate" class="form-label"></label>
-                    <input asp-for="Form.EventDate" class="form-control" />
-                    <span asp-validation-for="Form.EventDate" class="text-danger"></span>
+                <div class="form-actions admin-row-actions mt-3">
+                    @if (!string.IsNullOrWhiteSpace(Model.Flyer.StoredFlyerUrl))
+                    {
+                        <a class="btn btn-outline-primary btn-sm" href="@Model.Flyer.StoredFlyerUrl" target="_blank" rel="noopener">Open full size</a>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.Flyer.ExternalImageUrl))
+                    {
+                        <a class="btn btn-outline-secondary btn-sm" href="@Model.Flyer.ExternalImageUrl" target="_blank" rel="noopener">External image</a>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.Flyer.SourceUrl))
+                    {
+                        <a class="btn btn-outline-secondary btn-sm" href="@Model.Flyer.SourceUrl" target="_blank" rel="noopener">Source post</a>
+                    }
                 </div>
-                <div class="form-field">
-                    <label asp-for="Form.EventEndDate" class="form-label"></label>
-                    <input asp-for="Form.EventEndDate" class="form-control" />
-                    <span asp-validation-for="Form.EventEndDate" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="Form.ListingStartDate" class="form-label"></label>
-                    <input asp-for="Form.ListingStartDate" class="form-control" />
-                </div>
-                <div class="form-field">
-                    <label asp-for="Form.ListingEndDate" class="form-label"></label>
-                    <input asp-for="Form.ListingEndDate" class="form-control" />
-                    <span asp-validation-for="Form.ListingEndDate" class="text-danger"></span>
-                </div>
-            </div>
-        </section>
-
-        <section class="form-section">
-            <h2>Listing location</h2>
-            <div class="form-grid two-column">
-                <div class="form-field">
-                    <label asp-for="Form.Location" class="form-label"></label>
-                    <input asp-for="Form.Location" class="form-control" />
-                </div>
-                <div class="form-field">
-                    <label asp-for="Form.Address" class="form-label"></label>
-                    <input asp-for="Form.Address" class="form-control" />
-                </div>
-                <div class="form-field">
-                    <label asp-for="Form.City" class="form-label"></label>
-                    <input asp-for="Form.City" class="form-control" />
-                </div>
-                <div class="form-field">
-                    <label asp-for="Form.State" class="form-label"></label>
-                    <input asp-for="Form.State" class="form-control" maxlength="2" />
-                </div>
-                <div class="form-field">
-                    <label asp-for="Form.ZipCode" class="form-label"></label>
-                    <input asp-for="Form.ZipCode" class="form-control" />
-                    <span asp-validation-for="Form.ZipCode" class="text-danger"></span>
-                </div>
-            </div>
-        </section>
-
-        <section class="form-section">
-            <h2>Contact and notes</h2>
-            <div class="form-grid two-column">
-                <div class="form-field">
-                    <label asp-for="Form.ContactEmail" class="form-label"></label>
-                    <input asp-for="Form.ContactEmail" class="form-control" />
-                </div>
-                <div class="form-field">
-                    <label asp-for="Form.ContactPhone" class="form-label"></label>
-                    <input asp-for="Form.ContactPhone" class="form-control" />
-                </div>
-                <div class="form-field">
-                    <label asp-for="Form.WebsiteUrl" class="form-label"></label>
-                    <input asp-for="Form.WebsiteUrl" class="form-control" />
-                </div>
-                <div class="form-field">
-                    <label asp-for="Form.RequiredEquipment" class="form-label"></label>
-                    <input asp-for="Form.RequiredEquipment" class="form-control" />
-                </div>
-                <div class="form-field">
-                    <label asp-for="Form.WhatToBring" class="form-label"></label>
-                    <input asp-for="Form.WhatToBring" class="form-control" />
-                </div>
-                <div class="form-field">
-                    <label asp-for="Form.SpecialInstructions" class="form-label"></label>
-                    <input asp-for="Form.SpecialInstructions" class="form-control" />
-                </div>
-            </div>
-        </section>
-
-        <section class="form-section">
-            <h2>Status</h2>
-            <div class="form-check">
-                <input asp-for="Form.IsActive" class="form-check-input" />
-                <label asp-for="Form.IsActive" class="form-check-label"></label>
-            </div>
-            <div class="form-check">
-                <input asp-for="Form.IsPublished" class="form-check-input" />
-                <label asp-for="Form.IsPublished" class="form-check-label"></label>
-            </div>
-        </section>
-
-        <div class="form-actions">
-            <button type="submit" class="btn btn-primary">Save listing</button>
-            <a class="btn btn-outline-secondary" href="@backUrl">Back</a>
-        </div>
-    </form>
+            }
+        </aside>
+    </section>
 </section>
 
 @functions {
@@ -214,5 +262,17 @@
             ("private_workout", "Private workout"),
             ("other", "Other")
         ];
+    }
+
+    private static bool IsImage(string? contentType, string? fileNameOrUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(contentType)
+            && contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var value = (fileNameOrUrl ?? string.Empty).Split('?', '#')[0];
+        return System.IO.Path.GetExtension(value).ToLowerInvariant() is ".jpg" or ".jpeg" or ".png" or ".webp";
     }
 }

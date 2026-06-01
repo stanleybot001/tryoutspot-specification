@@ -477,10 +477,19 @@ public sealed class AdminTeamOpportunityEditPageModel
 
     public string? ReturnUrl { get; set; }
 
+    public AdminTeamOpportunityFlyerReference? Flyer { get; set; }
+
     public IReadOnlyCollection<AdminSportOption> SportOptions { get; set; } = [];
 
     public AdminTeamOpportunityEditForm Form { get; set; } = new();
 }
+
+public sealed record AdminTeamOpportunityFlyerReference(
+    string? FileName,
+    string? ContentType,
+    string? StoredFlyerUrl,
+    string? SourceUrl,
+    string? ExternalImageUrl);
 
 public sealed class AdminTeamOpportunityEditForm
 {
