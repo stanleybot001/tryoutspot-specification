@@ -1,0 +1,320 @@
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using Microsoft.Extensions.Options;
+
+namespace TryOutSpot.Web.Services;
+
+public sealed class OpenAiFlyerAiExtractionService(
+    HttpClient httpClient,
+    IOptions<OpenAiOptions> options,
+    ILogger<OpenAiFlyerAiExtractionService> logger) : IFlyerAiExtractionService
+{
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
+    public async Task<FlyerAiExtractionResult> ExtractAsync(
+        UploadedFlyerImportFile uploadedFile,
+        string? sourceUrl,
+        string? externalImageUrl,
+        CancellationToken cancellationToken)
+    {
+        var openAiOptions = options.Value;
+        if (!openAiOptions.IsConfigured)
+        {
+            return FlyerAiExtractionResult.Failure("OpenAI flyer extraction is not configured yet.");
+        }
+
+        if (!uploadedFile.ContentType.StartsWith("image/", StringComparison.Ordinal))
+        {
+            return FlyerAiExtractionResult.Failure("AI flyer extraction currently supports image flyers. Upload a JPG, PNG, or WEBP image.");
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, openAiOptions.ResponsesEndpoint);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", openAiOptions.ApiKey);
+        request.Content = JsonContent.Create(
+            BuildRequestPayload(openAiOptions.FlyerExtractionModel, uploadedFile, sourceUrl, externalImageUrl),
+            options: JsonOptions);
+
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning(
+                "OpenAI flyer extraction failed. StatusCode={StatusCode} Response={ResponseBody}",
+                (int)response.StatusCode,
+                responseBody);
+            return FlyerAiExtractionResult.Failure("AI could not read the flyer right now. Check OpenAI configuration and try again.");
+        }
+
+        var outputText = ExtractOutputText(responseBody);
+        if (string.IsNullOrWhiteSpace(outputText))
+        {
+            logger.LogWarning("OpenAI flyer extraction returned no output text. Response={ResponseBody}", responseBody);
+            return FlyerAiExtractionResult.Failure("AI did not return flyer details. Try a clearer image.");
+        }
+
+        FlyerExtractionPayload? payload;
+        try
+        {
+            payload = JsonSerializer.Deserialize<FlyerExtractionPayload>(outputText, JsonOptions);
+        }
+        catch (JsonException exception)
+        {
+            logger.LogWarning(exception, "OpenAI flyer extraction returned invalid JSON. Output={OutputText}", outputText);
+            return FlyerAiExtractionResult.Failure("AI returned flyer details in an unexpected format. Try again.");
+        }
+
+        if (payload is null)
+        {
+            return FlyerAiExtractionResult.Failure("AI did not return flyer details. Try a clearer image.");
+        }
+
+        var confidenceJson = JsonSerializer.Serialize(
+            new
+            {
+                payload.ConfidenceScore,
+                payload.Warnings
+            },
+            JsonOptions);
+        var input = new FlyerImportCreateInput(
+            "facebook",
+            sourceUrl,
+            externalImageUrl,
+            SportId: null,
+            payload.SportName,
+            payload.OpportunityType,
+            payload.Title,
+            payload.TeamName,
+            payload.OrganizationName,
+            payload.AgeGroup,
+            payload.CompetitionLevel,
+            ParseDate(payload.EventDate),
+            ParseDate(payload.EventEndDate),
+            ParseDate(payload.RegistrationDeadline),
+            payload.RegistrationFee,
+            payload.Location,
+            payload.Address,
+            payload.City,
+            payload.State,
+            payload.ZipCode,
+            payload.ContactEmail,
+            payload.ContactPhone,
+            payload.WebsiteUrl,
+            payload.Description,
+            payload.RequiredEquipment,
+            payload.WhatToBring,
+            payload.SpecialInstructions,
+            outputText,
+            confidenceJson,
+            payload.Warnings);
+
+        return FlyerAiExtractionResult.Success(input, outputText, confidenceJson);
+    }
+
+    private static object BuildRequestPayload(
+        string model,
+        UploadedFlyerImportFile uploadedFile,
+        string? sourceUrl,
+        string? externalImageUrl)
+    {
+        var imageDataUrl = $"data:{uploadedFile.ContentType};base64,{Convert.ToBase64String(uploadedFile.Content)}";
+        return new
+        {
+            model,
+            input = new object[]
+            {
+                new
+                {
+                    role = "system",
+                    content = new object[]
+                    {
+                        new
+                        {
+                            type = "input_text",
+                            text = "You extract youth baseball and softball opportunity listings from flyer images. Return JSON only and leave unknown fields null. Normalize opportunityType to tryout, roster_opening, pickup_player, tournament, camp, clinic, private_workout, or other. Use roster_opening when the flyer says adding players or looking for players. Use pickup_player when it says guest player, sub, fill-in, or pickup player."
+                        }
+                    }
+                },
+                new
+                {
+                    role = "user",
+                    content = new object[]
+                    {
+                        new
+                        {
+                            type = "input_text",
+                            text = $"Extract listing information from this flyer image. Source post URL: {sourceUrl ?? "not provided"}. External image URL: {externalImageUrl ?? "not provided"}. Dates should be ISO-8601 if visible. Include the ZIP code if visible."
+                        },
+                        new
+                        {
+                            type = "input_image",
+                            image_url = imageDataUrl,
+                            detail = "high"
+                        }
+                    }
+                }
+            },
+            text = new
+            {
+                format = new
+                {
+                    type = "json_schema",
+                    name = "flyer_import_extraction",
+                    strict = true,
+                    schema = BuildSchema()
+                }
+            },
+            max_output_tokens = 2500
+        };
+    }
+
+    private static JsonObject BuildSchema()
+    {
+        var properties = new JsonObject
+        {
+            ["title"] = NullableString(),
+            ["teamName"] = NullableString(),
+            ["organizationName"] = NullableString(),
+            ["sportName"] = NullableString(),
+            ["opportunityType"] = NullableString(),
+            ["ageGroup"] = NullableString(),
+            ["competitionLevel"] = NullableString(),
+            ["eventDate"] = NullableString(),
+            ["eventEndDate"] = NullableString(),
+            ["registrationDeadline"] = NullableString(),
+            ["registrationFee"] = new JsonObject { ["type"] = new JsonArray("number", "null") },
+            ["location"] = NullableString(),
+            ["address"] = NullableString(),
+            ["city"] = NullableString(),
+            ["state"] = NullableString(),
+            ["zipCode"] = NullableString(),
+            ["contactEmail"] = NullableString(),
+            ["contactPhone"] = NullableString(),
+            ["websiteUrl"] = NullableString(),
+            ["description"] = NullableString(),
+            ["requiredEquipment"] = NullableString(),
+            ["whatToBring"] = NullableString(),
+            ["specialInstructions"] = NullableString(),
+            ["confidenceScore"] = new JsonObject { ["type"] = new JsonArray("number", "null") },
+            ["warnings"] = NullableString()
+        };
+
+        var required = new JsonArray();
+        foreach (var property in properties)
+        {
+            required.Add(property.Key);
+        }
+
+        return new JsonObject
+        {
+            ["type"] = "object",
+            ["additionalProperties"] = false,
+            ["properties"] = properties,
+            ["required"] = required
+        };
+    }
+
+    private static JsonObject NullableString()
+    {
+        return new JsonObject { ["type"] = new JsonArray("string", "null") };
+    }
+
+    private static string? ExtractOutputText(string responseBody)
+    {
+        using var document = JsonDocument.Parse(responseBody);
+        if (document.RootElement.TryGetProperty("output_text", out var outputTextElement)
+            && outputTextElement.ValueKind == JsonValueKind.String)
+        {
+            return outputTextElement.GetString();
+        }
+
+        if (!document.RootElement.TryGetProperty("output", out var outputElement)
+            || outputElement.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        foreach (var outputItem in outputElement.EnumerateArray())
+        {
+            if (!outputItem.TryGetProperty("content", out var contentElement)
+                || contentElement.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            foreach (var contentItem in contentElement.EnumerateArray())
+            {
+                if (contentItem.TryGetProperty("text", out var textElement)
+                    && textElement.ValueKind == JsonValueKind.String)
+                {
+                    return textElement.GetString();
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static DateTime? ParseDate(string? value)
+    {
+        return DateTime.TryParse(value, out var parsed) ? parsed : null;
+    }
+
+    private sealed class FlyerExtractionPayload
+    {
+        public string? Title { get; set; }
+
+        public string? TeamName { get; set; }
+
+        public string? OrganizationName { get; set; }
+
+        public string? SportName { get; set; }
+
+        public string? OpportunityType { get; set; }
+
+        public string? AgeGroup { get; set; }
+
+        public string? CompetitionLevel { get; set; }
+
+        public string? EventDate { get; set; }
+
+        public string? EventEndDate { get; set; }
+
+        public string? RegistrationDeadline { get; set; }
+
+        public decimal? RegistrationFee { get; set; }
+
+        public string? Location { get; set; }
+
+        public string? Address { get; set; }
+
+        public string? City { get; set; }
+
+        public string? State { get; set; }
+
+        public string? ZipCode { get; set; }
+
+        public string? ContactEmail { get; set; }
+
+        public string? ContactPhone { get; set; }
+
+        public string? WebsiteUrl { get; set; }
+
+        public string? Description { get; set; }
+
+        public string? RequiredEquipment { get; set; }
+
+        public string? WhatToBring { get; set; }
+
+        public string? SpecialInstructions { get; set; }
+
+        public decimal? ConfidenceScore { get; set; }
+
+        public string? Warnings { get; set; }
+    }
+}

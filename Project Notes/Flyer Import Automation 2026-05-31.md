@@ -2,13 +2,15 @@
 
 ## Direction
 
-Flyer import automation lives inside the existing TryOutSpot application, not a parallel site. The main app owns database writes, R2 flyer storage, validation, and listing creation. n8n can automate intake and AI extraction by calling the TryOutSpot admin API.
+Flyer import automation lives inside the existing TryOutSpot application, not a parallel site. The main app owns AI extraction, database writes, R2 flyer storage, validation, review, and listing creation.
+
+n8n is not required for the core workflow. It can be added later as an optional bulk-intake helper for scheduled Facebook collection, admin notifications, or other repetitive routing, but the website remains the system of record.
 
 ## MVP Flow
 
-1. Admin or n8n adds a flyer import record from a Facebook post URL, external image URL, uploaded flyer file, or extracted JSON payload.
-2. Flyer imports land in an admin-only review queue.
-3. The reviewer confirms the structured fields: team, sport, opportunity type, event date, address, ZIP code, contact details, registration links, and notes.
+1. Admin adds a flyer from the existing admin website by uploading an image or pasting a public external image URL.
+2. The website calls AI vision extraction and creates a pending flyer import with structured fields.
+3. The reviewer confirms the extracted fields: team, sport, opportunity type, event date, address, ZIP code, contact details, registration links, and notes.
 4. The reviewer creates a TryOutSpot team opportunity from the import.
 5. New listings default to unpublished drafts unless the reviewer explicitly chooses immediate publish.
 
@@ -33,7 +35,7 @@ Do not depend on Facebook CDN image URLs as the long-term source of truth. They 
 
 ## API Surface
 
-Admin/n8n endpoints:
+Admin/API endpoints:
 
 - `GET /api/admin/flyer-imports`
 - `GET /api/admin/flyer-imports/{flyerImportId}`
@@ -41,19 +43,17 @@ Admin/n8n endpoints:
 - `POST /api/admin/flyer-imports/upload`
 - `POST /api/admin/flyer-imports/{flyerImportId}/create-listing`
 
-The API requires a platform admin token. n8n should authenticate through the normal API flow or a future service-account admin credential, then call these endpoints.
+The API requires a platform admin token. If n8n is added later, it should authenticate through the normal API flow or a future service-account admin credential, then call these endpoints.
 
-## n8n Workflow Shape
+## Optional n8n Workflow Shape
 
-Recommended first workflow:
+Potential later workflow:
 
 1. Manual trigger or webhook receives a Facebook post URL or image URL.
-2. HTTP Request downloads the image while the Facebook CDN URL is still valid.
-3. OpenAI vision extracts structured event data into JSON.
-4. Function/Set node normalizes fields and maps opportunity type.
-5. HTTP Request uploads the flyer and extracted fields to `POST /api/admin/flyer-imports/upload`.
-6. Send a short notification to the admin review channel with the review URL.
-7. On failure, send the source URL and error details to an error channel without writing directly to Postgres.
+2. HTTP Request sends the image URL or flyer file to the TryOutSpot admin API.
+3. TryOutSpot performs AI extraction and creates the pending flyer import.
+4. n8n sends a short notification to the admin review channel with the review URL.
+5. On failure, send the source URL and error details to an error channel without writing directly to Postgres.
 
 ## Migration
 

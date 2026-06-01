@@ -23,7 +23,9 @@ public sealed class AdminController(
     AppDbContext dbContext,
     UserManager<User> userManager,
     ILaunchPromotionStatusService launchPromotionStatusService,
-    IFlyerImportService flyerImportService) : Controller
+    IFlyerImportService flyerImportService,
+    IFlyerAiExtractionService flyerAiExtractionService,
+    IFlyerImportRemoteFileFetcher flyerImportRemoteFileFetcher) : Controller
 {
     private const int DefaultPageSize = 25;
     private const int MaxPageSize = 100;
@@ -1090,7 +1092,7 @@ public sealed class AdminController(
             Import = new AdminFlyerImportDetailItem(
                 Guid.Empty,
                 TryOutSpotFlyerImportStatuses.PendingReview,
-                "manual",
+                "facebook",
                 null,
                 null,
                 false,
@@ -1105,7 +1107,7 @@ public sealed class AdminController(
                 DateTime.UtcNow),
             Form = new AdminFlyerImportForm
             {
-                SourcePlatform = "manual",
+                SourcePlatform = "facebook",
                 OpportunityType = "tryout"
             },
             SportOptions = await GetSportOptionsAsync(cancellationToken)
@@ -1122,10 +1124,35 @@ public sealed class AdminController(
             return Unauthorized();
         }
 
+        UploadedFlyerImportFile? flyerFile = null;
         var upload = await FlyerImportUploadHelper.ParseAsync(form.FlyerFile, cancellationToken);
         if (!upload.Succeeded)
         {
             AddModelErrors(upload.Errors);
+        }
+        else if (upload.HasFile && upload.File is not null)
+        {
+            flyerFile = upload.File;
+        }
+        else if (!string.IsNullOrWhiteSpace(form.OriginalExternalImageUrl))
+        {
+            var remoteFile = await flyerImportRemoteFileFetcher.FetchAsync(
+                form.OriginalExternalImageUrl,
+                cancellationToken);
+            if (!remoteFile.Succeeded || remoteFile.File is null)
+            {
+                AddModelErrors(remoteFile.Errors);
+            }
+            else
+            {
+                flyerFile = remoteFile.File;
+            }
+        }
+        else
+        {
+            ModelState.AddModelError(
+                nameof(AdminFlyerImportForm.FlyerFile),
+                "Upload a flyer image or paste a public image URL for AI extraction.");
         }
 
         if (!ModelState.IsValid)
@@ -1138,9 +1165,26 @@ public sealed class AdminController(
             });
         }
 
+        var extraction = await flyerAiExtractionService.ExtractAsync(
+            flyerFile!,
+            form.SourceUrl,
+            form.OriginalExternalImageUrl,
+            cancellationToken);
+        if (!extraction.Succeeded || extraction.Input is null)
+        {
+            AddModelErrors(extraction.Errors);
+            return View("FlyerImportDetail", new AdminFlyerImportDetailPageModel
+            {
+                Import = BuildNewFlyerImportDetailItem(),
+                Form = form,
+                SportOptions = await GetSportOptionsAsync(cancellationToken)
+            });
+        }
+
+        var extractedInput = MergeFlyerExtractionInput(form, extraction.Input, extraction.ExtractedJson, extraction.ConfidenceJson);
         var result = await flyerImportService.CreateAsync(
-            ToFlyerImportInput(form),
-            upload.File,
+            extractedInput,
+            flyerFile,
             adminUserId,
             cancellationToken);
         if (!result.Succeeded || result.FlyerImport is null)
@@ -1154,7 +1198,7 @@ public sealed class AdminController(
             });
         }
 
-        TempData["StatusMessage"] = "Flyer import queued for review.";
+        TempData["StatusMessage"] = "AI read the flyer. Review the extracted fields before creating the listing.";
         return RedirectToAction(nameof(FlyerImportDetail), new { flyerImportId = result.FlyerImport.Id });
     }
 
@@ -1490,13 +1534,52 @@ public sealed class AdminController(
             form.AdminNotes);
     }
 
+    private static FlyerImportCreateInput MergeFlyerExtractionInput(
+        AdminFlyerImportForm form,
+        FlyerImportCreateInput extraction,
+        string? extractedJson,
+        string? confidenceJson)
+    {
+        return new FlyerImportCreateInput(
+            form.SourcePlatform,
+            form.SourceUrl,
+            form.OriginalExternalImageUrl,
+            form.SportId ?? extraction.SportId,
+            form.SportName ?? extraction.SportName,
+            form.OpportunityType ?? extraction.OpportunityType,
+            form.Title ?? extraction.Title,
+            form.TeamName ?? extraction.TeamName,
+            form.OrganizationName ?? extraction.OrganizationName,
+            form.AgeGroup ?? extraction.AgeGroup,
+            form.CompetitionLevel ?? extraction.CompetitionLevel,
+            form.EventDate ?? extraction.EventDate,
+            form.EventEndDate ?? extraction.EventEndDate,
+            form.RegistrationDeadline ?? extraction.RegistrationDeadline,
+            form.RegistrationFee ?? extraction.RegistrationFee,
+            form.Location ?? extraction.Location,
+            form.Address ?? extraction.Address,
+            form.City ?? extraction.City,
+            form.State ?? extraction.State,
+            form.ZipCode ?? extraction.ZipCode,
+            form.ContactEmail ?? extraction.ContactEmail,
+            form.ContactPhone ?? extraction.ContactPhone,
+            form.WebsiteUrl ?? extraction.WebsiteUrl,
+            form.Description ?? extraction.Description,
+            form.RequiredEquipment ?? extraction.RequiredEquipment,
+            form.WhatToBring ?? extraction.WhatToBring,
+            form.SpecialInstructions ?? extraction.SpecialInstructions,
+            extractedJson ?? extraction.ExtractedJson,
+            confidenceJson ?? extraction.ConfidenceJson,
+            form.AdminNotes ?? extraction.AdminNotes);
+    }
+
     private static AdminFlyerImportDetailItem BuildNewFlyerImportDetailItem()
     {
         var now = DateTime.UtcNow;
         return new AdminFlyerImportDetailItem(
             Guid.Empty,
             TryOutSpotFlyerImportStatuses.PendingReview,
-            "manual",
+            "facebook",
             null,
             null,
             false,

@@ -39,32 +39,48 @@ public static class FlyerImportUploadHelper
         using var memoryStream = new MemoryStream();
         await stream.CopyToAsync(memoryStream, cancellationToken);
 
-        if (memoryStream.Length <= 0)
+        return ParsePayload(
+            uploadedFlyer.FileName,
+            memoryStream.ToArray(),
+            contentType);
+    }
+
+    public static FlyerImportUploadParseResult ParsePayload(
+        string fileName,
+        byte[] content,
+        string contentType)
+    {
+        var resolvedContentType = ResolveContentType(contentType, fileName);
+        if (resolvedContentType is null)
+        {
+            return FlyerImportUploadParseResult.Failure("Only PDF, JPG, PNG, or WEBP flyer files are supported.");
+        }
+
+        if (content.Length <= 0)
         {
             return FlyerImportUploadParseResult.Failure("Upload a PDF or image flyer.");
         }
 
-        if (memoryStream.Length > MaxFlyerSizeBytes)
+        if (content.Length > MaxFlyerSizeBytes)
         {
             return FlyerImportUploadParseResult.Failure($"Flyer files can be up to {MaxFlyerSizeMegabytes} MB.");
         }
 
-        var content = memoryStream.ToArray();
-        if (string.Equals(contentType, "application/pdf", StringComparison.Ordinal) && !LooksLikePdf(content))
+        if (string.Equals(resolvedContentType, "application/pdf", StringComparison.Ordinal) && !LooksLikePdf(content))
         {
             return FlyerImportUploadParseResult.Failure("Uploaded file is not a valid PDF.");
         }
 
-        if (contentType.StartsWith("image/", StringComparison.Ordinal)
-            && !LooksLikeSupportedImage(content, contentType))
+        if (resolvedContentType.StartsWith("image/", StringComparison.Ordinal)
+            && !LooksLikeSupportedImage(content, resolvedContentType))
         {
             return FlyerImportUploadParseResult.Failure("Uploaded file is not a valid JPG, PNG, or WEBP image.");
         }
 
         return FlyerImportUploadParseResult.Success(new UploadedFlyerImportFile(
-            BuildSafeFileName(uploadedFlyer.FileName, contentType),
+            BuildSafeFileName(fileName, resolvedContentType),
             content,
-            contentType));
+            resolvedContentType));
     }
 
     private static bool LooksLikePdf(byte[] content)

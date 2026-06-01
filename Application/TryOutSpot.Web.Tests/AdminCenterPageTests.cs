@@ -1,10 +1,12 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Data;
@@ -131,6 +133,57 @@ public sealed class AdminCenterPageTests
         Assert.Equal(7, activePromotion.MaxRedemptions);
         Assert.Equal(3, activePromotion.GrantMonths);
         Assert.Equal(admin.Id, activePromotion.UpdatedByUserId);
+    }
+
+    [Fact]
+    public async Task PlatformAdmin_CanAnalyzeFlyerImageBeforeReviewingImport()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory(services =>
+        {
+            services.RemoveAll<IFlyerAiExtractionService>();
+            services.RemoveAll<IPdfStorageService>();
+            services.AddScoped<IFlyerAiExtractionService, TestFlyerAiExtractionService>();
+            services.AddSingleton<TestFlyerStorageService>();
+            services.AddScoped<IPdfStorageService>(serviceProvider =>
+                serviceProvider.GetRequiredService<TestFlyerStorageService>());
+        });
+        var admin = await factory.CreateUserAsync("admin-flyer-ai@example.com", [TryOutSpotRoles.PlatformAdmin]);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        await LoginWebUserAsync(client, admin.Email!);
+
+        var token = await GetAntiForgeryTokenAsync(client, "/admin/flyer-imports/new");
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent(token), "__RequestVerificationToken");
+        form.Add(new StringContent("facebook"), "Form.SourcePlatform");
+        form.Add(new StringContent("https://facebook.test/posts/tryout-flyer"), "Form.SourceUrl");
+
+        var flyerBytes = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10 };
+        var flyerContent = new ByteArrayContent(flyerBytes);
+        flyerContent.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
+        form.Add(flyerContent, "Form.FlyerFile", "aces-flyer.jpg");
+
+        var response = await client.PostAsync("/admin/flyer-imports", form);
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Matches("^/admin/flyer-imports/[0-9a-fA-F-]+$", response.Headers.Location?.ToString());
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var flyerImport = await dbContext.FlyerImports.SingleAsync();
+
+        Assert.Equal("facebook", flyerImport.SourcePlatform);
+        Assert.Equal("Kansas City Aces 14U tryout", flyerImport.Title);
+        Assert.Equal("Kansas City Aces", flyerImport.TeamName);
+        Assert.Equal("tryout", flyerImport.OpportunityType);
+        Assert.Equal("Softball", flyerImport.SportName);
+        Assert.Equal("66202", flyerImport.ZipCode);
+        Assert.Equal(TryOutSpotFlyerImportStatuses.PendingReview, flyerImport.Status);
+        Assert.NotNull(flyerImport.StoredObjectKey);
+        Assert.Contains("\"confidenceScore\":0.94", flyerImport.ConfidenceJson);
     }
 
     [Fact]
@@ -380,6 +433,107 @@ public sealed class AdminCenterPageTests
         });
         dbContext.SaveChanges();
         return player.Id;
+    }
+
+    private sealed class TestFlyerAiExtractionService : IFlyerAiExtractionService
+    {
+        public Task<FlyerAiExtractionResult> ExtractAsync(
+            UploadedFlyerImportFile uploadedFile,
+            string? sourceUrl,
+            string? externalImageUrl,
+            CancellationToken cancellationToken)
+        {
+            Assert.Equal("image/jpeg", uploadedFile.ContentType);
+            var extractedJson = """
+                {
+                  "title": "Kansas City Aces 14U tryout",
+                  "teamName": "Kansas City Aces",
+                  "sportName": "Softball",
+                  "opportunityType": "tryout",
+                  "ageGroup": "14U",
+                  "eventDate": "2026-07-12T18:00:00",
+                  "city": "Overland Park",
+                  "state": "KS",
+                  "zipCode": "66202",
+                  "confidenceScore": 0.94,
+                  "warnings": null
+                }
+                """;
+            var confidenceJson = """
+                {"confidenceScore":0.94,"warnings":null}
+                """;
+            var input = new FlyerImportCreateInput(
+                "facebook",
+                sourceUrl,
+                externalImageUrl,
+                SportId: null,
+                "Softball",
+                "tryout",
+                "Kansas City Aces 14U tryout",
+                "Kansas City Aces",
+                OrganizationName: null,
+                "14U",
+                CompetitionLevel: null,
+                new DateTime(2026, 7, 12, 18, 0, 0),
+                EventEndDate: null,
+                RegistrationDeadline: null,
+                RegistrationFee: null,
+                Location: null,
+                Address: null,
+                "Overland Park",
+                "KS",
+                "66202",
+                ContactEmail: null,
+                ContactPhone: null,
+                WebsiteUrl: null,
+                Description: null,
+                RequiredEquipment: null,
+                WhatToBring: null,
+                SpecialInstructions: null,
+                extractedJson,
+                confidenceJson,
+                AdminNotes: null);
+
+            return Task.FromResult(FlyerAiExtractionResult.Success(input, extractedJson, confidenceJson));
+        }
+    }
+
+    private sealed class TestFlyerStorageService : IPdfStorageService
+    {
+        private readonly Dictionary<string, StoredObjectPayload> storedObjects = [];
+
+        public Task UploadPdfAsync(string objectKey, byte[] content, CancellationToken cancellationToken)
+        {
+            return UploadFileAsync(objectKey, content, "application/pdf", cancellationToken);
+        }
+
+        public Task UploadFileAsync(
+            string objectKey,
+            byte[] content,
+            string contentType,
+            CancellationToken cancellationToken)
+        {
+            storedObjects[objectKey] = new StoredObjectPayload(content, contentType);
+            return Task.CompletedTask;
+        }
+
+        public Task<byte[]?> DownloadPdfAsync(string objectKey, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(storedObjects.TryGetValue(objectKey, out var payload)
+                ? payload.Content
+                : null);
+        }
+
+        public Task<StoredObjectPayload?> DownloadFileAsync(string objectKey, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(storedObjects.GetValueOrDefault(objectKey));
+        }
+
+        public Task DeletePdfAsync(string objectKey, CancellationToken cancellationToken)
+        {
+            storedObjects.Remove(objectKey);
+            return Task.CompletedTask;
+        }
     }
 
     private static Guid SeedPlayerListing(
