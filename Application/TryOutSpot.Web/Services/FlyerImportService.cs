@@ -10,6 +10,7 @@ namespace TryOutSpot.Web.Services;
 public sealed class FlyerImportService(
     AppDbContext dbContext,
     IPdfStorageService pdfStorageService,
+    IFlyerLocationEnrichmentService locationEnrichmentService,
     ILogger<FlyerImportService> logger) : IFlyerImportService
 {
     private const string DefaultSourcePlatform = "manual";
@@ -39,6 +40,8 @@ public sealed class FlyerImportService(
         {
             return new FlyerImportMutationResult(false, null, errors);
         }
+
+        input = await locationEnrichmentService.EnrichAsync(input, cancellationToken);
 
         var now = DateTime.UtcNow;
         var flyerImport = new FlyerImport
@@ -92,6 +95,8 @@ public sealed class FlyerImportService(
         {
             return new FlyerImportMutationResult(false, null, errors);
         }
+
+        input = await locationEnrichmentService.EnrichAsync(input, cancellationToken);
 
         var previousObjectKey = flyerImport.StoredObjectKey;
         ApplyInput(flyerImport, input);

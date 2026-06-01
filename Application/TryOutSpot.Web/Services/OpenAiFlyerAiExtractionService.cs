@@ -136,7 +136,7 @@ public sealed class OpenAiFlyerAiExtractionService(
                         new
                         {
                             type = "input_text",
-                            text = "You extract youth baseball and softball opportunity listings from flyer images. Return JSON only and leave unknown fields null. Normalize opportunityType to tryout, roster_opening, pickup_player, tournament, camp, clinic, private_workout, or other. Use roster_opening when the flyer says adding players or looking for players. Use pickup_player when it says guest player, sub, fill-in, or pickup player."
+                            text = "You extract youth baseball and softball opportunity listings from flyer images. Return JSON only and leave unknown fields null. Normalize opportunityType to tryout, roster_opening, pickup_player, tournament, camp, clinic, private_workout, or other. Use roster_opening when the flyer says adding players or looking for players. Use pickup_player when it says guest player, sub, fill-in, or pickup player. Put venue, complex, park, or field names in location even when no street address is visible. Put city and state in city/state when visible, but do not guess a ZIP code."
                         }
                     }
                 },
@@ -148,7 +148,7 @@ public sealed class OpenAiFlyerAiExtractionService(
                         new
                         {
                             type = "input_text",
-                            text = $"Extract listing information from this flyer image. Source post URL: {sourceUrl ?? "not provided"}. External image URL: {externalImageUrl ?? "not provided"}. Dates should be ISO-8601 if visible. Include the ZIP code if visible."
+                            text = $"Extract listing information from this flyer image. Source post URL: {sourceUrl ?? "not provided"}. External image URL: {externalImageUrl ?? "not provided"}. Dates should be ISO-8601 if visible. Include the ZIP code only if visible."
                         },
                         new
                         {

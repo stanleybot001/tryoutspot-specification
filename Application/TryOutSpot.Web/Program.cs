@@ -63,6 +63,7 @@ builder.Services.Configure<StripeBillingOptions>(builder.Configuration.GetSectio
 builder.Services.Configure<R2StorageOptions>(builder.Configuration.GetSection(R2StorageOptions.SectionName));
 builder.Services.Configure<ActivationAssistanceOptions>(builder.Configuration.GetSection(ActivationAssistanceOptions.SectionName));
 builder.Services.Configure<OpenAiOptions>(builder.Configuration.GetSection(OpenAiOptions.SectionName));
+builder.Services.Configure<FlyerLocationEnrichmentOptions>(builder.Configuration.GetSection(FlyerLocationEnrichmentOptions.SectionName));
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -301,6 +302,8 @@ builder.Services.AddScoped<IDashboardActivityService, DashboardActivityService>(
 builder.Services.AddScoped<IFlyerImportService, FlyerImportService>();
 builder.Services.AddHttpClient<IFlyerAiExtractionService, OpenAiFlyerAiExtractionService>();
 builder.Services.AddHttpClient<IFlyerImportRemoteFileFetcher, FlyerImportRemoteFileFetcher>();
+builder.Services.AddScoped<IFlyerLocationEnrichmentService, FlyerLocationEnrichmentService>();
+builder.Services.AddHttpClient<IFlyerPlaceSearchClient, LatLngFlyerPlaceSearchClient>();
 builder.Services.AddScoped<IZipRadiusSearchService, ZipRadiusSearchService>();
 builder.Services.AddScoped<IStripeBillingService, StripeBillingService>();
 builder.Services.AddScoped<IStripeSubscriptionSyncService, StripeSubscriptionSyncService>();
