@@ -34,10 +34,21 @@ public sealed class OpenAiFlyerAiExtractionService(
             return FlyerAiExtractionResult.Failure("AI flyer extraction currently supports image flyers. Upload a JPG, PNG, or WEBP image.");
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, openAiOptions.ResponsesEndpoint);
+        var endpoint = openAiOptions.UsesChatCompletions
+            ? openAiOptions.ResolveChatCompletionsEndpoint()
+            : openAiOptions.ResolveResponsesEndpoint();
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", openAiOptions.ApiKey);
+        var requestPayload = openAiOptions.UsesChatCompletions
+            ? BuildChatCompletionsPayload(
+                openAiOptions.FlyerExtractionModel,
+                uploadedFile,
+                sourceUrl,
+                externalImageUrl,
+                openAiOptions.DisableThinking)
+            : BuildResponsesPayload(openAiOptions.FlyerExtractionModel, uploadedFile, sourceUrl, externalImageUrl);
         request.Content = JsonContent.Create(
-            BuildRequestPayload(openAiOptions.FlyerExtractionModel, uploadedFile, sourceUrl, externalImageUrl),
+            requestPayload,
             options: JsonOptions);
 
         using var response = await httpClient.SendAsync(request, cancellationToken);
@@ -121,7 +132,7 @@ public sealed class OpenAiFlyerAiExtractionService(
         return FlyerAiExtractionResult.Success(input, outputText, confidenceJson);
     }
 
-    private static object BuildRequestPayload(
+    private static object BuildResponsesPayload(
         string model,
         UploadedFlyerImportFile uploadedFile,
         string? sourceUrl,
@@ -142,7 +153,7 @@ public sealed class OpenAiFlyerAiExtractionService(
                         new
                         {
                             type = "input_text",
-                            text = $"You extract youth baseball and softball opportunity listings from flyer images. Return JSON only and leave unknown fields null. Today's date is {today:yyyy-MM-dd}; the current year is {today.Year}. When a flyer shows a month/day date without a printed year, use {today.Year}. Only use a different year when that year is explicitly printed on the flyer. Set the date yearSpecified fields to true only when the flyer visibly prints a year for that date. Normalize opportunityType to tryout, roster_opening, pickup_player, tournament, camp, clinic, private_workout, or other. Use roster_opening when the flyer says adding players or looking for players. Use pickup_player when it says guest player, sub, fill-in, or pickup player. Put venue, complex, park, or field names in location even when no street address is visible. Put city and state in city/state when visible, but do not guess a ZIP code."
+                            text = BuildSystemPrompt(today)
                         }
                     }
                 },
@@ -154,7 +165,7 @@ public sealed class OpenAiFlyerAiExtractionService(
                         new
                         {
                             type = "input_text",
-                            text = $"Extract listing information from this flyer image. Source post URL: {sourceUrl ?? "not provided"}. External image URL: {externalImageUrl ?? "not provided"}. Dates should be ISO-8601 if visible. If the flyer does not print a year on a date, use {today.Year}; do not infer an older year. Include the ZIP code only if visible."
+                            text = BuildUserPrompt(today, sourceUrl, externalImageUrl)
                         },
                         new
                         {
@@ -177,6 +188,71 @@ public sealed class OpenAiFlyerAiExtractionService(
             },
             max_output_tokens = 2500
         };
+    }
+
+    private static object BuildChatCompletionsPayload(
+        string model,
+        UploadedFlyerImportFile uploadedFile,
+        string? sourceUrl,
+        string? externalImageUrl,
+        bool disableThinking)
+    {
+        var today = DateTime.UtcNow.Date;
+        var imageDataUrl = $"data:{uploadedFile.ContentType};base64,{Convert.ToBase64String(uploadedFile.Content)}";
+        return new
+        {
+            model,
+            messages = new object[]
+            {
+                new
+                {
+                    role = "system",
+                    content = BuildSystemPrompt(today)
+                },
+                new
+                {
+                    role = "user",
+                    content = new object[]
+                    {
+                        new
+                        {
+                            type = "text",
+                            text = BuildUserPrompt(today, sourceUrl, externalImageUrl)
+                        },
+                        new
+                        {
+                            type = "image_url",
+                            image_url = new
+                            {
+                                url = imageDataUrl
+                            }
+                        }
+                    }
+                }
+            },
+            response_format = new
+            {
+                type = "json_object"
+            },
+            temperature = 0,
+            max_tokens = 2500,
+            chat_template_kwargs = disableThinking
+                ? new { enable_thinking = false }
+                : null
+        };
+    }
+
+    private static string BuildSystemPrompt(DateTime today)
+    {
+        return $"You extract youth baseball and softball opportunity listings from flyer images. Return JSON only and leave unknown fields null. Today's date is {today:yyyy-MM-dd}; the current year is {today.Year}. When a flyer shows a month/day date without a printed year, use {today.Year}. Only use a different year when that year is explicitly printed on the flyer. Set the date yearSpecified fields to true only when the flyer visibly prints a year for that date. Normalize opportunityType to tryout, roster_opening, pickup_player, tournament, camp, clinic, private_workout, or other. Use roster_opening when the flyer says adding players or looking for players. Use pickup_player when it says guest player, sub, fill-in, or pickup player. Put venue, complex, park, or field names in location even when no street address is visible. Put city and state in city/state when visible, but do not guess a ZIP code. Return a JSON object with these keys: title, teamName, organizationName, sportName, opportunityType, ageGroup, competitionLevel, eventDate, eventDateYearSpecified, eventEndDate, eventEndDateYearSpecified, registrationDeadline, registrationDeadlineYearSpecified, registrationFee, location, address, city, state, zipCode, contactEmail, contactPhone, websiteUrl, description, requiredEquipment, whatToBring, specialInstructions, confidenceScore, warnings.";
+    }
+
+    private static string BuildUserPrompt(
+        DateTime today,
+        string? sourceUrl,
+        string? externalImageUrl)
+    {
+        return $"Extract listing information from this flyer image. Source post URL: {sourceUrl ?? "not provided"}. External image URL: {externalImageUrl ?? "not provided"}. Dates should be ISO-8601 if visible. If the flyer does not print a year on a date, use {today.Year}; do not infer an older year. Include the ZIP code only if visible. Return JSON only.";
     }
 
     private static JsonObject BuildSchema()
@@ -245,6 +321,20 @@ public sealed class OpenAiFlyerAiExtractionService(
             && outputTextElement.ValueKind == JsonValueKind.String)
         {
             return outputTextElement.GetString();
+        }
+
+        if (document.RootElement.TryGetProperty("choices", out var choicesElement)
+            && choicesElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var choiceElement in choicesElement.EnumerateArray())
+            {
+                if (choiceElement.TryGetProperty("message", out var messageElement)
+                    && messageElement.TryGetProperty("content", out var contentElement)
+                    && contentElement.ValueKind == JsonValueKind.String)
+                {
+                    return contentElement.GetString();
+                }
+            }
         }
 
         if (!document.RootElement.TryGetProperty("output", out var outputElement)
