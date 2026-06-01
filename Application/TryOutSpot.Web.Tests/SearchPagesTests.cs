@@ -14,7 +14,7 @@ namespace TryOutSpot.Web.Tests;
 public sealed class SearchPagesTests
 {
     [Fact]
-    public async Task SearchTeamItems_FreeParent_ConstrainsAllTypesToTryouts()
+    public async Task SearchTeamItems_FreeParent_CanSearchAllPublicTeamItemTypes()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
         var parent = await factory.CreateUserAsync("free-parent-team-search@example.com", [TryOutSpotRoles.Parent]);
@@ -30,9 +30,9 @@ public sealed class SearchPagesTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
-        Assert.Contains("Free Player/Parent search is limited to tryouts", html);
+        Assert.Contains("Free Player/Parent search includes all public team item types", html);
         Assert.Contains("Free parent visible tryout", html);
-        Assert.DoesNotContain("Premium only tournament", html);
+        Assert.Contains("Free parent visible tournament", html);
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public sealed class SearchPagesTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
         Assert.Contains("Free parent visible tryout", html);
-        Assert.Contains("Premium only tournament", html);
+        Assert.Contains("Free parent visible tournament", html);
     }
 
     [Fact]
@@ -278,7 +278,7 @@ public sealed class SearchPagesTests
         dbContext.Teams.Add(team);
         dbContext.Opportunities.AddRange(
             CreateOpportunity(team.Id, sportId, "tryout", "Free parent visible tryout", "McPherson", "KS", "67460", now),
-            CreateOpportunity(team.Id, sportId, "tournament", "Premium only tournament", "McPherson", "KS", "67460", now));
+            CreateOpportunity(team.Id, sportId, "tournament", "Free parent visible tournament", "McPherson", "KS", "67460", now));
         dbContext.SaveChanges();
     }
 

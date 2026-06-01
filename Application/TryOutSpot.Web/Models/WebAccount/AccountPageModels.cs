@@ -1609,7 +1609,7 @@ public sealed class SearchTeamItemsPageModel
 
     [MaxLength(50)]
     [Display(Name = "Type")]
-    public string? Type { get; set; } = "tryout";
+    public string? Type { get; set; } = "all";
 
     [MaxLength(50)]
     [Display(Name = "Age group")]

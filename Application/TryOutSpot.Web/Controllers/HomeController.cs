@@ -90,7 +90,7 @@ public class HomeController : Controller
                 "Base package",
                 [
                     F("opportunities.browse", "Browse opportunities", "Search and view public tryouts, tournaments, camps, and roster openings."),
-                    F("opportunities.browse.free_rules", "Free discovery rules", "Age filtering is available, opportunity type is restricted to tryouts, geography radius is capped at 120 miles, and level is view-only (no level filter/sort)."),
+                    F("opportunities.browse.free_rules", "Free discovery rules", "All public team item types are searchable, age filtering is available, geography radius is capped at 120 miles, and level is view-only (no level filter/sort)."),
                     F("players.profiles.basic", "Basic player profiles", "Create core player profiles for linked athletes."),
                     F("opportunities.apply", "Apply to opportunities", "Register or apply for available opportunities."),
                     F("communication.team.basic", "Basic team communication", "Receive and send basic opportunity-related communication."),
@@ -102,7 +102,7 @@ public class HomeController : Controller
                 "Compared to Free Player/Parent",
                 [
                     F("registrations.priority_review", "Priority application review", "Flag applications for higher visibility to teams."),
-                    F("opportunities.search.advanced", "Advanced opportunity search", "Unlock enhanced geography radius beyond free limits, full opportunity-type filtering (not tryout-only), and advanced level-based discovery filters."),
+                    F("opportunities.search.advanced", "Advanced opportunity search", "Unlock enhanced geography radius beyond free limits and advanced level-based discovery filters."),
                     F("players.profiles.enhanced", "Enhanced player profile", "Richer profiles with more detail, media, and highlight content."),
                     F("communication.team.direct", "Direct team messaging", "Coming soon - direct player-to-team messaging where allowed."),
                     F("registrations.analytics.player", "Player application analytics", "Coming soon - player-side application insights and tracking."),
@@ -163,7 +163,7 @@ public class HomeController : Controller
         var freePlayerParent = new[]
         {
             F("opportunities.browse", "Browse opportunities", "Search and view public tryouts, tournaments, camps, and roster openings."),
-            F("opportunities.browse.free_rules", "Free discovery rules", "Age filtering is available, opportunity type is restricted to tryouts, geography radius is capped at 120 miles, and level is view-only (no level filter/sort)."),
+            F("opportunities.browse.free_rules", "Free discovery rules", "All public team item types are searchable, age filtering is available, geography radius is capped at 120 miles, and level is view-only (no level filter/sort)."),
             F("players.profiles.basic", "Basic player profiles", "Create core player profiles for linked athletes."),
             F("opportunities.apply", "Apply to opportunities", "Register or apply for available opportunities."),
             F("communication.team.basic", "Basic team communication", "Receive and send basic opportunity-related communication."),
@@ -173,7 +173,7 @@ public class HomeController : Controller
         var premiumAdds = new[]
         {
             F("registrations.priority_review", "Priority application review", "Flag applications for higher visibility to teams."),
-            F("opportunities.search.advanced", "Advanced opportunity search", "Unlock enhanced geography radius beyond free limits, full opportunity-type filtering (not tryout-only), and advanced level-based discovery filters."),
+            F("opportunities.search.advanced", "Advanced opportunity search", "Unlock enhanced geography radius beyond free limits and advanced level-based discovery filters."),
             F("players.profiles.enhanced", "Enhanced player profile", "Richer profiles with more detail, media, and highlight content."),
             F("communication.team.direct", "Direct team messaging", "Coming soon - direct player-to-team messaging where allowed."),
             F("registrations.analytics.player", "Player application analytics", "Coming soon - player-side application insights and tracking."),

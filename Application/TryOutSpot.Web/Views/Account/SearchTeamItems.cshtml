@@ -19,12 +19,9 @@
     @if (!Model.HasAdvancedOpportunitySearch)
     {
         <div class="account-alert">
-            Free Player/Parent search is limited to tryouts, age filters, and a radius up to @Model.MaxRadiusMiles miles.
+            Free Player/Parent search includes all public team item types, age filters, and a radius up to @Model.MaxRadiusMiles miles.
+            Premium Player unlocks competition level filters and expanded radius.
         </div>
-    }
-    @if (Model.TypeFilterConstrained)
-    {
-        <div class="account-alert">Your current plan limits opportunity type search to tryouts.</div>
     }
     @if (Model.CompetitionLevelFilterIgnored)
     {

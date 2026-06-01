@@ -187,7 +187,7 @@ public sealed class AdminCenterPageTests
     }
 
     [Fact]
-    public async Task PlatformAdmin_CanPublishDraftTeamOpportunity()
+    public async Task PlatformAdmin_CanPublishFlyerCreatedDraftTeamOpportunity()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
         var teamOwner = await factory.CreateUserAsync("admin-publish-team-owner@example.com", [TryOutSpotRoles.TeamRepresentative]);
@@ -213,6 +213,14 @@ public sealed class AdminCenterPageTests
             team.IsSearchable = false;
             await dbContext.SaveChangesAsync();
         }
+        SeedFlyerImportForOpportunity(
+            factory,
+            admin.Id,
+            teamId,
+            opportunityId,
+            sportId,
+            "Admin Publish Eagles",
+            "Admin Publish Eagles 12U tryout");
 
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -248,6 +256,63 @@ public sealed class AdminCenterPageTests
     }
 
     [Fact]
+    public async Task PlatformAdmin_CannotPublishTeamCreatedDraftTeamOpportunity()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var teamOwner = await factory.CreateUserAsync("admin-publish-block-team-owner@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var admin = await factory.CreateUserAsync("admin-publish-block-admin@example.com", [TryOutSpotRoles.PlatformAdmin]);
+        var sportId = GetActiveSportId(factory);
+        var (teamId, opportunityId) = SeedTeamOpportunity(
+            factory,
+            teamOwner.Id,
+            sportId,
+            "Admin Publish Block Eagles",
+            "Admin Publish Block Eagles 12U tryout");
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var opportunity = await dbContext.Opportunities.SingleAsync(currentOpportunity => currentOpportunity.Id == opportunityId);
+            var team = await dbContext.Teams.SingleAsync(currentTeam => currentTeam.Id == teamId);
+
+            opportunity.IsPublished = false;
+            opportunity.PublishedAt = null;
+            opportunity.ListingStartDate = null;
+            opportunity.EventDate = DateTime.UtcNow.AddDays(14);
+            opportunity.ExpiresAt = DateTime.UtcNow.AddDays(14);
+            team.IsSearchable = false;
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, admin.Email!);
+
+        var token = await GetAntiForgeryTokenAsync(client, "/admin/team-opportunities?q=Admin%20Publish%20Block%20Eagles");
+        var response = await client.PostAsync(
+            $"/admin/team-opportunities/{opportunityId}/publish",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", token),
+                new("returnUrl", "/admin/team-opportunities?q=Admin%20Publish%20Block%20Eagles")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/admin/team-opportunities?q=Admin%20Publish%20Block%20Eagles", response.Headers.Location?.ToString());
+
+        using var verificationScope = factory.Services.CreateScope();
+        var verificationDbContext = verificationScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var blockedOpportunity = await verificationDbContext.Opportunities.SingleAsync(currentOpportunity => currentOpportunity.Id == opportunityId);
+        var blockedTeam = await verificationDbContext.Teams.SingleAsync(currentTeam => currentTeam.Id == teamId);
+
+        Assert.False(blockedOpportunity.IsPublished);
+        Assert.Null(blockedOpportunity.PublishedAt);
+        Assert.Null(blockedOpportunity.ListingStartDate);
+        Assert.False(blockedTeam.IsSearchable);
+    }
+
+    [Fact]
     public async Task PlatformAdmin_CanEditDraftTeamOpportunityLocationAndPublish()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -280,6 +345,14 @@ public sealed class AdminCenterPageTests
             team.ZipCode = null;
             await dbContext.SaveChangesAsync();
         }
+        SeedFlyerImportForOpportunity(
+            factory,
+            admin.Id,
+            teamId,
+            opportunityId,
+            sportId,
+            "Admin Edit Eagles",
+            "Admin Edit Eagles 12U tryout");
 
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -849,6 +922,48 @@ public sealed class AdminCenterPageTests
         dbContext.Opportunities.Add(opportunity);
         dbContext.SaveChanges();
         return (team.Id, opportunity.Id);
+    }
+
+    private static void SeedFlyerImportForOpportunity(
+        TryOutSpotWebApplicationFactory factory,
+        Guid adminUserId,
+        Guid teamId,
+        Guid opportunityId,
+        Guid sportId,
+        string teamName,
+        string title)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+
+        dbContext.FlyerImports.Add(new FlyerImport
+        {
+            Id = Guid.NewGuid(),
+            SourcePlatform = "facebook",
+            SourceUrl = "https://facebook.test/posts/admin-flyer",
+            Status = TryOutSpotFlyerImportStatuses.DraftCreated,
+            SportId = sportId,
+            SportName = "Softball",
+            OpportunityType = "tryout",
+            Title = title,
+            TeamName = teamName,
+            AgeGroup = "12U",
+            EventDate = now.AddDays(14),
+            City = "Wichita",
+            State = "KS",
+            ZipCode = "67202",
+            ContactEmail = "coach@example.com",
+            Description = "Seeded flyer import for admin publishing tests.",
+            CreatedByUserId = adminUserId,
+            ReviewedByUserId = adminUserId,
+            ReviewedAt = now,
+            TeamId = teamId,
+            OpportunityId = opportunityId,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        dbContext.SaveChanges();
     }
 
     private static Guid SeedListingReport(

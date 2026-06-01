@@ -342,6 +342,7 @@
                             <div class="team-metric-inline">
                                 <span>@(opportunity.IsPublished ? "Published" : "Unpublished")</span>
                                 <span>@(opportunity.IsActive ? "Active" : "Inactive")</span>
+                                <span>@(opportunity.IsFlyerCreated ? "Flyer-created" : "Team-created")</span>
                                 <span>@opportunity.OpenReportCount open reports</span>
                             </div>
                         </div>
@@ -355,12 +356,16 @@
                             {
                                 <a class="btn btn-outline-secondary btn-sm" href="/opportunities/@opportunity.OpportunityId" target="_blank" rel="noopener">Public page</a>
                             }
-                            else if (opportunity.IsActive)
+                            else if (opportunity.IsActive && opportunity.IsFlyerCreated)
                             {
                                 <form asp-action="PublishTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@opportunity.OpportunityId" method="post" class="inline-form">
                                     <input type="hidden" name="returnUrl" value="@returnUrl" />
                                     <button type="submit" class="btn btn-outline-success btn-sm">Publish</button>
                                 </form>
+                            }
+                            else if (opportunity.IsActive)
+                            {
+                                <span class="section-help small">Team must publish</span>
                             }
                             @if (opportunity.IsActive)
                             {

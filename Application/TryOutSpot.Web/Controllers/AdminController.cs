@@ -422,6 +422,19 @@ public sealed class AdminController(
                 .Include(opportunity => opportunity.ListingReports)
                 .OrderByDescending(opportunity => opportunity.UpdatedAt)
                 .ToArrayAsync(cancellationToken);
+        var teamOpportunityIds = teamOpportunities
+            .Select(opportunity => opportunity.Id)
+            .ToArray();
+        Guid[] flyerTeamOpportunityIds = teamOpportunityIds.Length == 0
+            ? []
+            : await dbContext.FlyerImports
+                .AsNoTracking()
+                .Where(flyerImport => flyerImport.OpportunityId.HasValue
+                    && teamOpportunityIds.Contains(flyerImport.OpportunityId.Value))
+                .Select(flyerImport => flyerImport.OpportunityId!.Value)
+                .Distinct()
+                .ToArrayAsync(cancellationToken);
+        var flyerTeamOpportunityIdSet = flyerTeamOpportunityIds.ToHashSet();
         var now = DateTime.UtcNow;
         var complimentaryGrants = await dbContext.ComplimentaryPlanGrants
             .AsNoTracking()
@@ -464,7 +477,11 @@ public sealed class AdminController(
             PlayerProfiles = playerRelationships.Select(ToPlayerProfileItem).ToArray(),
             PlayerListings = playerListings.Select(ToPlayerListingItem).ToArray(),
             Teams = teamRoles.Select(ToTeamProfileItem).ToArray(),
-            TeamOpportunities = teamOpportunities.Select(ToTeamOpportunityItem).ToArray(),
+            TeamOpportunities = teamOpportunities
+                .Select(opportunity => ToTeamOpportunityItem(
+                    opportunity,
+                    flyerTeamOpportunityIdSet.Contains(opportunity.Id)))
+                .ToArray(),
             EligibleComplimentaryGrantPlans = eligibleComplimentaryPlans,
             ComplimentaryGrants = complimentaryGrants.Select(grant => ToComplimentaryGrantItem(grant, now)).ToArray()
         });
@@ -1043,10 +1060,27 @@ public sealed class AdminController(
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToArrayAsync(cancellationToken);
+        var opportunityIds = opportunities
+            .Select(opportunity => opportunity.Id)
+            .ToArray();
+        Guid[] flyerCreatedOpportunityIds = opportunityIds.Length == 0
+            ? []
+            : await dbContext.FlyerImports
+                .AsNoTracking()
+                .Where(flyerImport => flyerImport.OpportunityId.HasValue
+                    && opportunityIds.Contains(flyerImport.OpportunityId.Value))
+                .Select(flyerImport => flyerImport.OpportunityId!.Value)
+                .Distinct()
+                .ToArrayAsync(cancellationToken);
+        var flyerCreatedOpportunityIdSet = flyerCreatedOpportunityIds.ToHashSet();
 
         return View(new AdminListingListPageModel<AdminTeamOpportunityListItem>
         {
-            Listings = opportunities.Select(ToTeamOpportunityItem).ToArray(),
+            Listings = opportunities
+                .Select(opportunity => ToTeamOpportunityItem(
+                    opportunity,
+                    flyerCreatedOpportunityIdSet.Contains(opportunity.Id)))
+                .ToArray(),
             Search = normalizedSearch,
             IsPublished = isPublished,
             IsActive = isActive,
@@ -1094,7 +1128,7 @@ public sealed class AdminController(
             return NotFound();
         }
 
-        await ValidateTeamOpportunityEditFormAsync(form, cancellationToken);
+        await ValidateTeamOpportunityEditFormAsync(opportunity, form, cancellationToken);
         if (!ModelState.IsValid)
         {
             return View("EditTeamOpportunity", await BuildTeamOpportunityEditPageModelAsync(
@@ -1203,6 +1237,13 @@ public sealed class AdminController(
         }
 
         var now = DateTime.UtcNow;
+        if (!opportunity.IsPublished
+            && !await IsFlyerCreatedOpportunityAsync(opportunity.Id, cancellationToken))
+        {
+            TempData["StatusMessage"] = "Team-created opportunities must be published from the team account so posting rules are applied. Admin publishing is only for flyer-created opportunities.";
+            return RedirectToLocalOrAdmin(returnUrl, nameof(TeamOpportunities));
+        }
+
         if (opportunity.EventDate is null)
         {
             TempData["StatusMessage"] = "Add an event date before publishing this team opportunity.";
@@ -1921,6 +1962,7 @@ public sealed class AdminController(
     }
 
     private async Task ValidateTeamOpportunityEditFormAsync(
+        Opportunity opportunity,
         AdminTeamOpportunityEditForm form,
         CancellationToken cancellationToken)
     {
@@ -1959,6 +2001,14 @@ public sealed class AdminController(
 
         if (form.IsPublished && form.IsActive)
         {
+            if (!opportunity.IsPublished
+                && !await IsFlyerCreatedOpportunityAsync(opportunity.Id, cancellationToken))
+            {
+                ModelState.AddModelError(
+                    "Form.IsPublished",
+                    "Team-created opportunities must be published from the team account so posting rules are applied. Admin publishing is only for flyer-created opportunities.");
+            }
+
             if (normalizedEventDate is null)
             {
                 ModelState.AddModelError("Form.EventDate", "Event date is required before publishing.");
@@ -1976,6 +2026,13 @@ public sealed class AdminController(
                 ModelState.AddModelError("Form.ListingEndDate", "Listing end date must be in the future before publishing.");
             }
         }
+    }
+
+    private Task<bool> IsFlyerCreatedOpportunityAsync(Guid opportunityId, CancellationToken cancellationToken)
+    {
+        return dbContext.FlyerImports
+            .AsNoTracking()
+            .AnyAsync(flyerImport => flyerImport.OpportunityId == opportunityId, cancellationToken);
     }
 
     private async Task SyncFlyerImportsForOpportunityAsync(
@@ -2512,7 +2569,9 @@ public sealed class AdminController(
             team.UpdatedAt);
     }
 
-    private static AdminTeamOpportunityListItem ToTeamOpportunityItem(Opportunity opportunity)
+    private static AdminTeamOpportunityListItem ToTeamOpportunityItem(
+        Opportunity opportunity,
+        bool isFlyerCreated = false)
     {
         return new AdminTeamOpportunityListItem(
             opportunity.Id,
@@ -2528,7 +2587,13 @@ public sealed class AdminController(
             opportunity.ZipCode,
             opportunity.IsPublished,
             opportunity.Team.IsSearchable,
+            opportunity.Team.IsActive,
             opportunity.IsActive,
+            isFlyerCreated,
+            opportunity.EventDate,
+            opportunity.ListingStartDate,
+            opportunity.ListingEndDate,
+            opportunity.ExpiresAt,
             CountOpenReports(opportunity.ListingReports),
             opportunity.ListingReports.Count,
             opportunity.CreatedAt,

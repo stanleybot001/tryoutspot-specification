@@ -5261,14 +5261,14 @@ public sealed class AccountController(
         NormalizeSearchTeamItemsModel(model);
         model.CanSearchTeamItems = hasPlayerParentAccess;
         model.HasAdvancedOpportunitySearch = hasAdvancedOpportunitySearch;
-        model.CanUseOpportunityTypeFilters = hasAdvancedOpportunitySearch;
+        model.CanUseOpportunityTypeFilters = true;
         model.CanUseCompetitionLevelFilter = hasAdvancedOpportunitySearch;
         model.CanUseExpandedRadius = hasAdvancedOpportunitySearch;
         model.MaxRadiusMiles = maxRadiusMiles;
         model.AvailableSports = await BuildSportSelectionItemsAsync(model.SportId, cancellationToken);
 
-        var normalizedType = ResolveOpportunityTypeFilter(model, hasAdvancedOpportunitySearch);
-        model.AvailableOpportunityTypes = BuildOpportunityTypeSearchOptions(model.Type, hasAdvancedOpportunitySearch);
+        var normalizedType = ResolveOpportunityTypeFilter(model);
+        model.AvailableOpportunityTypes = BuildOpportunityTypeSearchOptions(model.Type);
         model.AvailableRadiusOptions = BuildRadiusSearchOptions(model.RadiusMiles, maxRadiusMiles);
 
         if (!hasPlayerParentAccess)
@@ -5517,22 +5517,9 @@ public sealed class AccountController(
         model.PageSize = NormalizeSearchPageSize(model.PageSize);
     }
 
-    private string? ResolveOpportunityTypeFilter(
-        SearchTeamItemsPageModel model,
-        bool hasAdvancedOpportunitySearch)
+    private string? ResolveOpportunityTypeFilter(SearchTeamItemsPageModel model)
     {
         var normalizedType = NormalizeSearchOptionCode(model.Type);
-        if (!hasAdvancedOpportunitySearch)
-        {
-            if (!string.Equals(normalizedType, "tryout", StringComparison.Ordinal))
-            {
-                model.TypeFilterConstrained = true;
-            }
-
-            model.Type = "tryout";
-            return "tryout";
-        }
-
         if (string.IsNullOrWhiteSpace(normalizedType)
             || string.Equals(normalizedType, AllSearchFilterValue, StringComparison.Ordinal))
         {
@@ -6207,9 +6194,7 @@ public sealed class AccountController(
             .ToArrayAsync(cancellationToken);
     }
 
-    private static IReadOnlyCollection<SearchFilterOptionPageItem> BuildOpportunityTypeSearchOptions(
-        string? selectedType,
-        bool hasAdvancedOpportunitySearch)
+    private static IReadOnlyCollection<SearchFilterOptionPageItem> BuildOpportunityTypeSearchOptions(string? selectedType)
     {
         var normalizedSelectedType = NormalizeSearchOptionCode(selectedType) ?? AllSearchFilterValue;
         var options = new List<SearchFilterOptionPageItem>
@@ -6218,18 +6203,14 @@ public sealed class AccountController(
                 AllSearchFilterValue,
                 "All types",
                 string.Equals(normalizedSelectedType, AllSearchFilterValue, StringComparison.Ordinal),
-                hasAdvancedOpportunitySearch,
-                hasAdvancedOpportunitySearch ? null : "Premium Player unlocks all opportunity types.")
+                true)
         };
 
         options.AddRange(TeamOpportunityTypeOptions.Select(type => new SearchFilterOptionPageItem(
             type,
             FormatSearchOptionLabel(type),
             string.Equals(normalizedSelectedType, type, StringComparison.Ordinal),
-            hasAdvancedOpportunitySearch || string.Equals(type, "tryout", StringComparison.Ordinal),
-            hasAdvancedOpportunitySearch || string.Equals(type, "tryout", StringComparison.Ordinal)
-                ? null
-                : "Premium Player unlocks this filter.")));
+            true)));
 
         return options;
     }

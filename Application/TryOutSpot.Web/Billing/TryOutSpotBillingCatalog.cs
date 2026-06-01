@@ -62,7 +62,7 @@ public static class TryOutSpotBillingCatalog
         new(
             TryOutSpotFeatureCodes.AdvancedOpportunitySearch,
             "Advanced opportunity search",
-            "Use enhanced filters for geography, skill level, age, and opportunity type.",
+            "Use enhanced filters for geography, competition level, and age.",
             true),
         new(
             TryOutSpotFeatureCodes.EnhancedPlayerProfile,
