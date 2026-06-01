@@ -42,6 +42,7 @@ public sealed class FlyerImportService(
         }
 
         input = await locationEnrichmentService.EnrichAsync(input, cancellationToken);
+        input = await ResolveSportInputAsync(input, cancellationToken);
 
         var now = DateTime.UtcNow;
         var flyerImport = new FlyerImport
@@ -97,6 +98,7 @@ public sealed class FlyerImportService(
         }
 
         input = await locationEnrichmentService.EnrichAsync(input, cancellationToken);
+        input = await ResolveSportInputAsync(input, cancellationToken);
 
         var previousObjectKey = flyerImport.StoredObjectKey;
         ApplyInput(flyerImport, input);
@@ -381,6 +383,73 @@ public sealed class FlyerImportService(
             .FirstOrDefaultAsync(
                 sport => sport.IsActive && sport.Name.ToLower() == loweredSportName,
                 cancellationToken);
+    }
+
+    private async Task<FlyerImportCreateInput> ResolveSportInputAsync(
+        FlyerImportCreateInput input,
+        CancellationToken cancellationToken)
+    {
+        if (input.SportId.HasValue)
+        {
+            var hasActiveSport = await dbContext.Sports
+                .AsNoTracking()
+                .AnyAsync(
+                    sport => sport.Id == input.SportId.Value && sport.IsActive,
+                    cancellationToken);
+            if (hasActiveSport)
+            {
+                return input;
+            }
+        }
+
+        var sportName = NormalizeOptional(input.SportName);
+        if (sportName is null)
+        {
+            return input;
+        }
+
+        var activeSports = await dbContext.Sports
+            .AsNoTracking()
+            .Where(sport => sport.IsActive)
+            .OrderBy(sport => sport.Name)
+            .ToArrayAsync(cancellationToken);
+        var matchedSport = MatchSportByName(activeSports, sportName);
+        return matchedSport is null
+            ? input
+            : input with { SportId = matchedSport.Id, SportName = matchedSport.Name };
+    }
+
+    private static Sport? MatchSportByName(IReadOnlyCollection<Sport> activeSports, string sportName)
+    {
+        var exactMatch = activeSports.FirstOrDefault(
+            sport => string.Equals(sport.Name, sportName, StringComparison.OrdinalIgnoreCase));
+        if (exactMatch is not null)
+        {
+            return exactMatch;
+        }
+
+        var compactSportName = NormalizeComparableSportName(sportName);
+        var compactMatch = activeSports.FirstOrDefault(
+            sport => string.Equals(
+                NormalizeComparableSportName(sport.Name),
+                compactSportName,
+                StringComparison.Ordinal));
+        if (compactMatch is not null)
+        {
+            return compactMatch;
+        }
+
+        return activeSports.FirstOrDefault(sport =>
+        {
+            var compactKnownSport = NormalizeComparableSportName(sport.Name);
+            return compactKnownSport.Length >= 6
+                && compactSportName.Contains(compactKnownSport, StringComparison.Ordinal);
+        });
+    }
+
+    private static string NormalizeComparableSportName(string value)
+    {
+        return string.Concat(value.Where(char.IsLetterOrDigit)).ToLowerInvariant();
     }
 
     private async Task<Team> ResolveOrCreateTeamAsync(

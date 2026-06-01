@@ -148,6 +148,7 @@ public sealed class AdminCenterPageTests
                 serviceProvider.GetRequiredService<TestFlyerStorageService>());
         });
         var admin = await factory.CreateUserAsync("admin-flyer-ai@example.com", [TryOutSpotRoles.PlatformAdmin]);
+        var sportId = GetActiveSportId(factory);
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false
@@ -179,6 +180,7 @@ public sealed class AdminCenterPageTests
         Assert.Equal("Kansas City Aces 14U tryout", flyerImport.Title);
         Assert.Equal("Kansas City Aces", flyerImport.TeamName);
         Assert.Equal("tryout", flyerImport.OpportunityType);
+        Assert.Equal(sportId, flyerImport.SportId);
         Assert.Equal("Softball", flyerImport.SportName);
         Assert.Equal("66202", flyerImport.ZipCode);
         Assert.Equal(TryOutSpotFlyerImportStatuses.PendingReview, flyerImport.Status);
