@@ -307,6 +307,100 @@ public sealed class FlyerImportsApiTests
         Assert.Equal("pickup_player", createdOpportunity.Type);
     }
 
+    [Fact]
+    public async Task PlatformAdmin_CreateListing_BlocksLikelyDuplicateFlyerUntilOverride()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var adminTokens = await factory.LoginAsPlatformAdminAsync();
+        var client = factory.CreateClient();
+        Authorize(client, adminTokens);
+        var sportId = GetActiveSportId(factory, "Softball");
+        var teamName = $"Duplicate Flyer Eagles {Guid.NewGuid():N}";
+        var eventDate = DateTime.UtcNow.Date.AddDays(18).AddHours(18);
+
+        var originalResponse = await client.PostAsJsonAsync(
+            "/api/admin/flyer-imports",
+            new CreateFlyerImportRequest
+            {
+                SourcePlatform = "facebook",
+                SourceUrl = "https://facebook.test/groups/softball/posts/original",
+                OriginalExternalImageUrl = "https://cdn.example.test/original.jpg",
+                SportId = sportId,
+                SportName = "Softball",
+                OpportunityType = "tryout",
+                Title = $"{teamName} 12U tryouts",
+                TeamName = teamName,
+                AgeGroup = "12U",
+                EventDate = eventDate,
+                City = "Kansas City",
+                State = "MO",
+                ZipCode = "64153",
+                ContactEmail = "duplicate-coach@example.test",
+                ContactPhone = "816-555-1212",
+                Description = "Original flyer import."
+            });
+
+        Assert.Equal(HttpStatusCode.Created, originalResponse.StatusCode);
+
+        var duplicateResponse = await client.PostAsJsonAsync(
+            "/api/admin/flyer-imports",
+            new CreateFlyerImportRequest
+            {
+                SourcePlatform = "facebook",
+                SourceUrl = "https://facebook.test/groups/softball/posts/repost",
+                OriginalExternalImageUrl = "https://cdn.example.test/repost.jpg",
+                SportId = sportId,
+                SportName = "Softball",
+                OpportunityType = "tryout",
+                Title = $"{teamName} 12U tryouts",
+                TeamName = teamName,
+                AgeGroup = "12U",
+                EventDate = eventDate,
+                City = "Kansas City",
+                State = "MO",
+                ZipCode = "64153",
+                ContactEmail = "duplicate-coach@example.test",
+                ContactPhone = "(816) 555-1212",
+                Description = "Reposted flyer import."
+            });
+
+        Assert.Equal(HttpStatusCode.Created, duplicateResponse.StatusCode);
+        var duplicateResult = await duplicateResponse.Content.ReadFromJsonAsync<FlyerImportActionResponse>();
+        Assert.NotNull(duplicateResult);
+
+        var blockedResponse = await client.PostAsJsonAsync(
+            $"/api/admin/flyer-imports/{duplicateResult.FlyerImport.ImportId}/create-listing",
+            new CreateListingFromFlyerImportRequest
+            {
+                PublishImmediately = false
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, blockedResponse.StatusCode);
+        var blockedBody = await blockedResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Possible duplicate found", blockedBody);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.False(await dbContext.Opportunities.AnyAsync(opportunity => opportunity.Title == $"{teamName} 12U tryouts"));
+            var blockedFlyerImport = await dbContext.FlyerImports.SingleAsync(currentImport => currentImport.Id == duplicateResult.FlyerImport.ImportId);
+            Assert.Null(blockedFlyerImport.OpportunityId);
+        }
+
+        var overrideResponse = await client.PostAsJsonAsync(
+            $"/api/admin/flyer-imports/{duplicateResult.FlyerImport.ImportId}/create-listing",
+            new CreateListingFromFlyerImportRequest
+            {
+                PublishImmediately = false,
+                ConfirmDuplicateOverride = true
+            });
+
+        Assert.Equal(HttpStatusCode.OK, overrideResponse.StatusCode);
+        var overrideResult = await overrideResponse.Content.ReadFromJsonAsync<FlyerImportActionResponse>();
+        Assert.NotNull(overrideResult);
+        Assert.NotNull(overrideResult.OpportunityId);
+    }
+
     private static Guid GetActiveSportId(TryOutSpotWebApplicationFactory factory, string sportName)
     {
         using var scope = factory.Services.CreateScope();

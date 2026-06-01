@@ -24,6 +24,7 @@ public sealed class AdminController(
     UserManager<User> userManager,
     ILaunchPromotionStatusService launchPromotionStatusService,
     IFlyerImportService flyerImportService,
+    IFlyerDuplicateDetectionService flyerDuplicateDetectionService,
     IFlyerAiExtractionService flyerAiExtractionService,
     IFlyerImportRemoteFileFetcher flyerImportRemoteFileFetcher,
     IPdfStorageService pdfStorageService) : Controller
@@ -1591,7 +1592,8 @@ public sealed class AdminController(
             {
                 Import = ToFlyerImportDetailItem(existingImport),
                 Form = form,
-                SportOptions = await GetSportOptionsAsync(cancellationToken)
+                SportOptions = await GetSportOptionsAsync(cancellationToken),
+                DuplicateCheck = await BuildDuplicateCheckAsync(existingImport, cancellationToken)
             });
         }
 
@@ -1608,7 +1610,8 @@ public sealed class AdminController(
             {
                 Import = ToFlyerImportDetailItem(existingImport),
                 Form = form,
-                SportOptions = await GetSportOptionsAsync(cancellationToken)
+                SportOptions = await GetSportOptionsAsync(cancellationToken),
+                DuplicateCheck = await BuildDuplicateCheckAsync(existingImport, cancellationToken)
             });
         }
 
@@ -1625,6 +1628,16 @@ public sealed class AdminController(
         if (!TryGetCurrentUserId(out var adminUserId))
         {
             return Unauthorized();
+        }
+
+        var duplicateCheck = await flyerDuplicateDetectionService.FindDuplicatesAsync(flyerImportId, cancellationToken);
+        if (duplicateCheck.HasBlockingDuplicate && !form.ConfirmDuplicateOverride)
+        {
+            var topCandidate = duplicateCheck.TopCandidate;
+            TempData["StatusMessage"] = topCandidate is null
+                ? "Possible duplicate found. Review the match before creating a listing."
+                : $"Possible duplicate found ({topCandidate.ProbabilityPercent}% match). Review the match, then create anyway or skip this flyer.";
+            return RedirectToAction(nameof(FlyerImportDetail), new { flyerImportId });
         }
 
         var result = await flyerImportService.CreateListingAsync(
@@ -1717,8 +1730,29 @@ public sealed class AdminController(
         {
             Import = ToFlyerImportDetailItem(flyerImport),
             Form = ToFlyerImportForm(flyerImport),
-            SportOptions = await GetSportOptionsAsync(cancellationToken)
+            SportOptions = await GetSportOptionsAsync(cancellationToken),
+            DuplicateCheck = await BuildDuplicateCheckAsync(flyerImport, cancellationToken)
         };
+    }
+
+    private Task<FlyerDuplicateCheckResult?> BuildDuplicateCheckAsync(
+        FlyerImport flyerImport,
+        CancellationToken cancellationToken)
+    {
+        if (flyerImport.OpportunityId.HasValue
+            || string.Equals(flyerImport.Status, TryOutSpotFlyerImportStatuses.Rejected, StringComparison.Ordinal))
+        {
+            return Task.FromResult<FlyerDuplicateCheckResult?>(null);
+        }
+
+        return BuildDuplicateCheckCoreAsync(flyerImport.Id, cancellationToken);
+    }
+
+    private async Task<FlyerDuplicateCheckResult?> BuildDuplicateCheckCoreAsync(
+        Guid flyerImportId,
+        CancellationToken cancellationToken)
+    {
+        return await flyerDuplicateDetectionService.FindDuplicatesAsync(flyerImportId, cancellationToken);
     }
 
     private async Task<IReadOnlyCollection<AdminSportOption>> GetSportOptionsAsync(CancellationToken cancellationToken)

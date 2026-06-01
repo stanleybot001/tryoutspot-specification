@@ -187,6 +187,67 @@ public sealed class AdminCenterPageTests
     }
 
     [Fact]
+    public async Task PlatformAdmin_SeesDuplicateWarningBeforeCreatingFlyerListing()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var admin = await factory.CreateUserAsync("admin-duplicate-flyer@example.com", [TryOutSpotRoles.PlatformAdmin]);
+        var sportId = GetActiveSportId(factory);
+        var teamName = $"Admin Duplicate Eagles {Guid.NewGuid():N}";
+        var title = $"{teamName} 12U tryouts";
+        var eventDate = DateTime.UtcNow.Date.AddDays(12).AddHours(18);
+        SeedPendingFlyerImport(
+            factory,
+            admin.Id,
+            sportId,
+            teamName,
+            title,
+            eventDate,
+            "https://facebook.test/groups/softball/posts/original");
+        var duplicateImportId = SeedPendingFlyerImport(
+            factory,
+            admin.Id,
+            sportId,
+            teamName,
+            title,
+            eventDate,
+            "https://facebook.test/groups/softball/posts/repost");
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        await LoginWebUserAsync(client, admin.Email!);
+
+        var detailPath = $"/admin/flyer-imports/{duplicateImportId}";
+        var detailResponse = await client.GetAsync(detailPath);
+        Assert.Equal(HttpStatusCode.OK, detailResponse.StatusCode);
+        var html = await detailResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Likely duplicate", html);
+        Assert.Contains("100% match", html);
+        Assert.Contains("same contact email and phone", html);
+        Assert.Contains("Create listing anyway", html);
+        Assert.Contains("Skip duplicate", html);
+
+        var token = await GetAntiForgeryTokenAsync(client, detailPath);
+        var blockedResponse = await client.PostAsync(
+            $"/admin/flyer-imports/{duplicateImportId}/create-listing",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", token),
+                new("PublishImmediately", "false")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, blockedResponse.StatusCode);
+        Assert.Equal(detailPath, blockedResponse.Headers.Location?.ToString());
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await dbContext.Opportunities.AnyAsync(opportunity => opportunity.Title == title));
+        var duplicateImport = await dbContext.FlyerImports.SingleAsync(currentImport => currentImport.Id == duplicateImportId);
+        Assert.Null(duplicateImport.OpportunityId);
+    }
+
+    [Fact]
     public async Task PlatformAdmin_CanPublishFlyerCreatedDraftTeamOpportunity()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -964,6 +1025,48 @@ public sealed class AdminCenterPageTests
             UpdatedAt = now
         });
         dbContext.SaveChanges();
+    }
+
+    private static Guid SeedPendingFlyerImport(
+        TryOutSpotWebApplicationFactory factory,
+        Guid adminUserId,
+        Guid sportId,
+        string teamName,
+        string title,
+        DateTime eventDate,
+        string sourceUrl)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow;
+        var flyerImportId = Guid.NewGuid();
+
+        dbContext.FlyerImports.Add(new FlyerImport
+        {
+            Id = flyerImportId,
+            SourcePlatform = "facebook",
+            SourceUrl = sourceUrl,
+            OriginalExternalImageUrl = sourceUrl.Replace("posts", "images", StringComparison.Ordinal),
+            Status = TryOutSpotFlyerImportStatuses.PendingReview,
+            SportId = sportId,
+            SportName = "Softball",
+            OpportunityType = "tryout",
+            Title = title,
+            TeamName = teamName,
+            AgeGroup = "12U",
+            EventDate = eventDate,
+            City = "Kansas City",
+            State = "MO",
+            ZipCode = "64153",
+            ContactEmail = "duplicate-coach@example.test",
+            ContactPhone = "816-555-1212",
+            Description = "Seeded pending flyer import for duplicate review tests.",
+            CreatedByUserId = adminUserId,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        dbContext.SaveChanges();
+        return flyerImportId;
     }
 
     private static Guid SeedListingReport(

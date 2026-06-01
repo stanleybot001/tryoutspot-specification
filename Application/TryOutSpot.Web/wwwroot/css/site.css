@@ -2108,6 +2108,51 @@ body.splash-page {
   background: #f8fafc;
 }
 
+.duplicate-check-panel {
+  margin-top: 1rem;
+  padding: 0.85rem;
+  border: 1px solid #facc15;
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #451a03;
+}
+
+.duplicate-check-panel h3 {
+  font-size: 1.05rem;
+  margin-bottom: 0.5rem;
+}
+
+.duplicate-check-panel p {
+  margin-bottom: 0.7rem;
+}
+
+.duplicate-check-panel-blocking {
+  border-color: #fb923c;
+  border-left-color: #ea580c;
+  background: #fff7ed;
+}
+
+.duplicate-check-grid {
+  gap: 0.2rem 0.65rem;
+  margin-bottom: 0.65rem;
+}
+
+.duplicate-signal-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.duplicate-signal-list span {
+  border: 1px solid #fed7aa;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #7c2d12;
+  font-size: 0.8rem;
+  padding: 0.22rem 0.5rem;
+}
+
 .admin-flyer-reference {
   position: sticky;
   top: 1rem;

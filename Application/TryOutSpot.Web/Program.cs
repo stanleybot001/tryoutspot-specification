@@ -301,6 +301,7 @@ builder.Services.AddScoped<IActivationAssistanceService, ActivationAssistanceSer
 builder.Services.AddScoped<IDashboardActivityService, DashboardActivityService>();
 builder.Services.AddScoped<IFlyerImportService, FlyerImportService>();
 builder.Services.AddScoped<IFlyerTeamClaimService, FlyerTeamClaimService>();
+builder.Services.AddScoped<IFlyerDuplicateDetectionService, FlyerDuplicateDetectionService>();
 builder.Services.AddHttpClient<IFlyerAiExtractionService, OpenAiFlyerAiExtractionService>();
 builder.Services.AddHttpClient<IFlyerImportRemoteFileFetcher, FlyerImportRemoteFileFetcher>();
 builder.Services.AddScoped<IFlyerLocationEnrichmentService, FlyerLocationEnrichmentService>();

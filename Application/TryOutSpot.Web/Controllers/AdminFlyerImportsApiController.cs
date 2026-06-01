@@ -18,7 +18,8 @@ namespace TryOutSpot.Web.Controllers;
 [Authorize(Roles = TryOutSpotRoles.PlatformAdmin)]
 public sealed class AdminFlyerImportsApiController(
     AppDbContext dbContext,
-    IFlyerImportService flyerImportService) : ControllerBase
+    IFlyerImportService flyerImportService,
+    IFlyerDuplicateDetectionService flyerDuplicateDetectionService) : ControllerBase
 {
     private const int DefaultPageSize = 25;
     private const int MaxPageSize = 100;
@@ -137,6 +138,18 @@ public sealed class AdminFlyerImportsApiController(
         if (!TryGetCurrentUserId(out var adminUserId))
         {
             return Unauthorized();
+        }
+
+        var duplicateCheck = await flyerDuplicateDetectionService.FindDuplicatesAsync(flyerImportId, cancellationToken);
+        if (duplicateCheck.HasBlockingDuplicate && !request.ConfirmDuplicateOverride)
+        {
+            var topCandidate = duplicateCheck.TopCandidate;
+            return ValidationProblemFromErrors(
+            [
+                topCandidate is null
+                    ? "Possible duplicate found. Review the match before creating a listing."
+                    : $"Possible duplicate found ({topCandidate.ProbabilityPercent}% match). Send ConfirmDuplicateOverride=true to create anyway."
+            ]);
         }
 
         var result = await flyerImportService.CreateListingAsync(

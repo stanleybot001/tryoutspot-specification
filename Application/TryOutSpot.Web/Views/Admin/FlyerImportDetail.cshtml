@@ -2,6 +2,7 @@
 
 @{
     var isNew = Model.Import.ImportId == Guid.Empty;
+    var hasBlockingDuplicate = Model.DuplicateCheck?.HasBlockingDuplicate == true;
     ViewData["Title"] = isNew ? "New Flyer Import" : "Review Flyer Import";
     var formAction = isNew
         ? Url.Action("CreateFlyerImport", "Admin")
@@ -237,6 +238,41 @@
                 </div>
             }
 
+            @if (!isNew && Model.DuplicateCheck?.Candidates.Count > 0)
+            {
+                var topDuplicate = Model.DuplicateCheck.TopCandidate;
+                var duplicateHeading = hasBlockingDuplicate ? "Likely duplicate" : "Possible duplicate";
+                <div class="duplicate-check-panel @(hasBlockingDuplicate ? "duplicate-check-panel-blocking" : null)">
+                    <h3>@duplicateHeading</h3>
+                    @if (topDuplicate is not null)
+                    {
+                        var returnUrl = Uri.EscapeDataString($"/admin/flyer-imports/{Model.Import.ImportId}");
+                        var candidateUrl = DuplicateCandidateUrl(topDuplicate, returnUrl);
+                        <p><strong>@topDuplicate.ProbabilityPercent% match</strong> with an existing @topDuplicate.CandidateType.ToLowerInvariant().</p>
+                        <dl class="admin-detail-grid duplicate-check-grid">
+                            <dt>Title</dt>
+                            <dd>@(topDuplicate.Title ?? "Not set")</dd>
+                            <dt>Team</dt>
+                            <dd>@(topDuplicate.TeamName ?? "Not set")</dd>
+                            <dt>Date</dt>
+                            <dd>@FormatDuplicateDate(topDuplicate.EventDateUtc)</dd>
+                            <dt>Location</dt>
+                            <dd>@(topDuplicate.Location ?? "Not set")</dd>
+                        </dl>
+                        <div class="duplicate-signal-list">
+                            @foreach (var signal in topDuplicate.MatchedSignals)
+                            {
+                                <span>@signal</span>
+                            }
+                        </div>
+                        @if (candidateUrl is not null)
+                        {
+                            <a class="btn btn-outline-secondary btn-sm mt-2" href="@candidateUrl">View match</a>
+                        }
+                    }
+                </div>
+            }
+
             @if (!isNew)
             {
                 @if (Model.Import.OpportunityId.HasValue)
@@ -253,8 +289,20 @@
                             <input class="form-check-input" type="checkbox" name="PublishImmediately" value="true" id="publish-immediately" />
                             <label class="form-check-label" for="publish-immediately">Publish immediately</label>
                         </div>
-                        <button type="submit" class="btn btn-primary btn-sm">Create listing</button>
+                        @if (hasBlockingDuplicate)
+                        {
+                            <input type="hidden" name="ConfirmDuplicateOverride" value="true" />
+                        }
+                        <button type="submit" class="btn btn-primary btn-sm">@(hasBlockingDuplicate ? "Create listing anyway" : "Create listing")</button>
                     </form>
+
+                    @if (hasBlockingDuplicate)
+                    {
+                        <form asp-action="RejectFlyerImport" asp-controller="Admin" asp-route-flyerImportId="@Model.Import.ImportId" method="post" class="mt-3">
+                            <input type="hidden" name="AdminNotes" value="Skipped as likely duplicate." />
+                            <button type="submit" class="btn btn-outline-warning btn-sm">Skip duplicate</button>
+                        </form>
+                    }
 
                     <form asp-action="RejectFlyerImport" asp-controller="Admin" asp-route-flyerImportId="@Model.Import.ImportId" method="post" class="mt-3">
                         <div class="form-field">
@@ -306,5 +354,24 @@
         }
 
         return System.IO.Path.GetExtension(fileName ?? string.Empty).ToLowerInvariant() is ".jpg" or ".jpeg" or ".png" or ".webp";
+    }
+
+    private static string FormatDuplicateDate(DateTime? date)
+    {
+        return date.HasValue
+            ? date.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt")
+            : "Not set";
+    }
+
+    private static string? DuplicateCandidateUrl(FlyerDuplicateCandidate candidate, string returnUrl)
+    {
+        if (candidate.OpportunityId.HasValue)
+        {
+            return $"/admin/team-opportunities/{candidate.OpportunityId.Value}/edit?returnUrl={returnUrl}";
+        }
+
+        return candidate.FlyerImportId.HasValue
+            ? $"/admin/flyer-imports/{candidate.FlyerImportId.Value}"
+            : null;
     }
 }

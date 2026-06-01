@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Http;
+using TryOutSpot.Web.Services;
 
 namespace TryOutSpot.Web.Models.Admin;
 
@@ -46,6 +47,8 @@ public sealed class AdminFlyerImportDetailPageModel
     public AdminFlyerImportForm Form { get; set; } = new();
 
     public IReadOnlyCollection<AdminSportOption> SportOptions { get; set; } = [];
+
+    public FlyerDuplicateCheckResult? DuplicateCheck { get; set; }
 }
 
 public sealed record AdminFlyerImportDetailItem(
@@ -158,6 +161,8 @@ public sealed class AdminFlyerImportForm
 public sealed class AdminCreateListingFromFlyerImportForm
 {
     public bool PublishImmediately { get; set; }
+
+    public bool ConfirmDuplicateOverride { get; set; }
 }
 
 public sealed class AdminRejectFlyerImportForm
@@ -239,6 +244,8 @@ public sealed class CreateFlyerImportUploadRequest : CreateFlyerImportRequest
 public sealed class CreateListingFromFlyerImportRequest
 {
     public bool PublishImmediately { get; set; }
+
+    public bool ConfirmDuplicateOverride { get; set; }
 }
 
 public sealed record FlyerImportListResponse(
