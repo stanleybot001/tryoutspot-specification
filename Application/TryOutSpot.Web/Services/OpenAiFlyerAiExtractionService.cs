@@ -74,11 +74,16 @@ public sealed class OpenAiFlyerAiExtractionService(
             return FlyerAiExtractionResult.Failure("AI did not return flyer details. Try a clearer image.");
         }
 
+        var today = DateTime.UtcNow.Date;
         var confidenceJson = JsonSerializer.Serialize(
             new
             {
                 payload.ConfidenceScore,
-                payload.Warnings
+                payload.Warnings,
+                payload.EventDateYearSpecified,
+                payload.EventEndDateYearSpecified,
+                payload.RegistrationDeadlineYearSpecified,
+                CurrentYearApplied = today.Year
             },
             JsonOptions);
         var input = new FlyerImportCreateInput(
@@ -93,9 +98,9 @@ public sealed class OpenAiFlyerAiExtractionService(
             payload.OrganizationName,
             payload.AgeGroup,
             payload.CompetitionLevel,
-            ParseDate(payload.EventDate),
-            ParseDate(payload.EventEndDate),
-            ParseDate(payload.RegistrationDeadline),
+            ParseDate(payload.EventDate, payload.EventDateYearSpecified, today),
+            ParseDate(payload.EventEndDate, payload.EventEndDateYearSpecified, today),
+            ParseDate(payload.RegistrationDeadline, payload.RegistrationDeadlineYearSpecified, today),
             payload.RegistrationFee,
             payload.Location,
             payload.Address,
@@ -122,6 +127,7 @@ public sealed class OpenAiFlyerAiExtractionService(
         string? sourceUrl,
         string? externalImageUrl)
     {
+        var today = DateTime.UtcNow.Date;
         var imageDataUrl = $"data:{uploadedFile.ContentType};base64,{Convert.ToBase64String(uploadedFile.Content)}";
         return new
         {
@@ -136,7 +142,7 @@ public sealed class OpenAiFlyerAiExtractionService(
                         new
                         {
                             type = "input_text",
-                            text = "You extract youth baseball and softball opportunity listings from flyer images. Return JSON only and leave unknown fields null. Normalize opportunityType to tryout, roster_opening, pickup_player, tournament, camp, clinic, private_workout, or other. Use roster_opening when the flyer says adding players or looking for players. Use pickup_player when it says guest player, sub, fill-in, or pickup player. Put venue, complex, park, or field names in location even when no street address is visible. Put city and state in city/state when visible, but do not guess a ZIP code."
+                            text = $"You extract youth baseball and softball opportunity listings from flyer images. Return JSON only and leave unknown fields null. Today's date is {today:yyyy-MM-dd}; the current year is {today.Year}. When a flyer shows a month/day date without a printed year, use {today.Year}. Only use a different year when that year is explicitly printed on the flyer. Set the date yearSpecified fields to true only when the flyer visibly prints a year for that date. Normalize opportunityType to tryout, roster_opening, pickup_player, tournament, camp, clinic, private_workout, or other. Use roster_opening when the flyer says adding players or looking for players. Use pickup_player when it says guest player, sub, fill-in, or pickup player. Put venue, complex, park, or field names in location even when no street address is visible. Put city and state in city/state when visible, but do not guess a ZIP code."
                         }
                     }
                 },
@@ -148,7 +154,7 @@ public sealed class OpenAiFlyerAiExtractionService(
                         new
                         {
                             type = "input_text",
-                            text = $"Extract listing information from this flyer image. Source post URL: {sourceUrl ?? "not provided"}. External image URL: {externalImageUrl ?? "not provided"}. Dates should be ISO-8601 if visible. Include the ZIP code only if visible."
+                            text = $"Extract listing information from this flyer image. Source post URL: {sourceUrl ?? "not provided"}. External image URL: {externalImageUrl ?? "not provided"}. Dates should be ISO-8601 if visible. If the flyer does not print a year on a date, use {today.Year}; do not infer an older year. Include the ZIP code only if visible."
                         },
                         new
                         {
@@ -185,8 +191,11 @@ public sealed class OpenAiFlyerAiExtractionService(
             ["ageGroup"] = NullableString(),
             ["competitionLevel"] = NullableString(),
             ["eventDate"] = NullableString(),
+            ["eventDateYearSpecified"] = NullableBoolean(),
             ["eventEndDate"] = NullableString(),
+            ["eventEndDateYearSpecified"] = NullableBoolean(),
             ["registrationDeadline"] = NullableString(),
+            ["registrationDeadlineYearSpecified"] = NullableBoolean(),
             ["registrationFee"] = new JsonObject { ["type"] = new JsonArray("number", "null") },
             ["location"] = NullableString(),
             ["address"] = NullableString(),
@@ -222,6 +231,11 @@ public sealed class OpenAiFlyerAiExtractionService(
     private static JsonObject NullableString()
     {
         return new JsonObject { ["type"] = new JsonArray("string", "null") };
+    }
+
+    private static JsonObject NullableBoolean()
+    {
+        return new JsonObject { ["type"] = new JsonArray("boolean", "null") };
     }
 
     private static string? ExtractOutputText(string responseBody)
@@ -260,9 +274,28 @@ public sealed class OpenAiFlyerAiExtractionService(
         return null;
     }
 
-    private static DateTime? ParseDate(string? value)
+    private static DateTime? ParseDate(string? value, bool? yearSpecified, DateTime today)
     {
-        return DateTime.TryParse(value, out var parsed) ? parsed : null;
+        if (!DateTime.TryParse(value, out var parsed))
+        {
+            return null;
+        }
+
+        if (yearSpecified == false && parsed.Year != today.Year)
+        {
+            var day = Math.Min(parsed.Day, DateTime.DaysInMonth(today.Year, parsed.Month));
+            return new DateTime(
+                today.Year,
+                parsed.Month,
+                day,
+                parsed.Hour,
+                parsed.Minute,
+                parsed.Second,
+                parsed.Millisecond,
+                parsed.Kind);
+        }
+
+        return parsed;
     }
 
     private sealed class FlyerExtractionPayload
@@ -283,9 +316,15 @@ public sealed class OpenAiFlyerAiExtractionService(
 
         public string? EventDate { get; set; }
 
+        public bool? EventDateYearSpecified { get; set; }
+
         public string? EventEndDate { get; set; }
 
+        public bool? EventEndDateYearSpecified { get; set; }
+
         public string? RegistrationDeadline { get; set; }
+
+        public bool? RegistrationDeadlineYearSpecified { get; set; }
 
         public decimal? RegistrationFee { get; set; }
 
