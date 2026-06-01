@@ -34,6 +34,7 @@ public sealed class AccountController(
     IEntitlementService entitlementService,
     IDashboardActivityService dashboardActivityService,
     IActivationAssistanceService activationAssistanceService,
+    IFlyerTeamClaimService flyerTeamClaimService,
     IZipRadiusSearchService zipRadiusSearchService,
     IPdfStorageService pdfStorageService,
     IImageStorageService imageStorageService,
@@ -923,6 +924,47 @@ public sealed class AccountController(
             cancellationToken);
         TempData["StatusMessage"] = "No problem. We will keep the team setup shortcuts available when you are ready.";
         return RedirectToAction(nameof(Onboarding));
+    }
+
+    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [HttpPost("flyer-team-claims/{teamId:guid}/claim")]
+    public async Task<IActionResult> ClaimFlyerTeam(
+        Guid teamId,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Onboarding)) });
+        }
+
+        var result = await flyerTeamClaimService.ClaimAsync(user, teamId, cancellationToken);
+        if (result.RefreshSignIn)
+        {
+            await SignInWebUserAsync(user, isPersistent: true);
+        }
+
+        TempData["StatusMessage"] = result.Message;
+        return RedirectToLocalOrOnboarding(returnUrl);
+    }
+
+    [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
+    [HttpPost("flyer-team-claims/{teamId:guid}/dismiss")]
+    public async Task<IActionResult> DismissFlyerTeamClaim(
+        Guid teamId,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(Onboarding)) });
+        }
+
+        var result = await flyerTeamClaimService.DismissAsync(user, teamId, cancellationToken);
+        TempData["StatusMessage"] = result.Message;
+        return RedirectToLocalOrOnboarding(returnUrl);
     }
 
     [Authorize(AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie)]
@@ -6429,6 +6471,7 @@ public sealed class AccountController(
         var activationAssistance = await activationAssistanceService.GetTeamFirstListingPromptAsync(
             user.Id,
             cancellationToken);
+        var claimableFlyerTeams = await flyerTeamClaimService.GetClaimableTeamsAsync(user, cancellationToken);
 
         var hasLinkedPlayers = hasPlayerOrParentRole
             && await dbContext.UserPlayerRelationships
@@ -6585,6 +6628,7 @@ public sealed class AccountController(
             FavoriteOpportunities = favoriteOpportunities,
             RecentActivity = recentActivity,
             ActivationAssistance = activationAssistance,
+            ClaimableFlyerTeams = claimableFlyerTeams.Select(ToFlyerTeamClaimPageItem).ToArray(),
             Steps = steps
         };
     }
@@ -11255,6 +11299,7 @@ public sealed class AccountController(
         });
         var hasLocalPassword = await userManager.HasPasswordAsync(user);
         var dashboardActivityPreferences = await dashboardActivityService.GetPreferencesAsync(user.Id, cancellationToken);
+        var claimableFlyerTeams = await flyerTeamClaimService.GetClaimableTeamsAsync(user, cancellationToken);
 
         return new AccountSettingsPageModel
         {
@@ -11308,7 +11353,8 @@ public sealed class AccountController(
             ScheduledPaidCancellationAt = scheduledPaidCancellationAt,
             PlayerParentScheduledPaidCancellationAt = playerParentScheduledPaidCancellationAt,
             TeamScheduledPaidCancellationAt = teamScheduledPaidCancellationAt,
-            DashboardActivityPreferences = dashboardActivityPreferences
+            DashboardActivityPreferences = dashboardActivityPreferences,
+            ClaimableFlyerTeams = claimableFlyerTeams.Select(ToFlyerTeamClaimPageItem).ToArray()
         };
     }
 
@@ -11334,6 +11380,21 @@ public sealed class AccountController(
                 IsPersistent = isPersistent,
                 ExpiresUtc = isPersistent ? DateTimeOffset.UtcNow.AddDays(14) : null
             });
+    }
+
+    private static FlyerTeamClaimPageItem ToFlyerTeamClaimPageItem(FlyerTeamClaimCandidate candidate)
+    {
+        return new FlyerTeamClaimPageItem(
+            candidate.TeamId,
+            candidate.TeamName,
+            candidate.TeamLevel,
+            candidate.SportName,
+            candidate.City,
+            candidate.State,
+            candidate.ZipCode,
+            candidate.MatchedBy,
+            candidate.ListingCount,
+            candidate.LatestFlyerAt);
     }
 
     private async Task<User?> GetCurrentWebUserAsync()

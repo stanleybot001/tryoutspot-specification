@@ -241,6 +241,8 @@ public sealed class OnboardingPageModel
     public DashboardRecentActivityResponse? RecentActivity { get; set; }
 
     public ActivationAssistancePromptResponse? ActivationAssistance { get; set; }
+
+    public IReadOnlyCollection<FlyerTeamClaimPageItem> ClaimableFlyerTeams { get; set; } = [];
 }
 
 public sealed class FavoritesPageModel
@@ -2014,6 +2016,8 @@ public sealed class AccountSettingsPageModel
     public DateTime? TeamScheduledPaidCancellationAt { get; set; }
 
     public DashboardActivityPreferencesResponse? DashboardActivityPreferences { get; set; }
+
+    public IReadOnlyCollection<FlyerTeamClaimPageItem> ClaimableFlyerTeams { get; set; } = [];
 }
 
 public sealed class ProfileSettingsPageModel
@@ -2139,6 +2143,18 @@ public sealed record AccountMembershipSummaryItem(
 
     public string? ActiveEntitlementLabel { get; init; }
 }
+
+public sealed record FlyerTeamClaimPageItem(
+    Guid TeamId,
+    string TeamName,
+    string? TeamLevel,
+    string? SportName,
+    string? City,
+    string? State,
+    string? ZipCode,
+    string MatchedBy,
+    int ListingCount,
+    DateTime LatestFlyerAt);
 
 public sealed record AccountTypeSelectionItem(
     string Name,

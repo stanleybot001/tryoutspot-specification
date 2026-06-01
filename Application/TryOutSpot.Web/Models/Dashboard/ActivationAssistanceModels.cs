@@ -3,6 +3,7 @@ namespace TryOutSpot.Web.Models.Dashboard;
 public static class ActivationAssistancePromptKeys
 {
     public const string TeamFirstListing = "team_first_listing";
+    public const string FlyerTeamClaim = "flyer_team_claim";
 }
 
 public sealed record ActivationAssistancePromptResponse(

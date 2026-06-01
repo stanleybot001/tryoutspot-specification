@@ -191,6 +191,122 @@ public sealed class FlyerImportsApiTests
         Assert.Equal("64063", createResult.FlyerImport.ZipCode);
     }
 
+    [Fact]
+    public async Task PlatformAdmin_CreateListing_ReusesAndReactivatesInactiveMatchingTeam()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var adminTokens = await factory.LoginAsPlatformAdminAsync();
+        var client = factory.CreateClient();
+        Authorize(client, adminTokens);
+        var sportId = GetActiveSportId(factory, "Softball");
+        var teamName = $"Reactivated Eagles {Guid.NewGuid():N}";
+        var existingTeamId = SeedFlyerTeam(factory, sportId, teamName, "12U", isActive: false);
+
+        var createResponse = await client.PostAsJsonAsync(
+            "/api/admin/flyer-imports",
+            new CreateFlyerImportRequest
+            {
+                SourcePlatform = "facebook",
+                OriginalExternalImageUrl = "https://example.test/reactivated-eagles.jpg",
+                SportId = sportId,
+                SportName = "Softball",
+                OpportunityType = "tryout",
+                Title = $"{teamName} tryouts",
+                TeamName = teamName,
+                AgeGroup = "12U",
+                EventDate = DateTime.UtcNow.AddDays(21),
+                Address = "2200 Old 210 Hwy",
+                City = "Liberty",
+                State = "MO",
+                ZipCode = "64068",
+                ContactEmail = "claim-coach@example.test",
+                ContactPhone = "816-555-1010"
+            });
+
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var createResult = await createResponse.Content.ReadFromJsonAsync<FlyerImportActionResponse>();
+        Assert.NotNull(createResult);
+
+        var createListingResponse = await client.PostAsJsonAsync(
+            $"/api/admin/flyer-imports/{createResult.FlyerImport.ImportId}/create-listing",
+            new CreateListingFromFlyerImportRequest
+            {
+                PublishImmediately = false
+            });
+
+        Assert.Equal(HttpStatusCode.OK, createListingResponse.StatusCode);
+        var createListingResult = await createListingResponse.Content.ReadFromJsonAsync<FlyerImportActionResponse>();
+        Assert.NotNull(createListingResult);
+        Assert.Equal(existingTeamId, createListingResult.TeamId);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var matchingTeams = await dbContext.Teams
+            .Where(team => team.Name == teamName)
+            .ToArrayAsync();
+        Assert.Single(matchingTeams);
+        Assert.True(matchingTeams[0].IsActive);
+        Assert.True(matchingTeams[0].IsSearchable);
+        Assert.Equal("64068", matchingTeams[0].ZipCode);
+        Assert.Equal(existingTeamId, await dbContext.Opportunities
+            .Where(opportunity => opportunity.Id == createListingResult.OpportunityId)
+            .Select(opportunity => opportunity.TeamId)
+            .SingleAsync());
+    }
+
+    [Fact]
+    public async Task PlatformAdmin_CreateListing_AddsNewOpportunityToExistingTeam()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var adminTokens = await factory.LoginAsPlatformAdminAsync();
+        var client = factory.CreateClient();
+        Authorize(client, adminTokens);
+        var sportId = GetActiveSportId(factory, "Softball");
+        var teamName = $"Multi Flyer Eagles {Guid.NewGuid():N}";
+        var existingTeamId = SeedFlyerTeam(factory, sportId, teamName, "14U", isActive: true, seedOpportunity: true);
+
+        var createResponse = await client.PostAsJsonAsync(
+            "/api/admin/flyer-imports",
+            new CreateFlyerImportRequest
+            {
+                SourcePlatform = "facebook",
+                OriginalExternalImageUrl = "https://example.test/multi-flyer-eagles.jpg",
+                SportId = sportId,
+                SportName = "Softball",
+                OpportunityType = "pickup player",
+                Title = $"{teamName} guest player needed",
+                TeamName = teamName,
+                AgeGroup = "14U",
+                EventDate = DateTime.UtcNow.AddDays(14),
+                City = "Liberty",
+                State = "MO",
+                ZipCode = "64068",
+                ContactEmail = "claim-coach@example.test"
+            });
+
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var createResult = await createResponse.Content.ReadFromJsonAsync<FlyerImportActionResponse>();
+        Assert.NotNull(createResult);
+
+        var createListingResponse = await client.PostAsJsonAsync(
+            $"/api/admin/flyer-imports/{createResult.FlyerImport.ImportId}/create-listing",
+            new CreateListingFromFlyerImportRequest
+            {
+                PublishImmediately = false
+            });
+
+        Assert.Equal(HttpStatusCode.OK, createListingResponse.StatusCode);
+        var createListingResult = await createListingResponse.Content.ReadFromJsonAsync<FlyerImportActionResponse>();
+        Assert.NotNull(createListingResult);
+        Assert.Equal(existingTeamId, createListingResult.TeamId);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(2, await dbContext.Opportunities.CountAsync(opportunity => opportunity.TeamId == existingTeamId));
+        var createdOpportunity = await dbContext.Opportunities.SingleAsync(opportunity => opportunity.Id == createListingResult.OpportunityId);
+        Assert.Equal("pickup_player", createdOpportunity.Type);
+    }
+
     private static Guid GetActiveSportId(TryOutSpotWebApplicationFactory factory, string sportName)
     {
         using var scope = factory.Services.CreateScope();
@@ -227,6 +343,72 @@ public sealed class FlyerImportsApiTests
             CreatedAt = DateTime.UtcNow
         });
         dbContext.SaveChanges();
+    }
+
+    private static Guid SeedFlyerTeam(
+        TryOutSpotWebApplicationFactory factory,
+        Guid sportId,
+        string teamName,
+        string ageGroup,
+        bool isActive,
+        bool seedOpportunity = false)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = DateTime.UtcNow.AddDays(-7);
+        var teamId = Guid.NewGuid();
+        dbContext.Teams.Add(new Team
+        {
+            Id = teamId,
+            Name = teamName,
+            TeamLevel = ageGroup,
+            GeographicScope = "Local",
+            City = null,
+            State = null,
+            ZipCode = null,
+            Email = "claim-coach@example.test",
+            PhoneNumber = "816-555-1010",
+            IsSearchable = isActive,
+            IsContactInfoVisible = isActive,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = isActive
+        });
+        dbContext.TeamSports.Add(new TeamSport
+        {
+            Id = Guid.NewGuid(),
+            TeamId = teamId,
+            SportId = sportId,
+            AgeGroup = ageGroup,
+            IsActive = true,
+            CreatedAt = now
+        });
+
+        if (seedOpportunity)
+        {
+            dbContext.Opportunities.Add(new Opportunity
+            {
+                Id = Guid.NewGuid(),
+                TeamId = teamId,
+                SportId = sportId,
+                Type = "tryout",
+                Title = $"{teamName} earlier tryout",
+                AgeGroup = ageGroup,
+                RegistrationFee = 0m,
+                EventDate = now.AddDays(30),
+                City = "Liberty",
+                State = "MO",
+                ZipCode = "64068",
+                IsPublished = true,
+                PublishedAt = now,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+        }
+
+        dbContext.SaveChanges();
+        return teamId;
     }
 
     private sealed class TestFlyerPlaceSearchClient : IFlyerPlaceSearchClient

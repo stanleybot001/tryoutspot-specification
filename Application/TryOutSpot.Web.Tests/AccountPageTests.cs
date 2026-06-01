@@ -916,6 +916,93 @@ public sealed class AccountPageTests
     }
 
     [Fact]
+    public async Task Onboarding_VerifiedEmailMatch_CanClaimFlyerCreatedTeam()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("claim-flyer-team@example.com", [TryOutSpotRoles.Parent]);
+        var teamId = SeedFlyerCreatedTeamClaim(factory, user.Id, user.Email!, isActive: false);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var response = await client.GetAsync("/account/onboarding");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Is this your team?", html);
+        Assert.Contains("Claimable Flyer Eagles", html);
+        Assert.Contains("Matched verified email.", html);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/onboarding");
+        var claimResponse = await client.PostAsync(
+            $"/account/flyer-team-claims/{teamId}/claim",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("returnUrl", "/account/onboarding#flyer-team-claims")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, claimResponse.StatusCode);
+        Assert.Equal("/account/onboarding#flyer-team-claims", claimResponse.Headers.Location?.ToString());
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+        var claimedTeam = await dbContext.Teams.SingleAsync(team => team.Id == teamId);
+        Assert.True(claimedTeam.IsActive);
+        Assert.True(claimedTeam.IsSearchable);
+        Assert.True(await dbContext.UserTeamRoles.AnyAsync(teamRole =>
+            teamRole.UserId == user.Id
+            && teamRole.TeamId == teamId
+            && teamRole.Role == TryOutSpotRoles.TeamRepresentative
+            && teamRole.IsActive));
+
+        var updatedUser = await userManager.FindByIdAsync(user.Id.ToString());
+        Assert.NotNull(updatedUser);
+        Assert.True(await userManager.IsInRoleAsync(updatedUser, TryOutSpotRoles.TeamRepresentative));
+    }
+
+    [Fact]
+    public async Task Onboarding_FlyerTeamClaimDismiss_HidesTeamClaim()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var user = await factory.CreateUserAsync("dismiss-flyer-team@example.com", [TryOutSpotRoles.Parent]);
+        var teamId = SeedFlyerCreatedTeamClaim(factory, user.Id, user.Email!, isActive: true);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, user.Email!);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/onboarding");
+        var dismissResponse = await client.PostAsync(
+            $"/account/flyer-team-claims/{teamId}/dismiss",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("returnUrl", "/account/onboarding#flyer-team-claims")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, dismissResponse.StatusCode);
+        Assert.Equal("/account/onboarding#flyer-team-claims", dismissResponse.Headers.Location?.ToString());
+
+        var response = await client.GetAsync("/account/onboarding");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("We will stop showing Claimable Flyer Eagles as a team to claim.", html);
+        Assert.DoesNotContain("Claim team</button>", html);
+        Assert.DoesNotContain("Matched verified email.", html);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var assistanceEvent = await dbContext.ActivationAssistanceEvents.SingleAsync();
+        Assert.Equal(ActivationAssistancePromptKeys.FlyerTeamClaim, assistanceEvent.PromptKey);
+        Assert.Equal(teamId, assistanceEvent.TeamId);
+    }
+
+    [Fact]
     public async Task Onboarding_PaginatesRecentActivityAndOnlyResetsWindowOnRequest()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -2717,6 +2804,90 @@ public sealed class AccountPageTests
         }
 
         dbContext.SaveChanges();
+    }
+
+    private static Guid SeedFlyerCreatedTeamClaim(
+        TryOutSpotWebApplicationFactory factory,
+        Guid createdByUserId,
+        string contactEmail,
+        bool isActive)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var sport = dbContext.Sports.Single(currentSport => currentSport.IsActive && currentSport.Name == "Softball");
+        var now = DateTime.UtcNow.AddDays(-1);
+        var teamId = Guid.NewGuid();
+        var opportunityId = Guid.NewGuid();
+
+        dbContext.Teams.Add(new Team
+        {
+            Id = teamId,
+            Name = "Claimable Flyer Eagles",
+            TeamLevel = "12U",
+            GeographicScope = "Local",
+            City = "Liberty",
+            State = "MO",
+            ZipCode = "64068",
+            Email = contactEmail,
+            PhoneNumber = "816-555-9090",
+            IsSearchable = isActive,
+            IsContactInfoVisible = isActive,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = isActive
+        });
+        dbContext.TeamSports.Add(new TeamSport
+        {
+            Id = Guid.NewGuid(),
+            TeamId = teamId,
+            SportId = sport.Id,
+            AgeGroup = "12U",
+            IsActive = true,
+            CreatedAt = now
+        });
+        dbContext.Opportunities.Add(new Opportunity
+        {
+            Id = opportunityId,
+            TeamId = teamId,
+            SportId = sport.Id,
+            Type = "tryout",
+            Title = "Claimable Flyer Eagles tryouts",
+            AgeGroup = "12U",
+            RegistrationFee = 0m,
+            EventDate = now.AddDays(14),
+            City = "Liberty",
+            State = "MO",
+            ZipCode = "64068",
+            IsPublished = false,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsActive = true
+        });
+        dbContext.FlyerImports.Add(new FlyerImport
+        {
+            Id = Guid.NewGuid(),
+            SourcePlatform = "facebook",
+            Status = TryOutSpotFlyerImportStatuses.DraftCreated,
+            SportId = sport.Id,
+            SportName = sport.Name,
+            OpportunityType = "tryout",
+            Title = "Claimable Flyer Eagles tryouts",
+            TeamName = "Claimable Flyer Eagles",
+            AgeGroup = "12U",
+            City = "Liberty",
+            State = "MO",
+            ZipCode = "64068",
+            ContactEmail = contactEmail,
+            ContactPhone = "816-555-9090",
+            CreatedByUserId = createdByUserId,
+            TeamId = teamId,
+            OpportunityId = opportunityId,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+
+        dbContext.SaveChanges();
+        return teamId;
     }
 
     private static Guid SeedPlayerListingDetail(

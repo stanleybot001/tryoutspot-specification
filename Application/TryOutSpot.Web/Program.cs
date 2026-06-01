@@ -300,6 +300,7 @@ builder.Services.AddScoped<IEntitlementService, EntitlementService>();
 builder.Services.AddScoped<IActivationAssistanceService, ActivationAssistanceService>();
 builder.Services.AddScoped<IDashboardActivityService, DashboardActivityService>();
 builder.Services.AddScoped<IFlyerImportService, FlyerImportService>();
+builder.Services.AddScoped<IFlyerTeamClaimService, FlyerTeamClaimService>();
 builder.Services.AddHttpClient<IFlyerAiExtractionService, OpenAiFlyerAiExtractionService>();
 builder.Services.AddHttpClient<IFlyerImportRemoteFileFetcher, FlyerImportRemoteFileFetcher>();
 builder.Services.AddScoped<IFlyerLocationEnrichmentService, FlyerLocationEnrichmentService>();

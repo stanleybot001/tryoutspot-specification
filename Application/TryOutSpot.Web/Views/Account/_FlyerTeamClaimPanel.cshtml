@@ -1,0 +1,79 @@
+@model IReadOnlyCollection<FlyerTeamClaimPageItem>
+
+@if (Model.Count > 0)
+{
+    var returnUrl = $"{Context.Request.Path}{Context.Request.QueryString}#flyer-team-claims";
+
+    <section class="form-section settings-wide" id="flyer-team-claims">
+        <div class="section-heading-row">
+            <div>
+                <p class="account-kicker">Team claim</p>
+                <h2>Is this your team?</h2>
+                <p class="section-help">We found flyer-created team profiles that match a verified email or phone number on your account.</p>
+            </div>
+        </div>
+
+        <div class="dashboard-menu-grid">
+            @foreach (var team in Model)
+            {
+                <article class="dashboard-menu-card">
+                    <div>
+                        <strong>@team.TeamName</strong>
+                        <span>@BuildTeamClaimSummary(team)</span>
+                        <span>Matched verified @team.MatchedBy.</span>
+                    </div>
+                    <div class="dashboard-menu-action">
+                        <span class="dashboard-menu-state">@team.ListingCount listing@(team.ListingCount == 1 ? string.Empty : "s")</span>
+                        <form asp-action="ClaimFlyerTeam" asp-controller="Account" asp-route-teamId="@team.TeamId" method="post" class="inline-form">
+                            <input type="hidden" name="returnUrl" value="@returnUrl" />
+                            <button type="submit" class="btn btn-sm btn-primary">Claim team</button>
+                        </form>
+                        <form asp-action="DismissFlyerTeamClaim" asp-controller="Account" asp-route-teamId="@team.TeamId" method="post" class="inline-form">
+                            <input type="hidden" name="returnUrl" value="@returnUrl" />
+                            <button type="submit" class="btn btn-sm btn-link">Not my team</button>
+                        </form>
+                    </div>
+                </article>
+            }
+        </div>
+    </section>
+}
+
+@functions {
+    private static string BuildTeamClaimSummary(FlyerTeamClaimPageItem team)
+    {
+        var details = new List<string>();
+        if (!string.IsNullOrWhiteSpace(team.TeamLevel))
+        {
+            details.Add(team.TeamLevel);
+        }
+
+        if (!string.IsNullOrWhiteSpace(team.SportName))
+        {
+            details.Add(team.SportName);
+        }
+
+        var location = BuildLocation(team);
+        if (!string.IsNullOrWhiteSpace(location))
+        {
+            details.Add(location);
+        }
+
+        return details.Count == 0
+            ? "Flyer-created team profile"
+            : string.Join(" - ", details);
+    }
+
+    private static string? BuildLocation(FlyerTeamClaimPageItem team)
+    {
+        var cityState = string.Join(", ", new[] { team.City, team.State }.Where(value => !string.IsNullOrWhiteSpace(value)));
+        if (!string.IsNullOrWhiteSpace(team.ZipCode))
+        {
+            return string.IsNullOrWhiteSpace(cityState)
+                ? team.ZipCode
+                : $"{cityState} {team.ZipCode}";
+        }
+
+        return string.IsNullOrWhiteSpace(cityState) ? null : cityState;
+    }
+}

@@ -393,15 +393,26 @@ public sealed class FlyerImportService(
         var loweredTeamName = teamName.ToLowerInvariant();
         var candidates = await dbContext.Teams
             .Include(team => team.TeamSports)
-            .Where(team => team.IsActive && team.Name.ToLower() == loweredTeamName)
+            .Include(team => team.UserTeamRoles)
+            .Where(team => team.Name.ToLower() == loweredTeamName)
             .OrderByDescending(team => team.UpdatedAt)
             .ToArrayAsync(cancellationToken);
 
-        var existingTeam = candidates.FirstOrDefault(team =>
-            team.TeamSports.Any(teamSport => teamSport.IsActive && teamSport.SportId == sport.Id))
-            ?? candidates.FirstOrDefault();
+        var existingTeam = candidates
+            .Select(team => new
+            {
+                Team = team,
+                Score = ScoreFlyerTeamCandidate(team, sport, flyerImport, teamName)
+            })
+            .Where(candidate => candidate.Score >= 75)
+            .OrderByDescending(candidate => candidate.Score)
+            .ThenByDescending(candidate => candidate.Team.IsActive)
+            .ThenByDescending(candidate => candidate.Team.UpdatedAt)
+            .Select(candidate => candidate.Team)
+            .FirstOrDefault();
         if (existingTeam is not null)
         {
+            ApplyFlyerDetailsToExistingTeam(existingTeam, flyerImport, now);
             return existingTeam;
         }
 
@@ -428,6 +439,155 @@ public sealed class FlyerImportService(
 
         dbContext.Teams.Add(team);
         return team;
+    }
+
+    private static int ScoreFlyerTeamCandidate(
+        Team team,
+        Sport sport,
+        FlyerImport flyerImport,
+        string teamName)
+    {
+        if (!string.Equals(BuildTeamIdentityKey(team.Name), BuildTeamIdentityKey(teamName), StringComparison.Ordinal))
+        {
+            return 0;
+        }
+
+        var activeTeamSports = team.TeamSports
+            .Where(teamSport => teamSport.IsActive)
+            .ToArray();
+        if (activeTeamSports.Length > 0
+            && activeTeamSports.All(teamSport => teamSport.SportId != sport.Id))
+        {
+            return 0;
+        }
+
+        var score = 50;
+        var flyerEmail = NormalizeEmail(flyerImport.ContactEmail);
+        var teamEmail = NormalizeEmail(team.Email);
+        var flyerPhone = NormalizePhoneDigits(flyerImport.ContactPhone);
+        var teamPhone = NormalizePhoneDigits(team.PhoneNumber);
+        var contactMatches = (flyerEmail is not null && string.Equals(flyerEmail, teamEmail, StringComparison.Ordinal))
+            || (flyerPhone is not null && string.Equals(flyerPhone, teamPhone, StringComparison.Ordinal));
+        if (contactMatches)
+        {
+            score += 25;
+        }
+
+        score += activeTeamSports.Any(teamSport => teamSport.SportId == sport.Id) ? 15 : 10;
+
+        var flyerLevel = BuildTeamLevelKey(flyerImport.AgeGroup);
+        var teamLevelMatches = string.IsNullOrWhiteSpace(flyerLevel)
+            || string.Equals(BuildTeamLevelKey(team.TeamLevel), flyerLevel, StringComparison.Ordinal)
+            || activeTeamSports.Any(teamSport =>
+                string.Equals(BuildTeamLevelKey(teamSport.AgeGroup), flyerLevel, StringComparison.Ordinal));
+        if (teamLevelMatches)
+        {
+            score += 15;
+        }
+
+        return score;
+    }
+
+    private static void ApplyFlyerDetailsToExistingTeam(Team team, FlyerImport flyerImport, DateTime now)
+    {
+        var hasActiveTeamOwner = team.UserTeamRoles.Any(teamRole => teamRole.IsActive);
+        var canRefreshFromFlyer = !hasActiveTeamOwner || !team.IsActive;
+        var changed = false;
+
+        if (!team.IsActive)
+        {
+            team.IsActive = true;
+            team.IsSearchable = true;
+            team.IsContactInfoVisible = true;
+            changed = true;
+        }
+
+        changed |= ApplyOptionalTeamValue(
+            value => team.TeamLevel = value,
+            team.TeamLevel,
+            flyerImport.AgeGroup,
+            50,
+            canRefreshFromFlyer);
+        changed |= ApplyOptionalTeamValue(
+            value => team.Description = value,
+            team.Description,
+            flyerImport.OrganizationName,
+            2000,
+            overwriteExisting: false);
+        changed |= ApplyOptionalTeamValue(
+            value => team.WebsiteUrl = value,
+            team.WebsiteUrl,
+            flyerImport.WebsiteUrl,
+            500,
+            canRefreshFromFlyer);
+        changed |= ApplyOptionalTeamValue(
+            value => team.Address = value,
+            team.Address,
+            flyerImport.Address,
+            500,
+            canRefreshFromFlyer);
+        changed |= ApplyOptionalTeamValue(
+            value => team.City = value,
+            team.City,
+            flyerImport.City,
+            100,
+            canRefreshFromFlyer);
+        changed |= ApplyOptionalTeamValue(
+            value => team.State = value,
+            team.State,
+            NormalizeState(flyerImport.State),
+            2,
+            canRefreshFromFlyer);
+        changed |= ApplyOptionalTeamValue(
+            value => team.ZipCode = value,
+            team.ZipCode,
+            flyerImport.ZipCode,
+            10,
+            canRefreshFromFlyer);
+        changed |= ApplyOptionalTeamValue(
+            value => team.PhoneNumber = value,
+            team.PhoneNumber,
+            flyerImport.ContactPhone,
+            20,
+            canRefreshFromFlyer);
+        changed |= ApplyOptionalTeamValue(
+            value => team.Email = value,
+            team.Email,
+            flyerImport.ContactEmail,
+            255,
+            canRefreshFromFlyer);
+
+        if (changed)
+        {
+            team.UpdatedAt = now;
+        }
+    }
+
+    private static bool ApplyOptionalTeamValue(
+        Action<string?> apply,
+        string? currentValue,
+        string? newValue,
+        int maxLength,
+        bool overwriteExisting)
+    {
+        var normalizedNewValue = NormalizeLength(newValue, maxLength);
+        if (string.IsNullOrWhiteSpace(normalizedNewValue))
+        {
+            return false;
+        }
+
+        if (!overwriteExisting && !string.IsNullOrWhiteSpace(currentValue))
+        {
+            return false;
+        }
+
+        if (string.Equals(currentValue, normalizedNewValue, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        apply(normalizedNewValue);
+        return true;
     }
 
     private async Task EnsureTeamSportAsync(
@@ -667,6 +827,46 @@ public sealed class FlyerImportService(
     private static string? NormalizeOptional(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string BuildTeamIdentityKey(string? value)
+    {
+        var normalized = NormalizeOptional(value);
+        return normalized is null
+            ? string.Empty
+            : string.Concat(normalized.Where(char.IsLetterOrDigit)).ToLowerInvariant();
+    }
+
+    private static string? BuildTeamLevelKey(string? value)
+    {
+        var normalized = NormalizeOptional(value);
+        return normalized is null
+            ? null
+            : string.Concat(normalized.Where(char.IsLetterOrDigit)).ToUpperInvariant();
+    }
+
+    private static string? NormalizeEmail(string? value)
+    {
+        return NormalizeOptional(value)?.ToLowerInvariant();
+    }
+
+    private static string? NormalizePhoneDigits(string? value)
+    {
+        var normalized = NormalizeOptional(value);
+        if (normalized is null)
+        {
+            return null;
+        }
+
+        var digits = string.Concat(normalized.Where(char.IsDigit));
+        if (digits.Length == 0)
+        {
+            return null;
+        }
+
+        return digits.Length > 10 && digits.StartsWith('1')
+            ? digits[^10..]
+            : digits;
     }
 
     private static string? NormalizeLength(string? value, int maxLength)
