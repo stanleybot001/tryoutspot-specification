@@ -99,6 +99,13 @@
                             {
                                 <a class="btn btn-outline-secondary btn-sm" href="/opportunities/@opportunity.OpportunityId" target="_blank" rel="noopener">Public page</a>
                             }
+                            else if (opportunity.IsActive)
+                            {
+                                <form asp-action="PublishTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@opportunity.OpportunityId" method="post" class="inline-form">
+                                    <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                    <button type="submit" class="btn btn-outline-success btn-sm">Publish</button>
+                                </form>
+                            }
                             @if (opportunity.IsActive)
                             {
                                 <form asp-action="DeactivateTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@opportunity.OpportunityId" method="post" class="inline-form">

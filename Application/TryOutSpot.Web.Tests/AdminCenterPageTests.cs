@@ -187,6 +187,66 @@ public sealed class AdminCenterPageTests
     }
 
     [Fact]
+    public async Task PlatformAdmin_CanPublishDraftTeamOpportunity()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var teamOwner = await factory.CreateUserAsync("admin-publish-team-owner@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var admin = await factory.CreateUserAsync("admin-publish-admin@example.com", [TryOutSpotRoles.PlatformAdmin]);
+        var sportId = GetActiveSportId(factory);
+        var (teamId, opportunityId) = SeedTeamOpportunity(
+            factory,
+            teamOwner.Id,
+            sportId,
+            "Admin Publish Eagles",
+            "Admin Publish Eagles 12U tryout");
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var opportunity = await dbContext.Opportunities.SingleAsync(currentOpportunity => currentOpportunity.Id == opportunityId);
+            var team = await dbContext.Teams.SingleAsync(currentTeam => currentTeam.Id == teamId);
+
+            opportunity.IsPublished = false;
+            opportunity.PublishedAt = null;
+            opportunity.ListingStartDate = null;
+            opportunity.ExpiresAt = DateTime.UtcNow.AddDays(14);
+            team.IsSearchable = false;
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, admin.Email!);
+
+        await AssertPageContainsAsync(client, "/admin/team-opportunities?q=Admin%20Publish%20Eagles", "Publish");
+
+        var token = await GetAntiForgeryTokenAsync(client, "/admin/team-opportunities?q=Admin%20Publish%20Eagles");
+        var response = await client.PostAsync(
+            $"/admin/team-opportunities/{opportunityId}/publish",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", token),
+                new("returnUrl", "/admin/team-opportunities?q=Admin%20Publish%20Eagles")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/admin/team-opportunities?q=Admin%20Publish%20Eagles", response.Headers.Location?.ToString());
+
+        using var verificationScope = factory.Services.CreateScope();
+        var verificationDbContext = verificationScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var publishedOpportunity = await verificationDbContext.Opportunities.SingleAsync(currentOpportunity => currentOpportunity.Id == opportunityId);
+        var publishedTeam = await verificationDbContext.Teams.SingleAsync(currentTeam => currentTeam.Id == teamId);
+
+        Assert.True(publishedOpportunity.IsPublished);
+        Assert.True(publishedOpportunity.IsActive);
+        Assert.NotNull(publishedOpportunity.PublishedAt);
+        Assert.NotNull(publishedOpportunity.ListingStartDate);
+        Assert.True(publishedTeam.IsSearchable);
+        Assert.True(publishedTeam.IsActive);
+    }
+
+    [Fact]
     public async Task PlatformAdmin_CanSuspendUsersTeamsAndRemoveListings()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();

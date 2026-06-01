@@ -982,6 +982,56 @@ public sealed class AdminController(
         });
     }
 
+    [HttpPost("team-opportunities/{opportunityId:guid}/publish")]
+    public async Task<IActionResult> PublishTeamOpportunity(
+        Guid opportunityId,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var opportunity = await dbContext.Opportunities
+            .Include(currentOpportunity => currentOpportunity.Team)
+            .SingleOrDefaultAsync(currentOpportunity => currentOpportunity.Id == opportunityId, cancellationToken);
+        if (opportunity is null)
+        {
+            return NotFound();
+        }
+
+        var now = DateTime.UtcNow;
+        var effectiveEndDate = opportunity.ListingEndDate ?? opportunity.ExpiresAt;
+        if (effectiveEndDate.HasValue && effectiveEndDate.Value <= now)
+        {
+            TempData["StatusMessage"] = "This team opportunity has already expired. Update the event or listing dates before publishing.";
+            return RedirectToLocalOrAdmin(returnUrl, nameof(TeamOpportunities));
+        }
+
+        opportunity.IsActive = true;
+        opportunity.IsPublished = true;
+        opportunity.PublishedAt ??= now;
+        opportunity.ListingStartDate ??= now;
+        opportunity.UpdatedAt = now;
+
+        if (!opportunity.Team.IsActive || !opportunity.Team.IsSearchable)
+        {
+            opportunity.Team.IsActive = true;
+            opportunity.Team.IsSearchable = true;
+            opportunity.Team.UpdatedAt = now;
+        }
+
+        var flyerImports = await dbContext.FlyerImports
+            .Where(flyerImport => flyerImport.OpportunityId == opportunity.Id)
+            .ToArrayAsync(cancellationToken);
+        foreach (var flyerImport in flyerImports)
+        {
+            flyerImport.Status = TryOutSpotFlyerImportStatuses.Published;
+            flyerImport.UpdatedAt = now;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = "Team opportunity published.";
+        return RedirectToLocalOrAdmin(returnUrl, nameof(TeamOpportunities));
+    }
+
     [HttpPost("team-opportunities/{opportunityId:guid}/deactivate")]
     public async Task<IActionResult> DeactivateTeamOpportunity(
         Guid opportunityId,
