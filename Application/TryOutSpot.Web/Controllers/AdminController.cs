@@ -29,6 +29,17 @@ public sealed class AdminController(
 {
     private const int DefaultPageSize = 25;
     private const int MaxPageSize = 100;
+    private static readonly string[] OpportunityTypeOptions =
+    [
+        "tryout",
+        "roster_opening",
+        "pickup_player",
+        "camp",
+        "clinic",
+        "tournament",
+        "private_workout",
+        "other"
+    ];
 
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken cancellationToken = default)
@@ -751,6 +762,69 @@ public sealed class AdminController(
         });
     }
 
+    [HttpGet("teams/{teamId:guid}/edit")]
+    public async Task<IActionResult> EditTeam(
+        Guid teamId,
+        [FromQuery] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var team = await dbContext.Teams
+            .AsNoTracking()
+            .SingleOrDefaultAsync(currentTeam => currentTeam.Id == teamId, cancellationToken);
+        if (team is null)
+        {
+            return NotFound();
+        }
+
+        return View("EditTeam", BuildTeamEditPageModel(team, returnUrl));
+    }
+
+    [HttpPost("teams/{teamId:guid}/edit")]
+    public async Task<IActionResult> EditTeam(
+        Guid teamId,
+        [Bind(Prefix = "Form")] AdminTeamEditForm form,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var team = await dbContext.Teams
+            .SingleOrDefaultAsync(currentTeam => currentTeam.Id == teamId, cancellationToken);
+        if (team is null)
+        {
+            return NotFound();
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return View("EditTeam", new AdminTeamEditPageModel
+            {
+                TeamId = teamId,
+                ReturnUrl = returnUrl,
+                Form = form
+            });
+        }
+
+        var now = DateTime.UtcNow;
+        team.Name = NormalizeLength(form.Name, 200) ?? team.Name;
+        team.TeamLevel = NormalizeLength(form.TeamLevel, 50);
+        team.GeographicScope = NormalizeLength(form.GeographicScope, 50) ?? "Local";
+        team.Description = NormalizeLength(form.Description, 2000);
+        team.WebsiteUrl = NormalizeLength(form.WebsiteUrl, 500);
+        team.Address = NormalizeLength(form.Address, 500);
+        team.City = NormalizeLength(form.City, 100);
+        team.State = NormalizeState(form.State);
+        team.ZipCode = NormalizeLength(form.ZipCode, 10);
+        team.PhoneNumber = NormalizeLength(form.PhoneNumber, 20);
+        team.Email = NormalizeLength(form.Email, 255);
+        team.IsSearchable = form.IsSearchable;
+        team.IsContactInfoVisible = form.IsContactInfoVisible;
+        team.IsActive = form.IsActive;
+        team.UpdatedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = "Team profile updated.";
+        return RedirectToLocalOrAdmin(returnUrl, nameof(Teams), new { q = team.Name });
+    }
+
     [HttpPost("teams/{teamId:guid}/suspend")]
     public async Task<IActionResult> SuspendTeam(
         Guid teamId,
@@ -982,6 +1056,111 @@ public sealed class AdminController(
         });
     }
 
+    [HttpGet("team-opportunities/{opportunityId:guid}/edit")]
+    public async Task<IActionResult> EditTeamOpportunity(
+        Guid opportunityId,
+        [FromQuery] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var opportunity = await dbContext.Opportunities
+            .AsNoTracking()
+            .Include(currentOpportunity => currentOpportunity.Team)
+            .SingleOrDefaultAsync(currentOpportunity => currentOpportunity.Id == opportunityId, cancellationToken);
+        if (opportunity is null)
+        {
+            return NotFound();
+        }
+
+        return View("EditTeamOpportunity", await BuildTeamOpportunityEditPageModelAsync(
+            opportunity,
+            BuildTeamOpportunityEditForm(opportunity),
+            returnUrl,
+            cancellationToken));
+    }
+
+    [HttpPost("team-opportunities/{opportunityId:guid}/edit")]
+    public async Task<IActionResult> EditTeamOpportunity(
+        Guid opportunityId,
+        [Bind(Prefix = "Form")] AdminTeamOpportunityEditForm form,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var opportunity = await dbContext.Opportunities
+            .Include(currentOpportunity => currentOpportunity.Team)
+            .SingleOrDefaultAsync(currentOpportunity => currentOpportunity.Id == opportunityId, cancellationToken);
+        if (opportunity is null)
+        {
+            return NotFound();
+        }
+
+        await ValidateTeamOpportunityEditFormAsync(form, cancellationToken);
+        if (!ModelState.IsValid)
+        {
+            return View("EditTeamOpportunity", await BuildTeamOpportunityEditPageModelAsync(
+                opportunity,
+                form,
+                returnUrl,
+                cancellationToken));
+        }
+
+        var now = DateTime.UtcNow;
+        var normalizedEventDate = NormalizeUtc(form.EventDate);
+        var normalizedEventEndDate = NormalizeUtc(form.EventEndDate);
+        var normalizedListingStartDate = NormalizeUtc(form.ListingStartDate);
+        var normalizedListingEndDate = NormalizeUtc(form.ListingEndDate);
+        var normalizedType = NormalizeOpportunityType(form.Type);
+        var shouldPublish = form.IsPublished && form.IsActive;
+
+        opportunity.Team.Name = NormalizeLength(form.TeamName, 200) ?? opportunity.Team.Name;
+        opportunity.Team.TeamLevel = NormalizeLength(form.TeamLevel, 50);
+        opportunity.Team.Address = NormalizeLength(form.TeamAddress, 500);
+        opportunity.Team.City = NormalizeLength(form.TeamCity, 100);
+        opportunity.Team.State = NormalizeState(form.TeamState);
+        opportunity.Team.ZipCode = NormalizeLength(form.TeamZipCode, 10);
+        opportunity.Team.UpdatedAt = now;
+
+        opportunity.Title = NormalizeLength(form.Title, 300) ?? opportunity.Title;
+        opportunity.Type = normalizedType;
+        opportunity.SportId = form.SportId;
+        opportunity.AgeGroup = NormalizeLength(form.AgeGroup, 50);
+        opportunity.CompetitionLevel = NormalizeLength(form.CompetitionLevel, 100);
+        opportunity.Description = NormalizeLength(form.Description, 4000);
+        opportunity.EventDate = normalizedEventDate;
+        opportunity.EventEndDate = normalizedEventEndDate;
+        opportunity.ListingStartDate = normalizedListingStartDate ?? (shouldPublish ? opportunity.ListingStartDate ?? now : null);
+        opportunity.ListingEndDate = normalizedListingEndDate;
+        opportunity.ExpiresAt = normalizedListingEndDate ?? ResolveOpportunityExpiration(normalizedEventDate, normalizedEventEndDate);
+        opportunity.Location = NormalizeLength(form.Location, 500);
+        opportunity.Address = NormalizeLength(form.Address, 500);
+        opportunity.City = NormalizeLength(form.City, 100);
+        opportunity.State = NormalizeState(form.State);
+        opportunity.ZipCode = NormalizeLength(form.ZipCode, 10);
+        opportunity.ContactEmail = NormalizeLength(form.ContactEmail, 255);
+        opportunity.ContactPhone = NormalizeLength(form.ContactPhone, 20);
+        opportunity.WebsiteUrl = NormalizeLength(form.WebsiteUrl, 500);
+        opportunity.RequiredEquipment = NormalizeLength(form.RequiredEquipment, 1000);
+        opportunity.WhatToBring = NormalizeLength(form.WhatToBring, 1000);
+        opportunity.SpecialInstructions = NormalizeLength(form.SpecialInstructions, 2000);
+        opportunity.IsActive = form.IsActive;
+        opportunity.IsPublished = shouldPublish;
+        opportunity.PublishedAt = shouldPublish ? opportunity.PublishedAt ?? now : null;
+        opportunity.UpdatedAt = now;
+
+        if (shouldPublish)
+        {
+            opportunity.Team.IsActive = true;
+            opportunity.Team.IsSearchable = true;
+        }
+
+        await SyncFlyerImportsForOpportunityAsync(opportunity, now, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = shouldPublish
+            ? "Team opportunity updated and published."
+            : "Team opportunity updated.";
+        return RedirectToLocalOrAdmin(returnUrl, nameof(TeamOpportunities), new { q = opportunity.Title });
+    }
+
     [HttpPost("team-opportunities/{opportunityId:guid}/publish")]
     public async Task<IActionResult> PublishTeamOpportunity(
         Guid opportunityId,
@@ -997,11 +1176,23 @@ public sealed class AdminController(
         }
 
         var now = DateTime.UtcNow;
+        if (opportunity.EventDate is null)
+        {
+            TempData["StatusMessage"] = "Add an event date before publishing this team opportunity.";
+            return RedirectToAction(nameof(EditTeamOpportunity), new { opportunityId, returnUrl });
+        }
+
+        if (string.IsNullOrWhiteSpace(opportunity.ZipCode))
+        {
+            TempData["StatusMessage"] = "Add the listing ZIP code before publishing this team opportunity.";
+            return RedirectToAction(nameof(EditTeamOpportunity), new { opportunityId, returnUrl });
+        }
+
         var effectiveEndDate = opportunity.ListingEndDate ?? opportunity.ExpiresAt;
         if (effectiveEndDate.HasValue && effectiveEndDate.Value <= now)
         {
             TempData["StatusMessage"] = "This team opportunity has already expired. Update the event or listing dates before publishing.";
-            return RedirectToLocalOrAdmin(returnUrl, nameof(TeamOpportunities));
+            return RedirectToAction(nameof(EditTeamOpportunity), new { opportunityId, returnUrl });
         }
 
         opportunity.IsActive = true;
@@ -1623,6 +1814,180 @@ public sealed class AdminController(
             form.AdminNotes ?? extraction.AdminNotes);
     }
 
+    private static AdminTeamEditPageModel BuildTeamEditPageModel(Team team, string? returnUrl)
+    {
+        return new AdminTeamEditPageModel
+        {
+            TeamId = team.Id,
+            ReturnUrl = returnUrl,
+            Form = new AdminTeamEditForm
+            {
+                Name = team.Name,
+                TeamLevel = team.TeamLevel,
+                GeographicScope = team.GeographicScope,
+                Description = team.Description,
+                WebsiteUrl = team.WebsiteUrl,
+                Address = team.Address,
+                City = team.City,
+                State = team.State,
+                ZipCode = team.ZipCode,
+                PhoneNumber = team.PhoneNumber,
+                Email = team.Email,
+                IsSearchable = team.IsSearchable,
+                IsContactInfoVisible = team.IsContactInfoVisible,
+                IsActive = team.IsActive
+            }
+        };
+    }
+
+    private async Task<AdminTeamOpportunityEditPageModel> BuildTeamOpportunityEditPageModelAsync(
+        Opportunity opportunity,
+        AdminTeamOpportunityEditForm form,
+        string? returnUrl,
+        CancellationToken cancellationToken)
+    {
+        return new AdminTeamOpportunityEditPageModel
+        {
+            OpportunityId = opportunity.Id,
+            TeamId = opportunity.TeamId,
+            ReturnUrl = returnUrl,
+            Form = form,
+            SportOptions = await GetSportOptionsAsync(cancellationToken)
+        };
+    }
+
+    private static AdminTeamOpportunityEditForm BuildTeamOpportunityEditForm(Opportunity opportunity)
+    {
+        return new AdminTeamOpportunityEditForm
+        {
+            TeamName = opportunity.Team.Name,
+            TeamLevel = opportunity.Team.TeamLevel,
+            TeamAddress = opportunity.Team.Address,
+            TeamCity = opportunity.Team.City,
+            TeamState = opportunity.Team.State,
+            TeamZipCode = opportunity.Team.ZipCode,
+            Title = opportunity.Title,
+            Type = opportunity.Type,
+            SportId = opportunity.SportId,
+            AgeGroup = opportunity.AgeGroup,
+            CompetitionLevel = opportunity.CompetitionLevel,
+            Description = opportunity.Description,
+            EventDate = opportunity.EventDate,
+            EventEndDate = opportunity.EventEndDate,
+            ListingStartDate = opportunity.ListingStartDate,
+            ListingEndDate = opportunity.ListingEndDate ?? opportunity.ExpiresAt,
+            Location = opportunity.Location,
+            Address = opportunity.Address,
+            City = opportunity.City,
+            State = opportunity.State,
+            ZipCode = opportunity.ZipCode,
+            ContactEmail = opportunity.ContactEmail,
+            ContactPhone = opportunity.ContactPhone,
+            WebsiteUrl = opportunity.WebsiteUrl,
+            RequiredEquipment = opportunity.RequiredEquipment,
+            WhatToBring = opportunity.WhatToBring,
+            SpecialInstructions = opportunity.SpecialInstructions,
+            IsPublished = opportunity.IsPublished,
+            IsActive = opportunity.IsActive
+        };
+    }
+
+    private async Task ValidateTeamOpportunityEditFormAsync(
+        AdminTeamOpportunityEditForm form,
+        CancellationToken cancellationToken)
+    {
+        var normalizedType = NormalizeOpportunityType(form.Type);
+        if (!OpportunityTypeOptions.Contains(normalizedType, StringComparer.Ordinal))
+        {
+            ModelState.AddModelError("Form.Type", "Choose a supported opportunity type.");
+        }
+
+        var sportExists = await dbContext.Sports
+            .AsNoTracking()
+            .AnyAsync(sport => sport.Id == form.SportId && sport.IsActive, cancellationToken);
+        if (!sportExists)
+        {
+            ModelState.AddModelError("Form.SportId", "Selected sport is not available.");
+        }
+
+        var normalizedEventDate = NormalizeUtc(form.EventDate);
+        var normalizedEventEndDate = NormalizeUtc(form.EventEndDate);
+        var normalizedListingStartDate = NormalizeUtc(form.ListingStartDate);
+        var normalizedListingEndDate = NormalizeUtc(form.ListingEndDate);
+
+        if (normalizedEventDate.HasValue
+            && normalizedEventEndDate.HasValue
+            && normalizedEventEndDate.Value < normalizedEventDate.Value)
+        {
+            ModelState.AddModelError("Form.EventEndDate", "Event end date cannot be earlier than event start date.");
+        }
+
+        if (normalizedListingStartDate.HasValue
+            && normalizedListingEndDate.HasValue
+            && normalizedListingEndDate.Value < normalizedListingStartDate.Value)
+        {
+            ModelState.AddModelError("Form.ListingEndDate", "Listing end date cannot be earlier than listing start date.");
+        }
+
+        if (form.IsPublished && form.IsActive)
+        {
+            if (normalizedEventDate is null)
+            {
+                ModelState.AddModelError("Form.EventDate", "Event date is required before publishing.");
+            }
+
+            if (string.IsNullOrWhiteSpace(form.ZipCode))
+            {
+                ModelState.AddModelError("Form.ZipCode", "ZIP code is required before publishing.");
+            }
+
+            var effectiveEndDate = normalizedListingEndDate
+                ?? ResolveOpportunityExpiration(normalizedEventDate, normalizedEventEndDate);
+            if (effectiveEndDate.HasValue && effectiveEndDate.Value <= DateTime.UtcNow)
+            {
+                ModelState.AddModelError("Form.ListingEndDate", "Listing end date must be in the future before publishing.");
+            }
+        }
+    }
+
+    private async Task SyncFlyerImportsForOpportunityAsync(
+        Opportunity opportunity,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var flyerImports = await dbContext.FlyerImports
+            .Where(flyerImport => flyerImport.OpportunityId == opportunity.Id)
+            .ToArrayAsync(cancellationToken);
+        foreach (var flyerImport in flyerImports)
+        {
+            flyerImport.TeamId = opportunity.TeamId;
+            flyerImport.SportId = opportunity.SportId;
+            flyerImport.OpportunityType = opportunity.Type;
+            flyerImport.Title = opportunity.Title;
+            flyerImport.TeamName = opportunity.Team.Name;
+            flyerImport.AgeGroup = opportunity.AgeGroup;
+            flyerImport.CompetitionLevel = opportunity.CompetitionLevel;
+            flyerImport.EventDate = opportunity.EventDate;
+            flyerImport.EventEndDate = opportunity.EventEndDate;
+            flyerImport.Location = opportunity.Location;
+            flyerImport.Address = opportunity.Address;
+            flyerImport.City = opportunity.City;
+            flyerImport.State = opportunity.State;
+            flyerImport.ZipCode = opportunity.ZipCode;
+            flyerImport.ContactEmail = opportunity.ContactEmail;
+            flyerImport.ContactPhone = opportunity.ContactPhone;
+            flyerImport.WebsiteUrl = opportunity.WebsiteUrl;
+            flyerImport.Description = opportunity.Description;
+            flyerImport.RequiredEquipment = opportunity.RequiredEquipment;
+            flyerImport.WhatToBring = opportunity.WhatToBring;
+            flyerImport.SpecialInstructions = opportunity.SpecialInstructions;
+            flyerImport.Status = opportunity.IsPublished
+                ? TryOutSpotFlyerImportStatuses.Published
+                : TryOutSpotFlyerImportStatuses.DraftCreated;
+            flyerImport.UpdatedAt = now;
+        }
+    }
+
     private static AdminFlyerImportDetailItem BuildNewFlyerImportDetailItem()
     {
         var now = DateTime.UtcNow;
@@ -2184,6 +2549,23 @@ public sealed class AdminController(
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
+    private static string? NormalizeLength(string? value, int maxLength)
+    {
+        var normalized = NormalizeOptional(value);
+        if (normalized is null)
+        {
+            return null;
+        }
+
+        return normalized.Length <= maxLength ? normalized : normalized[..maxLength];
+    }
+
+    private static string? NormalizeState(string? state)
+    {
+        var normalized = NormalizeLength(state, 2);
+        return normalized?.ToUpperInvariant();
+    }
+
     private static DateTime? NormalizeUtc(DateTime? value)
     {
         if (value is null)
@@ -2197,6 +2579,74 @@ public sealed class AdminController(
             DateTimeKind.Local => value.Value.ToUniversalTime(),
             _ => DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
         };
+    }
+
+    private static string NormalizeOpportunityType(string? opportunityType)
+    {
+        var normalized = NormalizeOptional(opportunityType)?
+            .ToLowerInvariant()
+            .Replace('-', '_')
+            .Replace(' ', '_');
+        if (normalized is not null && OpportunityTypeOptions.Contains(normalized, StringComparer.Ordinal))
+        {
+            return normalized;
+        }
+
+        var text = normalized ?? string.Empty;
+        if (text.Contains("add", StringComparison.Ordinal)
+            || text.Contains("adding", StringComparison.Ordinal)
+            || text.Contains("player_needed", StringComparison.Ordinal)
+            || text.Contains("need_player", StringComparison.Ordinal)
+            || text.Contains("need_players", StringComparison.Ordinal)
+            || text.Contains("roster", StringComparison.Ordinal))
+        {
+            return "roster_opening";
+        }
+
+        if (text.Contains("guest", StringComparison.Ordinal)
+            || text.Contains("sub", StringComparison.Ordinal)
+            || text.Contains("fill_in", StringComparison.Ordinal)
+            || text.Contains("pickup", StringComparison.Ordinal))
+        {
+            return "pickup_player";
+        }
+
+        if (text.Contains("camp", StringComparison.Ordinal))
+        {
+            return "camp";
+        }
+
+        if (text.Contains("clinic", StringComparison.Ordinal))
+        {
+            return "clinic";
+        }
+
+        if (text.Contains("tournament", StringComparison.Ordinal))
+        {
+            return "tournament";
+        }
+
+        if (text.Contains("private", StringComparison.Ordinal))
+        {
+            return "private_workout";
+        }
+
+        if (text.Contains("other", StringComparison.Ordinal))
+        {
+            return "other";
+        }
+
+        return "tryout";
+    }
+
+    private static DateTime? ResolveOpportunityExpiration(DateTime? eventDate, DateTime? eventEndDate)
+    {
+        if (eventEndDate.HasValue)
+        {
+            return eventEndDate.Value.AddDays(1);
+        }
+
+        return eventDate?.AddDays(1);
     }
 
     private static string GetDisplayName(User user)

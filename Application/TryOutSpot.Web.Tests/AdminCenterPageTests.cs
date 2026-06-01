@@ -208,6 +208,7 @@ public sealed class AdminCenterPageTests
             opportunity.IsPublished = false;
             opportunity.PublishedAt = null;
             opportunity.ListingStartDate = null;
+            opportunity.EventDate = DateTime.UtcNow.AddDays(14);
             opportunity.ExpiresAt = DateTime.UtcNow.AddDays(14);
             team.IsSearchable = false;
             await dbContext.SaveChangesAsync();
@@ -244,6 +245,101 @@ public sealed class AdminCenterPageTests
         Assert.NotNull(publishedOpportunity.ListingStartDate);
         Assert.True(publishedTeam.IsSearchable);
         Assert.True(publishedTeam.IsActive);
+    }
+
+    [Fact]
+    public async Task PlatformAdmin_CanEditDraftTeamOpportunityLocationAndPublish()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var teamOwner = await factory.CreateUserAsync("admin-edit-team-owner@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var admin = await factory.CreateUserAsync("admin-edit-admin@example.com", [TryOutSpotRoles.PlatformAdmin]);
+        var sportId = GetActiveSportId(factory);
+        var (teamId, opportunityId) = SeedTeamOpportunity(
+            factory,
+            teamOwner.Id,
+            sportId,
+            "Admin Edit Eagles",
+            "Admin Edit Eagles 12U tryout");
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var opportunity = await dbContext.Opportunities.SingleAsync(currentOpportunity => currentOpportunity.Id == opportunityId);
+            var team = await dbContext.Teams.SingleAsync(currentTeam => currentTeam.Id == teamId);
+
+            opportunity.IsPublished = false;
+            opportunity.PublishedAt = null;
+            opportunity.EventDate = null;
+            opportunity.Location = null;
+            opportunity.Address = null;
+            opportunity.City = null;
+            opportunity.State = null;
+            opportunity.ZipCode = null;
+            team.IsSearchable = false;
+            team.City = null;
+            team.State = null;
+            team.ZipCode = null;
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, admin.Email!);
+
+        var editPath = $"/admin/team-opportunities/{opportunityId}/edit?returnUrl=/admin/flyer-imports";
+        await AssertPageContainsAsync(client, editPath, "Listing location");
+
+        var token = await GetAntiForgeryTokenAsync(client, editPath);
+        var response = await client.PostAsync(
+            $"/admin/team-opportunities/{opportunityId}/edit",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", token),
+                new("returnUrl", "/admin/flyer-imports"),
+                new("Form.TeamName", "Admin Edit Eagles"),
+                new("Form.TeamLevel", "12U"),
+                new("Form.TeamCity", "Overland Park"),
+                new("Form.TeamState", "ks"),
+                new("Form.TeamZipCode", "66202"),
+                new("Form.Title", "Admin Edit Eagles 12U Softball Tryouts"),
+                new("Form.Type", "tryout"),
+                new("Form.SportId", sportId.ToString()),
+                new("Form.AgeGroup", "12U"),
+                new("Form.CompetitionLevel", "A"),
+                new("Form.Description", "Edited by the admin listing workflow."),
+                new("Form.EventDate", "2030-07-12T18:00:00"),
+                new("Form.Location", "Blue Valley Recreation"),
+                new("Form.Address", "9701 W 137th St"),
+                new("Form.City", "Overland Park"),
+                new("Form.State", "ks"),
+                new("Form.ZipCode", "66223"),
+                new("Form.ContactEmail", "coach@example.com"),
+                new("Form.IsActive", "true"),
+                new("Form.IsPublished", "true")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/admin/flyer-imports", response.Headers.Location?.ToString());
+
+        using var verificationScope = factory.Services.CreateScope();
+        var verificationDbContext = verificationScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var editedOpportunity = await verificationDbContext.Opportunities
+            .Include(currentOpportunity => currentOpportunity.Team)
+            .SingleAsync(currentOpportunity => currentOpportunity.Id == opportunityId);
+
+        Assert.True(editedOpportunity.IsPublished);
+        Assert.True(editedOpportunity.IsActive);
+        Assert.NotNull(editedOpportunity.PublishedAt);
+        Assert.Equal("Blue Valley Recreation", editedOpportunity.Location);
+        Assert.Equal("Overland Park", editedOpportunity.City);
+        Assert.Equal("KS", editedOpportunity.State);
+        Assert.Equal("66223", editedOpportunity.ZipCode);
+        Assert.True(editedOpportunity.Team.IsSearchable);
+        Assert.True(editedOpportunity.Team.IsActive);
+        Assert.Equal("Overland Park", editedOpportunity.Team.City);
+        Assert.Equal("KS", editedOpportunity.Team.State);
+        Assert.Equal("66202", editedOpportunity.Team.ZipCode);
     }
 
     [Fact]

@@ -97,6 +97,7 @@
                             <span><strong class="text-body">Updated:</strong> @team.UpdatedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</span>
                         </div>
                         <div class="form-actions admin-row-actions mt-2">
+                            <a class="btn btn-outline-primary btn-sm" href="/admin/teams/@team.TeamId/edit?returnUrl=@Uri.EscapeDataString(returnUrl)">Edit team</a>
                             <a class="btn btn-outline-primary btn-sm" href="/admin/team-opportunities?q=@Uri.EscapeDataString(team.TeamName)">Opportunity listings</a>
                             @if (team.IsActive)
                             {

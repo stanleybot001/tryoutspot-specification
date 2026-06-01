@@ -94,7 +94,8 @@
                             <p class="section-help small mb-1">@opportunity.Description</p>
                         }
                         <div class="form-actions admin-row-actions mt-2">
-                            <a class="btn btn-outline-primary btn-sm" href="/admin/teams?q=@Uri.EscapeDataString(opportunity.TeamName)">Team profile</a>
+                            <a class="btn btn-outline-primary btn-sm" href="/admin/team-opportunities/@opportunity.OpportunityId/edit?returnUrl=@Uri.EscapeDataString(returnUrl)">Edit listing</a>
+                            <a class="btn btn-outline-secondary btn-sm" href="/admin/teams/@opportunity.TeamId/edit?returnUrl=@Uri.EscapeDataString(returnUrl)">Edit team</a>
                             @if (opportunity.IsPublished)
                             {
                                 <a class="btn btn-outline-secondary btn-sm" href="/opportunities/@opportunity.OpportunityId" target="_blank" rel="noopener">Public page</a>

@@ -2,6 +2,7 @@
 
 @{
     ViewData["Title"] = "Admin Flyer Imports";
+    var returnUrl = $"{Context.Request.Path}{Context.Request.QueryString}";
 }
 
 <section class="account-page admin-page">
@@ -87,11 +88,11 @@
                             <a class="btn btn-outline-primary btn-sm" href="/admin/flyer-imports/@flyerImport.ImportId">Review</a>
                             @if (flyerImport.OpportunityId.HasValue)
                             {
-                                <a class="btn btn-outline-secondary btn-sm" href="/admin/team-opportunities?q=@Uri.EscapeDataString(flyerImport.Title ?? flyerImport.TeamName ?? string.Empty)">Listing</a>
+                                <a class="btn btn-outline-secondary btn-sm" href="/admin/team-opportunities/@flyerImport.OpportunityId/edit?returnUrl=@Uri.EscapeDataString(returnUrl)">Listing</a>
                             }
                             @if (flyerImport.TeamId.HasValue)
                             {
-                                <a class="btn btn-outline-secondary btn-sm" href="/admin/teams?q=@Uri.EscapeDataString(flyerImport.TeamName ?? string.Empty)">Team</a>
+                                <a class="btn btn-outline-secondary btn-sm" href="/admin/teams/@flyerImport.TeamId/edit?returnUrl=@Uri.EscapeDataString(returnUrl)">Team</a>
                             }
                         </div>
                     </article>

@@ -299,6 +299,7 @@
                             <span><strong class="text-body">Location:</strong> @FormatLocation(team.City, team.State, team.ZipCode)</span>
                         </div>
                         <div class="form-actions admin-row-actions mt-2">
+                            <a class="btn btn-outline-primary btn-sm" href="/admin/teams/@team.TeamId/edit?returnUrl=@Uri.EscapeDataString(returnUrl)">Edit team</a>
                             <a class="btn btn-outline-primary btn-sm" href="/admin/teams?q=@Uri.EscapeDataString(team.TeamName)">Open in teams</a>
                             @if (team.IsActive)
                             {
@@ -349,6 +350,7 @@
                             <span><strong class="text-body">Updated:</strong> @opportunity.UpdatedAtUtc.ToLocalTime().ToString("MMM d, yyyy")</span>
                         </div>
                         <div class="form-actions admin-row-actions mt-2">
+                            <a class="btn btn-outline-primary btn-sm" href="/admin/team-opportunities/@opportunity.OpportunityId/edit?returnUrl=@Uri.EscapeDataString(returnUrl)">Edit listing</a>
                             @if (opportunity.IsPublished)
                             {
                                 <a class="btn btn-outline-secondary btn-sm" href="/opportunities/@opportunity.OpportunityId" target="_blank" rel="noopener">Public page</a>

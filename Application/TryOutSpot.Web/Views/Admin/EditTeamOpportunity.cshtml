@@ -1,0 +1,218 @@
+@model AdminTeamOpportunityEditPageModel
+
+@{
+    ViewData["Title"] = "Edit Team Opportunity";
+    var backUrl = !string.IsNullOrWhiteSpace(Model.ReturnUrl) ? Model.ReturnUrl : "/admin/team-opportunities";
+}
+
+<section class="account-page admin-page">
+    <div class="account-heading">
+        <p class="account-kicker">Team opportunity</p>
+        <h1>Edit listing</h1>
+        <p>Update the flyer-created listing before publishing it to public search.</p>
+    </div>
+
+    @await Html.PartialAsync("_AdminNav")
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    <div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+    <form asp-action="EditTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@Model.OpportunityId" method="post" class="account-form">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+
+        <section class="form-section">
+            <h2>Team profile</h2>
+            <div class="form-grid two-column">
+                <div class="form-field">
+                    <label asp-for="Form.TeamName" class="form-label"></label>
+                    <input asp-for="Form.TeamName" class="form-control" />
+                    <span asp-validation-for="Form.TeamName" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.TeamLevel" class="form-label"></label>
+                    <input asp-for="Form.TeamLevel" class="form-control" placeholder="12U" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.TeamAddress" class="form-label"></label>
+                    <input asp-for="Form.TeamAddress" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.TeamCity" class="form-label"></label>
+                    <input asp-for="Form.TeamCity" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.TeamState" class="form-label"></label>
+                    <input asp-for="Form.TeamState" class="form-control" maxlength="2" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.TeamZipCode" class="form-label"></label>
+                    <input asp-for="Form.TeamZipCode" class="form-control" />
+                </div>
+            </div>
+        </section>
+
+        <section class="form-section">
+            <h2>Listing details</h2>
+            <div class="form-grid two-column">
+                <div class="form-field">
+                    <label asp-for="Form.Title" class="form-label"></label>
+                    <input asp-for="Form.Title" class="form-control" />
+                    <span asp-validation-for="Form.Title" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.Type" class="form-label"></label>
+                    <select asp-for="Form.Type" class="form-select">
+                        @foreach (var option in OpportunityTypeOptions())
+                        {
+                            <option value="@option.Code">@option.Label</option>
+                        }
+                    </select>
+                    <span asp-validation-for="Form.Type" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.SportId" class="form-label"></label>
+                    <select asp-for="Form.SportId" class="form-select">
+                        @foreach (var sport in Model.SportOptions)
+                        {
+                            <option value="@sport.SportId">@sport.Name</option>
+                        }
+                    </select>
+                    <span asp-validation-for="Form.SportId" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.AgeGroup" class="form-label"></label>
+                    <input asp-for="Form.AgeGroup" class="form-control" placeholder="12U" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.CompetitionLevel" class="form-label"></label>
+                    <input asp-for="Form.CompetitionLevel" class="form-control" />
+                </div>
+            </div>
+            <div class="form-field">
+                <label asp-for="Form.Description" class="form-label"></label>
+                <textarea asp-for="Form.Description" class="form-control" rows="5"></textarea>
+            </div>
+        </section>
+
+        <section class="form-section">
+            <h2>Date and listing window</h2>
+            <div class="form-grid two-column">
+                <div class="form-field">
+                    <label asp-for="Form.EventDate" class="form-label"></label>
+                    <input asp-for="Form.EventDate" class="form-control" />
+                    <span asp-validation-for="Form.EventDate" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.EventEndDate" class="form-label"></label>
+                    <input asp-for="Form.EventEndDate" class="form-control" />
+                    <span asp-validation-for="Form.EventEndDate" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.ListingStartDate" class="form-label"></label>
+                    <input asp-for="Form.ListingStartDate" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.ListingEndDate" class="form-label"></label>
+                    <input asp-for="Form.ListingEndDate" class="form-control" />
+                    <span asp-validation-for="Form.ListingEndDate" class="text-danger"></span>
+                </div>
+            </div>
+        </section>
+
+        <section class="form-section">
+            <h2>Listing location</h2>
+            <div class="form-grid two-column">
+                <div class="form-field">
+                    <label asp-for="Form.Location" class="form-label"></label>
+                    <input asp-for="Form.Location" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.Address" class="form-label"></label>
+                    <input asp-for="Form.Address" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.City" class="form-label"></label>
+                    <input asp-for="Form.City" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.State" class="form-label"></label>
+                    <input asp-for="Form.State" class="form-control" maxlength="2" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.ZipCode" class="form-label"></label>
+                    <input asp-for="Form.ZipCode" class="form-control" />
+                    <span asp-validation-for="Form.ZipCode" class="text-danger"></span>
+                </div>
+            </div>
+        </section>
+
+        <section class="form-section">
+            <h2>Contact and notes</h2>
+            <div class="form-grid two-column">
+                <div class="form-field">
+                    <label asp-for="Form.ContactEmail" class="form-label"></label>
+                    <input asp-for="Form.ContactEmail" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.ContactPhone" class="form-label"></label>
+                    <input asp-for="Form.ContactPhone" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.WebsiteUrl" class="form-label"></label>
+                    <input asp-for="Form.WebsiteUrl" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.RequiredEquipment" class="form-label"></label>
+                    <input asp-for="Form.RequiredEquipment" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.WhatToBring" class="form-label"></label>
+                    <input asp-for="Form.WhatToBring" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.SpecialInstructions" class="form-label"></label>
+                    <input asp-for="Form.SpecialInstructions" class="form-control" />
+                </div>
+            </div>
+        </section>
+
+        <section class="form-section">
+            <h2>Status</h2>
+            <div class="form-check">
+                <input asp-for="Form.IsActive" class="form-check-input" />
+                <label asp-for="Form.IsActive" class="form-check-label"></label>
+            </div>
+            <div class="form-check">
+                <input asp-for="Form.IsPublished" class="form-check-input" />
+                <label asp-for="Form.IsPublished" class="form-check-label"></label>
+            </div>
+        </section>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Save listing</button>
+            <a class="btn btn-outline-secondary" href="@backUrl">Back</a>
+        </div>
+    </form>
+</section>
+
+@functions {
+    private static IReadOnlyCollection<(string Code, string Label)> OpportunityTypeOptions()
+    {
+        return
+        [
+            ("tryout", "Tryout"),
+            ("roster_opening", "Roster opening / adding players"),
+            ("pickup_player", "Guest or pickup player"),
+            ("tournament", "Tournament"),
+            ("camp", "Camp"),
+            ("clinic", "Clinic"),
+            ("private_workout", "Private workout"),
+            ("other", "Other")
+        ];
+    }
+}

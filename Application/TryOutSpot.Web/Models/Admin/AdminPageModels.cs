@@ -329,6 +329,69 @@ public sealed record AdminTeamListItem(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
 
+public sealed class AdminTeamEditPageModel
+{
+    public Guid TeamId { get; set; }
+
+    public string? ReturnUrl { get; set; }
+
+    public AdminTeamEditForm Form { get; set; } = new();
+}
+
+public sealed class AdminTeamEditForm
+{
+    [Required]
+    [MaxLength(200)]
+    [Display(Name = "Team name")]
+    public string Name { get; set; } = string.Empty;
+
+    [MaxLength(50)]
+    [Display(Name = "Team level")]
+    public string? TeamLevel { get; set; }
+
+    [MaxLength(50)]
+    [Display(Name = "Geographic scope")]
+    public string GeographicScope { get; set; } = "Local";
+
+    [MaxLength(2000)]
+    public string? Description { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Website URL")]
+    public string? WebsiteUrl { get; set; }
+
+    [MaxLength(500)]
+    public string? Address { get; set; }
+
+    [MaxLength(100)]
+    public string? City { get; set; }
+
+    [MaxLength(2)]
+    public string? State { get; set; }
+
+    [MaxLength(10)]
+    [Display(Name = "ZIP code")]
+    public string? ZipCode { get; set; }
+
+    [Phone]
+    [MaxLength(20)]
+    [Display(Name = "Phone")]
+    public string? PhoneNumber { get; set; }
+
+    [EmailAddress]
+    [MaxLength(255)]
+    public string? Email { get; set; }
+
+    [Display(Name = "Searchable")]
+    public bool IsSearchable { get; set; }
+
+    [Display(Name = "Show contact info")]
+    public bool IsContactInfoVisible { get; set; }
+
+    [Display(Name = "Active")]
+    public bool IsActive { get; set; }
+}
+
 public sealed record AdminPlayerListingListItem(
     Guid ListingId,
     Guid OwnerUserId,
@@ -405,6 +468,136 @@ public sealed record AdminTeamOpportunityListItem(
     int TotalReportCount,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
+
+public sealed class AdminTeamOpportunityEditPageModel
+{
+    public Guid OpportunityId { get; set; }
+
+    public Guid TeamId { get; set; }
+
+    public string? ReturnUrl { get; set; }
+
+    public IReadOnlyCollection<AdminSportOption> SportOptions { get; set; } = [];
+
+    public AdminTeamOpportunityEditForm Form { get; set; } = new();
+}
+
+public sealed class AdminTeamOpportunityEditForm
+{
+    [Required]
+    [MaxLength(200)]
+    [Display(Name = "Team name")]
+    public string TeamName { get; set; } = string.Empty;
+
+    [MaxLength(50)]
+    [Display(Name = "Team level")]
+    public string? TeamLevel { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Team address")]
+    public string? TeamAddress { get; set; }
+
+    [MaxLength(100)]
+    [Display(Name = "Team city")]
+    public string? TeamCity { get; set; }
+
+    [MaxLength(2)]
+    [Display(Name = "Team state")]
+    public string? TeamState { get; set; }
+
+    [MaxLength(10)]
+    [Display(Name = "Team ZIP")]
+    public string? TeamZipCode { get; set; }
+
+    [Required]
+    [MaxLength(300)]
+    public string Title { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(50)]
+    [Display(Name = "Type")]
+    public string Type { get; set; } = "tryout";
+
+    [Required]
+    [Display(Name = "Sport")]
+    public Guid SportId { get; set; }
+
+    [MaxLength(50)]
+    [Display(Name = "Age group")]
+    public string? AgeGroup { get; set; }
+
+    [MaxLength(100)]
+    [Display(Name = "Competition level")]
+    public string? CompetitionLevel { get; set; }
+
+    [MaxLength(4000)]
+    public string? Description { get; set; }
+
+    [DataType(DataType.DateTime)]
+    [Display(Name = "Event starts")]
+    public DateTime? EventDate { get; set; }
+
+    [DataType(DataType.DateTime)]
+    [Display(Name = "Event ends")]
+    public DateTime? EventEndDate { get; set; }
+
+    [DataType(DataType.DateTime)]
+    [Display(Name = "Listing starts")]
+    public DateTime? ListingStartDate { get; set; }
+
+    [DataType(DataType.DateTime)]
+    [Display(Name = "Listing ends")]
+    public DateTime? ListingEndDate { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Location name")]
+    public string? Location { get; set; }
+
+    [MaxLength(500)]
+    public string? Address { get; set; }
+
+    [MaxLength(100)]
+    public string? City { get; set; }
+
+    [MaxLength(2)]
+    public string? State { get; set; }
+
+    [MaxLength(10)]
+    [Display(Name = "ZIP code")]
+    public string? ZipCode { get; set; }
+
+    [EmailAddress]
+    [MaxLength(255)]
+    [Display(Name = "Contact email")]
+    public string? ContactEmail { get; set; }
+
+    [Phone]
+    [MaxLength(20)]
+    [Display(Name = "Contact phone")]
+    public string? ContactPhone { get; set; }
+
+    [MaxLength(500)]
+    [Display(Name = "Website URL")]
+    public string? WebsiteUrl { get; set; }
+
+    [MaxLength(1000)]
+    [Display(Name = "Required equipment")]
+    public string? RequiredEquipment { get; set; }
+
+    [MaxLength(1000)]
+    [Display(Name = "What to bring")]
+    public string? WhatToBring { get; set; }
+
+    [MaxLength(2000)]
+    [Display(Name = "Special instructions")]
+    public string? SpecialInstructions { get; set; }
+
+    [Display(Name = "Published")]
+    public bool IsPublished { get; set; }
+
+    [Display(Name = "Active")]
+    public bool IsActive { get; set; }
+}
 
 public sealed record AdminTeamOpportunityDetailItem(
     Guid OpportunityId,

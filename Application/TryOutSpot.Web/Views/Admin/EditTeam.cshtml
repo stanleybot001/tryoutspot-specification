@@ -1,0 +1,106 @@
+@model AdminTeamEditPageModel
+
+@{
+    ViewData["Title"] = "Edit Team";
+    var backUrl = !string.IsNullOrWhiteSpace(Model.ReturnUrl) ? Model.ReturnUrl : "/admin/teams";
+}
+
+<section class="account-page admin-page">
+    <div class="account-heading">
+        <p class="account-kicker">Team profile</p>
+        <h1>Edit team</h1>
+        <p>Update the team profile used by flyer-created listings and admin review.</p>
+    </div>
+
+    @await Html.PartialAsync("_AdminNav")
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="account-alert">@statusMessage</div>
+    }
+
+    <div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+    <form asp-action="EditTeam" asp-controller="Admin" asp-route-teamId="@Model.TeamId" method="post" class="account-form">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+
+        <section class="form-section">
+            <h2>Profile</h2>
+            <div class="form-grid two-column">
+                <div class="form-field">
+                    <label asp-for="Form.Name" class="form-label"></label>
+                    <input asp-for="Form.Name" class="form-control" />
+                    <span asp-validation-for="Form.Name" class="text-danger"></span>
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.TeamLevel" class="form-label"></label>
+                    <input asp-for="Form.TeamLevel" class="form-control" placeholder="12U" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.GeographicScope" class="form-label"></label>
+                    <input asp-for="Form.GeographicScope" class="form-control" placeholder="Local" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.WebsiteUrl" class="form-label"></label>
+                    <input asp-for="Form.WebsiteUrl" class="form-control" />
+                </div>
+            </div>
+            <div class="form-field">
+                <label asp-for="Form.Description" class="form-label"></label>
+                <textarea asp-for="Form.Description" class="form-control" rows="4"></textarea>
+            </div>
+        </section>
+
+        <section class="form-section">
+            <h2>Location and contact</h2>
+            <div class="form-grid two-column">
+                <div class="form-field">
+                    <label asp-for="Form.Address" class="form-label"></label>
+                    <input asp-for="Form.Address" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.City" class="form-label"></label>
+                    <input asp-for="Form.City" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.State" class="form-label"></label>
+                    <input asp-for="Form.State" class="form-control" maxlength="2" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.ZipCode" class="form-label"></label>
+                    <input asp-for="Form.ZipCode" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.Email" class="form-label"></label>
+                    <input asp-for="Form.Email" class="form-control" />
+                </div>
+                <div class="form-field">
+                    <label asp-for="Form.PhoneNumber" class="form-label"></label>
+                    <input asp-for="Form.PhoneNumber" class="form-control" />
+                </div>
+            </div>
+        </section>
+
+        <section class="form-section">
+            <h2>Visibility</h2>
+            <div class="form-check">
+                <input asp-for="Form.IsActive" class="form-check-input" />
+                <label asp-for="Form.IsActive" class="form-check-label"></label>
+            </div>
+            <div class="form-check">
+                <input asp-for="Form.IsSearchable" class="form-check-input" />
+                <label asp-for="Form.IsSearchable" class="form-check-label"></label>
+            </div>
+            <div class="form-check">
+                <input asp-for="Form.IsContactInfoVisible" class="form-check-input" />
+                <label asp-for="Form.IsContactInfoVisible" class="form-check-label"></label>
+            </div>
+        </section>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Save team</button>
+            <a class="btn btn-outline-secondary" href="@backUrl">Back</a>
+        </div>
+    </form>
+</section>
