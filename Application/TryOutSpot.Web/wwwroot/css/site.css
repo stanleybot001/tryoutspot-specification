@@ -2102,6 +2102,48 @@ details.phone-verification-panel[open] > summary {
   font-size: 1.1rem;
 }
 
+.plans-track-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.plans-track-grid .plans-track-title {
+  margin-top: 0.25rem;
+  margin-bottom: 0.15rem;
+}
+
+.plans-track-grid .plan-feature-list {
+  font-size: 0.9rem;
+}
+
+.plans-track-grid h4 {
+  font-size: 0.95rem;
+  margin-top: 0.25rem;
+}
+
+.plan-row.plan-row-free {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.plans-track-jump {
+  display: none;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 860px) {
+  .plans-track-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .plans-track-jump {
+    display: flex;
+  }
+}
+
 .plan-diff-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

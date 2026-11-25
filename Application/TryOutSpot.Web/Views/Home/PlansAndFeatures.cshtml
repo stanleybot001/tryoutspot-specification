@@ -15,12 +15,24 @@
 
     <section class="form-section">
         <h2>Plans</h2>
+        <nav class="plans-track-jump" aria-label="Jump to plans">
+            <a class="btn btn-sm btn-outline-primary" href="#plans-player-parent">Players &amp; parents</a>
+            <a class="btn btn-sm btn-outline-primary" href="#plans-team">Coaches &amp; teams</a>
+        </nav>
+        <div class="plans-track-grid">
         @foreach (var track in Model.PlanTracks)
         {
+            var trackPlans = track.Plans.ToArray();
+            var isTeamTrack = trackPlans.Any(plan => IsTeamPlanCode(plan.Code));
+            <div class="plans-track" id="@(isTeamTrack ? "plans-team" : "plans-player-parent")">
             <h3 class="plans-track-title">@track.TrackName</h3>
+            <p class="section-help small">@(isTeamTrack
+                ? "Coaches, team managers, and academies posting tryouts."
+                : "Players and parents finding and registering for tryouts.")</p>
             <div class="plan-list">
-                @foreach (var plan in track.Plans)
+                @for (var planIndex = 0; planIndex < trackPlans.Length; planIndex++)
                 {
+                    var plan = trackPlans[planIndex];
                     var isTeamPlan = IsTeamPlanCode(plan.Code);
                     var bundle = isTeamPlan ? "team" : "player_parent";
                     var accountType = isTeamPlan ? "TeamRepresentative" : "Parent";
@@ -34,10 +46,9 @@
                     var actionLabel = isFreePlan
                         ? (isSignedIn ? "Go to dashboard" : "Create free account")
                         : $"Choose {plan.Name}";
-                    <article class="plan-row plan-row-stack">
+                    <article class="plan-row plan-row-stack @(isFreePlan ? "plan-row-free" : null)">
                         <div>
                             <strong>@plan.Name</strong>
-                            <span>@plan.Audience</span>
                             <p>@plan.Description</p>
                         </div>
                         <div class="plan-price">
@@ -55,7 +66,7 @@
                         @if (plan.AddedFeaturesComparedToPrevious.Count > 0)
                         {
                             <div>
-                                <h4>Adds over the plan above</h4>
+                                <h4>@(planIndex == 0 ? "Includes" : $"Everything in {trackPlans[planIndex - 1].Name}, plus")</h4>
                                 <ul class="plan-feature-list">
                                     @foreach (var feature in plan.AddedFeaturesComparedToPrevious)
                                     {
@@ -67,7 +78,9 @@
                     </article>
                 }
             </div>
+            </div>
         }
+        </div>
     </section>
 
     <details class="form-section plans-detail">

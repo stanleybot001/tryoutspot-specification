@@ -223,7 +223,7 @@ public class HomeController : Controller
         return
         [
             new PlanTrackPageItem(
-                "Player/Parent track",
+                "Players & parents",
                 [
                     new PlanDetailPageItem(
                         TryOutSpotPlanCodes.FreePlayerParent,
@@ -245,7 +245,7 @@ public class HomeController : Controller
                         premiumAdds)
                 ]),
             new PlanTrackPageItem(
-                "Team/Organization track",
+                "Coaches & teams",
                 [
                     new PlanDetailPageItem(
                         TryOutSpotPlanCodes.FreeCoach,
