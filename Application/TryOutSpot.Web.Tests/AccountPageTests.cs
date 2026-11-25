@@ -2302,12 +2302,12 @@ public sealed class AccountPageTests
             ]));
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/account/onboarding", response.Headers.Location?.ToString());
 
         using var verifyScope = factory.Services.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
         var organization = await verifyDb.Organizations.SingleAsync();
         var team = await verifyDb.Teams.SingleAsync();
+        Assert.Equal($"/account/onboarding/team-opportunities/{team.Id}", response.Headers.Location?.ToString());
         var userTeamRole = await verifyDb.UserTeamRoles.SingleAsync();
         var teamSport = await verifyDb.TeamSports.SingleAsync();
 

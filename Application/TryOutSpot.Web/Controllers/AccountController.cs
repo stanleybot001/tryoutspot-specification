@@ -2496,8 +2496,10 @@ public sealed class AccountController(
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
-        TempData["StatusMessage"] = "Team setup saved.";
-        return RedirectToAction(nameof(Onboarding));
+        TempData["StatusMessage"] = $"{team.Name} is set up. Next, post your first tryout.";
+        TempData["StatusLinkUrl"] = Url.Action(nameof(CreateTeamOpportunity), new { teamId, type = "tryout" });
+        TempData["StatusLinkLabel"] = "Post a tryout";
+        return RedirectToAction(nameof(TeamOpportunities), new { teamId });
     }
 
     [Authorize(
@@ -3275,8 +3277,10 @@ public sealed class AccountController(
         [FromForm] bool isPresent,
         [FromForm] int? page = null,
         [FromForm] int? pageSize = null,
+        [FromForm] string? returnTo = null,
         CancellationToken cancellationToken = default)
     {
+        var isInPageUpdate = IsInPageUpdateRequest();
         var user = await GetCurrentWebUserAsync();
         if (user is null)
         {
@@ -3321,10 +3325,37 @@ public sealed class AccountController(
         registration.UpdatedAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        if (isInPageUpdate)
+        {
+            return Json(new
+            {
+                registrationId,
+                isPresent,
+                checkedInAt = registration.CheckInTime?.ToLocalTime().ToString("h:mm tt")
+            });
+        }
+
         TempData["StatusMessage"] = isPresent
             ? "Player marked present."
             : "Player attendance reset.";
-        return RedirectToAction(nameof(TeamOpportunities), new { teamId, page, pageSize });
+        return RedirectAfterRegistrationRosterUpdate(teamId, opportunityId, returnTo, page, pageSize);
+    }
+
+    private bool IsInPageUpdateRequest()
+    {
+        return string.Equals(Request.Headers["X-Requested-With"], "fetch", StringComparison.Ordinal);
+    }
+
+    private IActionResult RedirectAfterRegistrationRosterUpdate(
+        Guid teamId,
+        Guid opportunityId,
+        string? returnTo,
+        int? page,
+        int? pageSize)
+    {
+        return string.Equals(returnTo, "check-in", StringComparison.Ordinal)
+            ? RedirectToAction(nameof(CheckInTeamOpportunityRegistrations), new { teamId, opportunityId })
+            : RedirectToAction(nameof(TeamOpportunities), new { teamId, page, pageSize });
     }
 
     [Authorize(
@@ -3338,8 +3369,10 @@ public sealed class AccountController(
         [FromForm] bool waiverReceived,
         [FromForm] int? page = null,
         [FromForm] int? pageSize = null,
+        [FromForm] string? returnTo = null,
         CancellationToken cancellationToken = default)
     {
+        var isInPageUpdate = IsInPageUpdateRequest();
         var user = await GetCurrentWebUserAsync();
         if (user is null)
         {
@@ -3380,10 +3413,15 @@ public sealed class AccountController(
         registration.UpdatedAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        if (isInPageUpdate)
+        {
+            return Json(new { registrationId, waiverReceived });
+        }
+
         TempData["StatusMessage"] = waiverReceived
             ? "Waiver marked received."
             : "Waiver status reset.";
-        return RedirectToAction(nameof(TeamOpportunities), new { teamId, page, pageSize });
+        return RedirectAfterRegistrationRosterUpdate(teamId, opportunityId, returnTo, page, pageSize);
     }
 
     [Authorize(

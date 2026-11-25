@@ -279,6 +279,49 @@ public sealed class TeamOpportunityRegistrationPageTests
     }
 
     [Fact]
+    public async Task CheckInPage_InPageAttendanceUpdate_ReturnsJsonAndMarksPresent()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var teamUser = await factory.CreateUserAsync("team-checkin-live@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var seeded = SeedTeamOpportunityRegistrationForReview(factory, teamUser.Id);
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, teamUser.Email!);
+
+        var checkInUrl = $"/account/onboarding/team-opportunities/{seeded.TeamId}/{seeded.OpportunityId}/registrations/check-in";
+        var checkInHtml = await (await client.GetAsync(checkInUrl)).Content.ReadAsStringAsync();
+        Assert.Contains("data-checkin-search", checkInHtml, StringComparison.Ordinal);
+        Assert.Contains("0 of 1 checked in", checkInHtml, StringComparison.Ordinal);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, checkInUrl);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/account/onboarding/team-opportunities/{seeded.TeamId}/{seeded.OpportunityId}/registrations/{seeded.RegistrationId}/attendance")
+        {
+            Content = new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("isPresent", "true"),
+                new("returnTo", "check-in")
+            ])
+        };
+        request.Headers.Add("X-Requested-With", "fetch");
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"isPresent\":true", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var registration = await dbContext.Registrations
+            .SingleAsync(current => current.Id == seeded.RegistrationId);
+        Assert.NotNull(registration.CheckInTime);
+    }
+
+    [Fact]
     public async Task TeamRepresentativeOpportunityPage_CollapsesRosterAndMarksFavoritedPlayers()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
@@ -304,7 +347,7 @@ public sealed class TeamOpportunityRegistrationPageTests
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("registration-roster-toggle", html, StringComparison.Ordinal);
         Assert.Contains("registration-roster-table", html, StringComparison.Ordinal);
-        Assert.Contains("Check-in sheet", html, StringComparison.Ordinal);
+        Assert.Contains("Tryout-day check-in", html, StringComparison.Ordinal);
         Assert.Contains("Evaluation sheet", html, StringComparison.Ordinal);
         Assert.Contains("Favorited player listing", html, StringComparison.Ordinal);
         Assert.Contains("<span>Followers: <strong class=\"text-body\">2</strong></span>", html, StringComparison.Ordinal);

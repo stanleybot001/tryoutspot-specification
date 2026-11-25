@@ -218,6 +218,59 @@
             min-width: 210px;
         }
 
+        .checkin-tools {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .checkin-tools input[type=search] {
+            flex: 1 1 260px;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            font: inherit;
+            font-size: 16px;
+            padding: 10px;
+        }
+
+        .checkin-count {
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .toggle-button {
+            min-width: 110px;
+            min-height: 40px;
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            background: #ffffff;
+            color: var(--accent);
+            cursor: pointer;
+            font: inherit;
+            font-weight: 700;
+            padding: 6px 10px;
+        }
+
+        .toggle-button.is-on {
+            background: #15803d;
+            border-color: #15803d;
+            color: #ffffff;
+        }
+
+        .toggle-button[disabled] {
+            opacity: 0.6;
+        }
+
+        .print-only {
+            display: none;
+        }
+
+        tr.is-present {
+            background: #f0fdf4 !important;
+        }
+
         @@media (max-width: 760px) {
             body {
                 font-size: 13px;
@@ -262,8 +315,18 @@
                 padding: 0;
             }
 
-            .document-toolbar {
-                display: none;
+            .document-toolbar,
+            .checkin-tools,
+            .screen-only {
+                display: none !important;
+            }
+
+            .print-only {
+                display: inline-block;
+            }
+
+            tr.is-present {
+                background: transparent !important;
             }
 
             table {
@@ -325,6 +388,13 @@
         }
         else
         {
+            var presentCount = Model.Registrants.Count(registrant => registrant.IsPresent);
+            <div class="checkin-tools">
+                <label class="small-label" for="checkin-search" style="flex-basis:100%">Find a player</label>
+                <input id="checkin-search" type="search" placeholder="Type a name, tryout number, or school" autocomplete="off" data-checkin-search />
+                <span class="checkin-count" aria-live="polite" data-checkin-count data-total="@Model.RegistrantCount">@presentCount of @Model.RegistrantCount checked in</span>
+            </div>
+            <p class="checkin-status muted" role="status" aria-live="polite" data-checkin-status></p>
             <section class="table-scroll" aria-label="Check-in roster">
                 <table>
                     <thead>
@@ -344,7 +414,8 @@
                     <tbody>
                         @foreach (var registrant in Model.Registrants)
                         {
-                            <tr>
+                            var searchText = $"{registrant.TryoutNumber} {registrant.PlayerName} {registrant.SchoolName}".ToLowerInvariant();
+                            <tr class="@(registrant.IsPresent ? "is-present" : null)" data-checkin-row data-search="@searchText">
                                 <td class="tryout-number">@registrant.TryoutNumber</td>
                                 <td>
                                     <div class="player-name">
@@ -357,7 +428,19 @@
                                     <div class="muted">@FormatValue(registrant.SchoolName)</div>
                                 </td>
                                 <td>@FormatAge(registrant.PlayerAge)</td>
-                                <td><span class="checkbox-cell" aria-hidden="true"></span></td>
+                                <td>
+                                    <span class="checkbox-cell print-only" aria-hidden="true"></span>
+                                    <form class="screen-only" method="post" data-checkin-toggle="attendance"
+                                          asp-action="SetTeamOpportunityRegistrationAttendance" asp-controller="Account"
+                                          asp-route-teamId="@Model.TeamId" asp-route-opportunityId="@Model.OpportunityId"
+                                          asp-route-registrationId="@registrant.RegistrationId">
+                                        <input type="hidden" name="isPresent" value="@(registrant.IsPresent ? "false" : "true")" />
+                                        <input type="hidden" name="returnTo" value="check-in" />
+                                        <button type="submit" class="toggle-button @(registrant.IsPresent ? "is-on" : null)"
+                                                aria-pressed="@(registrant.IsPresent ? "true" : "false")"
+                                                aria-label="Arrived: @registrant.PlayerName">@(registrant.IsPresent ? "Arrived" : "Check in")</button>
+                                    </form>
+                                </td>
                                 <td>
                                     <div>@registrant.StatusLabel</div>
                                     <div class="muted">Registered @FormatDateTime(registrant.RegisteredAt)</div>
@@ -367,11 +450,17 @@
                                     }
                                 </td>
                                 <td>
-                                    <div>@(registrant.IsWaiverReceived ? "Received" : "Missing")</div>
-                                    @if (registrant.WaiverReceivedAt.HasValue)
-                                    {
-                                        <div class="muted">@FormatDateTime(registrant.WaiverReceivedAt.Value)</div>
-                                    }
+                                    <div class="print-only">@(registrant.IsWaiverReceived ? "Received" : "Missing")</div>
+                                    <form class="screen-only" method="post" data-checkin-toggle="waiver"
+                                          asp-action="SetTeamOpportunityRegistrationWaiverStatus" asp-controller="Account"
+                                          asp-route-teamId="@Model.TeamId" asp-route-opportunityId="@Model.OpportunityId"
+                                          asp-route-registrationId="@registrant.RegistrationId">
+                                        <input type="hidden" name="waiverReceived" value="@(registrant.IsWaiverReceived ? "false" : "true")" />
+                                        <input type="hidden" name="returnTo" value="check-in" />
+                                        <button type="submit" class="toggle-button @(registrant.IsWaiverReceived ? "is-on" : null)"
+                                                aria-pressed="@(registrant.IsWaiverReceived ? "true" : "false")"
+                                                aria-label="Waiver: @registrant.PlayerName">@(registrant.IsWaiverReceived ? "Waiver in" : "Waiver missing")</button>
+                                    </form>
                                 </td>
                                 <td>@FormatContactLines(registrant.PlayerPhone, registrant.PlayerEmail)</td>
                                 <td>
@@ -399,6 +488,7 @@
             </section>
         }
     </main>
+    <script src="~/js/check-in.js" asp-append-version="true"></script>
 </body>
 </html>
 
