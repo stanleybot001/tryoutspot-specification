@@ -55,7 +55,7 @@
                 {
                     <form asp-action="SuspendUser" asp-controller="Admin" asp-route-userId="@Model.User.UserId" method="post" class="inline-form">
                         <input type="hidden" name="returnUrl" value="@returnUrl" />
-                        <button type="submit" class="btn btn-outline-danger btn-sm">Suspend user</button>
+                        <button type="submit" class="btn btn-outline-danger btn-sm" data-confirm="Suspend this user? They will be signed out and unable to sign in.">Suspend user</button>
                     </form>
                 }
                 else
@@ -159,7 +159,7 @@
                                 <label class="form-label" for="revoke-@grant.GrantId">Revoke reason</label>
                                 <input id="revoke-@grant.GrantId" class="form-control" name="Reason" maxlength="1000" placeholder="Optional admin note" />
                                 <div class="form-actions">
-                                    <button type="submit" class="btn btn-outline-danger btn-sm">Revoke access</button>
+                                    <button type="submit" class="btn btn-outline-danger btn-sm" data-confirm="Revoke this complimentary access?">Revoke access</button>
                                 </div>
                             </form>
                         }
@@ -244,7 +244,7 @@
                             {
                                 <form asp-action="DeactivatePlayerListing" asp-controller="Admin" asp-route-listingId="@listing.ListingId" method="post" class="inline-form">
                                     <input type="hidden" name="returnUrl" value="@returnUrl" />
-                                    <button type="submit" class="btn btn-outline-warning btn-sm">Deactivate</button>
+                                    <button type="submit" class="btn btn-outline-warning btn-sm" data-confirm="Deactivate this item? It will be hidden from users.">Deactivate</button>
                                 </form>
                             }
                             else
@@ -256,7 +256,7 @@
                             }
                             <form asp-action="DeletePlayerListing" asp-controller="Admin" asp-route-listingId="@listing.ListingId" method="post" class="inline-form">
                                 <input type="hidden" name="returnUrl" value="@returnUrl" />
-                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                                <button type="submit" class="btn btn-outline-danger btn-sm" data-confirm="Permanently delete this item? This cannot be undone.">Delete</button>
                             </form>
                         </div>
                     </article>
@@ -305,7 +305,7 @@
                             {
                                 <form asp-action="SuspendTeam" asp-controller="Admin" asp-route-teamId="@team.TeamId" method="post" class="inline-form">
                                     <input type="hidden" name="returnUrl" value="@returnUrl" />
-                                    <button type="submit" class="btn btn-outline-danger btn-sm">Suspend team</button>
+                                    <button type="submit" class="btn btn-outline-danger btn-sm" data-confirm="Suspend this team? Its listings will be hidden.">Suspend team</button>
                                 </form>
                             }
                             else
@@ -371,7 +371,7 @@
                             {
                                 <form asp-action="DeactivateTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@opportunity.OpportunityId" method="post" class="inline-form">
                                     <input type="hidden" name="returnUrl" value="@returnUrl" />
-                                    <button type="submit" class="btn btn-outline-warning btn-sm">Deactivate</button>
+                                    <button type="submit" class="btn btn-outline-warning btn-sm" data-confirm="Deactivate this item? It will be hidden from users.">Deactivate</button>
                                 </form>
                             }
                             else
@@ -383,7 +383,7 @@
                             }
                             <form asp-action="DeleteTeamOpportunity" asp-controller="Admin" asp-route-opportunityId="@opportunity.OpportunityId" method="post" class="inline-form">
                                 <input type="hidden" name="returnUrl" value="@returnUrl" />
-                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                                <button type="submit" class="btn btn-outline-danger btn-sm" data-confirm="Permanently delete this item? This cannot be undone.">Delete</button>
                             </form>
                         </div>
                     </article>

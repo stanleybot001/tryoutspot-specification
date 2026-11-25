@@ -103,7 +103,7 @@
                             {
                                 <form asp-action="SuspendTeam" asp-controller="Admin" asp-route-teamId="@team.TeamId" method="post" class="inline-form">
                                     <input type="hidden" name="returnUrl" value="@returnUrl" />
-                                    <button type="submit" class="btn btn-outline-danger btn-sm">Suspend team</button>
+                                    <button type="submit" class="btn btn-outline-danger btn-sm" data-confirm="Suspend this team? Its listings will be hidden.">Suspend team</button>
                                 </form>
                             }
                             else

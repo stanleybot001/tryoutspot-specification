@@ -39,3 +39,39 @@ document.addEventListener("click", async (event) => {
         }
     }
 });
+
+document.addEventListener("submit", (event) => {
+    const submitter = event.submitter;
+    const message = submitter?.getAttribute("data-confirm")
+        || event.target.getAttribute("data-confirm");
+    if (message && !window.confirm(message)) {
+        event.preventDefault();
+    }
+});
+
+document.addEventListener("change", (event) => {
+    const select = event.target.closest("select[data-player-autofill]");
+    if (!select) {
+        return;
+    }
+
+    const option = select.selectedOptions[0];
+    const form = select.form;
+    if (!option || !form) {
+        return;
+    }
+
+    const fields = {
+        "RegistrationForm.PlayerName": "playerName",
+        "RegistrationForm.PlayerBirthDate": "playerBirthdate",
+        "RegistrationForm.PlayerSchool": "playerSchool",
+        "RegistrationForm.PlayerPhone": "playerPhone",
+        "RegistrationForm.PlayerEmail": "playerEmail"
+    };
+    for (const [name, key] of Object.entries(fields)) {
+        const input = form.elements.namedItem(name);
+        if (input) {
+            input.value = option.dataset[key] || "";
+        }
+    }
+});

@@ -113,7 +113,7 @@ public class HomeController : Controller
                 "Team/Academy",
                 "No team plan",
                 [
-                    F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 1 tryout listing every 6 months."),
+                    F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 1 listing every 6 months."),
                     F(TryOutSpotFeatureCodes.ShareOpportunityListingLinks, "Share listing links", "Copy public listing links and ready-to-share post text for active opportunity listings."),
                     F(TryOutSpotFeatureCodes.OpportunityListingFlyers, "Listing flyer attachments", "Link or upload a PDF or image event flyer, save it with the opportunity, and display it on the public listing."),
                     F("players.search.basic", "Basic player search", "Limited player search with age filters and radius capped at 120 miles.")
@@ -123,7 +123,7 @@ public class HomeController : Controller
                 "Team/Academy",
                 "Compared to Free Coach",
                 [
-                    F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 9 tryout listings every 12 months."),
+                    F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 9 listings every 12 months."),
                     F("players.search.advanced", "Advanced player search", "Full player discovery filters including age, level, and radius."),
                     F("registrations.manage.standard", "Standard registration management", "Standard registration/applicant management."),
                     F(TryOutSpotFeatureCodes.FollowerSmsMessaging, "Follower SMS updates", "Coming soon - send short listing updates to opted-in players and parents who follow an opportunity."),
@@ -135,7 +135,7 @@ public class HomeController : Controller
                 "Team/Academy",
                 "Compared to Team Basic",
                 [
-                    F("opportunities.post.unlimited", "Professional opportunity posting cap", "Publish up to 24 tryout listings every 12 months."),
+                    F("opportunities.post.unlimited", "Expanded opportunity posting", "Publish up to 24 listings every 12 months."),
                     F("players.search.advanced", "Advanced player search", "Full player discovery filters including age, level, and radius."),
                     F("registrations.manage.premium", "Premium registration management", "Enhanced applicant review and registration tooling."),
                     F("analytics.team.detailed", "Detailed team analytics", "Deeper team analytics and conversion visibility."),
@@ -182,7 +182,7 @@ public class HomeController : Controller
 
         var freeCoach = new[]
         {
-            F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 1 tryout listing every 6 months."),
+            F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 1 listing every 6 months."),
             F(TryOutSpotFeatureCodes.ShareOpportunityListingLinks, "Share listing links", "Copy public listing links and ready-to-share post text for active opportunity listings."),
             F(TryOutSpotFeatureCodes.OpportunityListingFlyers, "Listing flyer attachments", "Link or upload a PDF or image event flyer, save it with the opportunity, and display it on the public listing."),
             F("players.search.basic", "Basic player search", "Limited player search with age filters and radius capped at 120 miles.")
@@ -190,7 +190,7 @@ public class HomeController : Controller
 
         var teamBasic = new[]
         {
-            F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 9 tryout listings every 12 months."),
+            F("opportunities.post.limited", "Limited opportunity posting", "Publish up to 9 listings every 12 months."),
             F("players.search.advanced", "Advanced player search", "Full player discovery filters including age, level, and radius."),
             F("registrations.manage.standard", "Standard registration management", "Standard registration/applicant management."),
             F(TryOutSpotFeatureCodes.FollowerSmsMessaging, "Follower SMS updates", "Coming soon - send short listing updates to opted-in players and parents who follow an opportunity."),
@@ -200,7 +200,7 @@ public class HomeController : Controller
 
         var pro = new[]
         {
-            F("opportunities.post.unlimited", "Professional opportunity posting cap", "Publish up to 24 tryout listings every 12 months."),
+            F("opportunities.post.unlimited", "Expanded opportunity posting", "Publish up to 24 listings every 12 months."),
             F("players.search.advanced", "Advanced player search", "Full player discovery filters including age, level, and radius."),
             F("registrations.manage.premium", "Premium registration management", "Enhanced applicant review and registration tooling."),
             F("analytics.team.detailed", "Detailed team analytics", "Deeper team analytics and conversion visibility."),
@@ -212,7 +212,7 @@ public class HomeController : Controller
         var enterpriseAdds = new[]
         {
             F("teams.manage.multiple", "Multi-team management", "Multi-team organization management."),
-            F("opportunities.post.enterprise", "Enterprise opportunity posting cap", "Publish up to 50 tryout listings every 12 months."),
+            F("opportunities.post.enterprise", "Enterprise opportunity posting", "Publish up to 50 listings every 12 months."),
             F("api.access", "API access", "API-based integration access."),
             F("workflows.custom", "Custom workflows", "Organization-specific custom workflows."),
             F("support.account_manager", "Dedicated account manager", "Dedicated account manager support."),
@@ -238,7 +238,7 @@ public class HomeController : Controller
                         TryOutSpotPlanCodes.PremiumPlayer,
                         "Premium Player",
                         "Player/Parent",
-                        "Paid player profile, discovery, messaging, and analytics features.",
+                        "Wider tryout search, level filters, early access to new listings, and an enhanced player profile.",
                         "$9.99/month or $99.00/year",
                         null,
                         freePlayerParent.Concat(premiumAdds).ToArray(),
@@ -260,7 +260,7 @@ public class HomeController : Controller
                         TryOutSpotPlanCodes.TeamBasic,
                         "Basic Team",
                         "Team/Academy",
-                        "Entry team subscription with limited annual tryout posting capacity.",
+                        "Up to 9 published listings every 12 months, full player search, and registration tools.",
                         "$29.00/month",
                         null,
                         freeCoach.Concat(teamBasic).ToArray(),
@@ -269,7 +269,7 @@ public class HomeController : Controller
                         TryOutSpotPlanCodes.TeamProfessional,
                         "Professional Team",
                         "Team/Academy",
-                        "Professional team annual subscription for unlimited postings and advanced tools.",
+                        "Up to 24 published listings every 12 months, premium registration tools, and detailed analytics.",
                         "$799.00/year (annual commitment)",
                         null,
                         freeCoach.Concat(teamBasic).Concat(pro).ToArray(),
@@ -278,7 +278,7 @@ public class HomeController : Controller
                         TryOutSpotPlanCodes.EnterpriseOrganization,
                         "Enterprise Organization",
                         "Organization",
-                        "Enterprise annual subscription for multi-team organizations and custom workflows.",
+                        "Up to 50 published listings every 12 months, multiple teams under one organization, and custom workflows.",
                         "$1,999.00/year (annual commitment)",
                         null,
                         freeCoach.Concat(teamBasic).Concat(pro).Concat(enterpriseAdds).ToArray(),

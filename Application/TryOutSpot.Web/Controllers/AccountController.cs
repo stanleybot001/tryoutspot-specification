@@ -3570,6 +3570,7 @@ public sealed class AccountController(
                 "This player is already registered for this tryout.");
         }
 
+        ReplaceOtherPlayerRegistrationValues(registrationForm, selectedPlayer, managedPlayerOptions);
         ApplySelectedPlayerRegistrationDefaults(registrationForm, selectedPlayer);
         ValidateOpportunityRegistrationForm(registrationForm, requiredRegistrationFieldCodes);
 
@@ -3929,6 +3930,67 @@ public sealed class AccountController(
                 player.ContactPhone,
                 player.ContactEmail))
             .ToArray();
+    }
+
+    private static void ReplaceOtherPlayerRegistrationValues(
+        TeamOpportunityRegistrationInputPageModel registrationForm,
+        OpportunityRegistrationPlayerOptionPageItem? selectedPlayer,
+        IReadOnlyCollection<OpportunityRegistrationPlayerOptionPageItem> managedPlayers)
+    {
+        if (selectedPlayer is null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(selectedPlayer.ProfileName))
+        {
+            registrationForm.PlayerName = selectedPlayer.ProfileName;
+        }
+
+        if (selectedPlayer.ProfileBirthDate.HasValue)
+        {
+            registrationForm.PlayerBirthDate = selectedPlayer.ProfileBirthDate.Value.Date;
+        }
+
+        var otherPlayers = managedPlayers
+            .Where(player => player.PlayerId != selectedPlayer.PlayerId)
+            .ToArray();
+        if (otherPlayers.Length == 0)
+        {
+            return;
+        }
+
+        if (MatchesAnyPlayerValue(registrationForm.PlayerSchool, otherPlayers, player => player.ProfileSchool))
+        {
+            registrationForm.PlayerSchool = null;
+        }
+
+        if (MatchesAnyPlayerValue(registrationForm.PlayerPhone, otherPlayers, player => player.ProfilePhone))
+        {
+            registrationForm.PlayerPhone = null;
+        }
+
+        if (MatchesAnyPlayerValue(registrationForm.PlayerEmail, otherPlayers, player => player.ProfileEmail))
+        {
+            registrationForm.PlayerEmail = null;
+        }
+    }
+
+    private static bool MatchesAnyPlayerValue(
+        string? submittedValue,
+        IEnumerable<OpportunityRegistrationPlayerOptionPageItem> players,
+        Func<OpportunityRegistrationPlayerOptionPageItem, string?> selector)
+    {
+        if (string.IsNullOrWhiteSpace(submittedValue))
+        {
+            return false;
+        }
+
+        var normalized = submittedValue.Trim();
+        return players.Any(player => string.Equals(
+            selector(player)?.Trim(),
+            normalized,
+            StringComparison.OrdinalIgnoreCase));
     }
 
     private static void ApplySelectedPlayerRegistrationDefaults(
@@ -6798,7 +6860,6 @@ public sealed class AccountController(
             : "/account/settings";
         var hasTeamProfile = primaryTeam is not null;
         var foundationComplete = hasTeamRepresentativeRole
-            && hasTeamBasicOrHigherPlan
             && hasTeamProfile;
         var createTryoutUrl = primaryTeam is null
             ? null
@@ -6858,7 +6919,7 @@ public sealed class AccountController(
         string teamWorkspaceUrl)
     {
         var hasTeamProfile = primaryTeam is not null;
-        var isComplete = hasTeamRepresentativeRole && hasTeamBasicOrHigherPlan && hasTeamProfile;
+        var isComplete = hasTeamRepresentativeRole && hasTeamProfile;
         string actionLabel;
         string actionUrl;
 
@@ -6866,11 +6927,6 @@ public sealed class AccountController(
         {
             actionLabel = "Choose team role";
             actionUrl = accountTypeUrl;
-        }
-        else if (!hasTeamBasicOrHigherPlan)
-        {
-            actionLabel = "Choose Basic Team";
-            actionUrl = $"/account/onboarding/choose-plan?bundle={TeamBundleCode}";
         }
         else if (!hasTeamProfile)
         {
@@ -6888,25 +6944,28 @@ public sealed class AccountController(
             hasTeamRepresentativeRole
                 ? "Team representative role is selected."
                 : "Select Team representative so coach tools appear.",
-            hasTeamBasicOrHigherPlan
-                ? "Basic Team or higher is active for registration tools."
-                : "Choose Basic Team or higher before turning on tryout registration.",
             hasTeamProfile
                 ? $"Team profile ready: {primaryTeam!.TeamName}."
-                : "Add the team profile players will see on listings."
+                : "Add the team profile players will see on listings.",
+            hasTeamBasicOrHigherPlan
+                ? "Basic Team or higher is active: online registration and check-in tools are unlocked."
+                : "Free Coach includes 1 published listing every 6 months. Basic Team adds online registration, check-in tools, and 9 listings every 12 months."
         };
+        CoachGettingStartedStepLinkPageItem[] secondaryLinks = hasTeamBasicOrHigherPlan
+            ? []
+            : [new CoachGettingStartedStepLinkPageItem("Compare team plans", $"/account/onboarding/choose-plan?bundle={TeamBundleCode}")];
 
         return new CoachGettingStartedStepPageItem(
             1,
             "Start the coach account",
-            "Set the account role, plan, and team profile before creating listings.",
+            "Choose the team role and add the team profile players will see.",
             isComplete ? "Complete" : "Next",
             isComplete,
             true,
             actionLabel,
             actionUrl,
             details,
-            []);
+            secondaryLinks);
     }
 
     private static CoachGettingStartedStepPageItem BuildCoachTryoutListingStep(
@@ -6919,9 +6978,7 @@ public sealed class AccountController(
     {
         var isAvailable = foundationComplete && canPostOpportunities;
         var isComplete = latestTryout is not null
-            && latestTryout.IsPublished
-            && latestTryout.RegistrationRequired
-            && latestTryout.HasPdfFlyer;
+            && latestTryout.IsPublished;
         var actionUrl = latestTryout is null ? createTryoutUrl : tryoutEditUrl;
         var actionLabel = latestTryout is null ? "Create tryout listing" : "Edit tryout listing";
         string[] details = latestTryout is null
@@ -9817,6 +9874,8 @@ public sealed class AccountController(
             .Where(opportunity =>
                 opportunity.IsActive
                 || opportunity.UpdatedAt > opportunity.PublishedAt!.Value.AddHours(24))
+            .Where(opportunity => !dbContext.FlyerImports.Any(
+                flyerImport => flyerImport.OpportunityId == opportunity.Id))
             .GroupBy(opportunity => opportunity.TeamId)
             .Select(group => new
             {

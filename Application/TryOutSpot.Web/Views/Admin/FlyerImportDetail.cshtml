@@ -26,7 +26,7 @@
     <div asp-validation-summary="All" class="text-danger mb-3"></div>
 
     <section class="admin-detail-layout">
-        <form action="@formAction" method="post" enctype="multipart/form-data" class="account-form">
+        <form id="flyer-review-form" action="@formAction" method="post" enctype="multipart/form-data" class="account-form">
             @Html.AntiForgeryToken()
 
             <section class="form-section">
@@ -278,23 +278,25 @@
                 @if (Model.Import.OpportunityId.HasValue)
                 {
                     <div class="form-actions mt-3">
-                        <a class="btn btn-outline-primary btn-sm" href="/admin/team-opportunities?q=@Uri.EscapeDataString(Model.Form.Title ?? Model.Form.TeamName ?? string.Empty)">Open listing queue</a>
+                        <a class="btn btn-outline-primary btn-sm" href="/admin/team-opportunities/@Model.Import.OpportunityId/edit">Edit listing</a>
+                        <a class="btn btn-outline-primary btn-sm" href="/admin/flyer-imports?status=@TryOutSpotFlyerImportStatuses.PendingReview">Next pending flyer</a>
                         <a class="btn btn-outline-secondary btn-sm" href="/admin/teams?q=@Uri.EscapeDataString(Model.Form.TeamName ?? string.Empty)">Open team</a>
                     </div>
                 }
                 else if (!string.Equals(Model.Import.Status, TryOutSpotFlyerImportStatuses.Rejected, StringComparison.Ordinal))
                 {
-                    <form asp-action="CreateListingFromFlyerImport" asp-controller="Admin" asp-route-flyerImportId="@Model.Import.ImportId" method="post" class="mt-3">
+                    <div class="mt-3">
                         <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="PublishImmediately" value="true" id="publish-immediately" />
+                            <input form="flyer-review-form" class="form-check-input" type="checkbox" name="PublishImmediately" value="true" id="publish-immediately" />
                             <label class="form-check-label" for="publish-immediately">Publish immediately</label>
                         </div>
                         @if (hasBlockingDuplicate)
                         {
-                            <input type="hidden" name="ConfirmDuplicateOverride" value="true" />
+                            <input form="flyer-review-form" type="hidden" name="ConfirmDuplicateOverride" value="true" />
                         }
-                        <button type="submit" class="btn btn-primary btn-sm">@(hasBlockingDuplicate ? "Create listing anyway" : "Create listing")</button>
-                    </form>
+                        <button form="flyer-review-form" type="submit" name="AfterSave" value="create-listing" class="btn btn-primary btn-sm">@(hasBlockingDuplicate ? "Save and create listing anyway" : "Save and create listing")</button>
+                        <p class="section-help mt-1">Saves your edits to the fields, then creates the listing.</p>
+                    </div>
 
                     @if (hasBlockingDuplicate)
                     {
@@ -309,7 +311,7 @@
                             <label class="form-label" for="reject-admin-notes">Reject notes</label>
                             <textarea id="reject-admin-notes" name="AdminNotes" class="form-control" rows="3">@Model.Form.AdminNotes</textarea>
                         </div>
-                        <button type="submit" class="btn btn-outline-danger btn-sm">Reject import</button>
+                        <button type="submit" class="btn btn-outline-danger btn-sm" data-confirm="Reject this flyer import?">Reject import</button>
                     </form>
                 }
             }

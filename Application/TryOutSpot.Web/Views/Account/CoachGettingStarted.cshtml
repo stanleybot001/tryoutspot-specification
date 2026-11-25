@@ -31,7 +31,14 @@
         </div>
         <div>
             <span>Registration tools</span>
-            <strong>@(Model.CanConfigureTryoutRegistration ? "Ready" : "Needs Basic")</strong>
+            @if (Model.CanConfigureTryoutRegistration)
+            {
+                <strong>Ready</strong>
+            }
+            else
+            {
+                <strong><a href="/account/onboarding/choose-plan?bundle=team">Upgrade to Basic Team</a></strong>
+            }
         </div>
     </section>
 
@@ -76,6 +83,7 @@
                             else if (!string.IsNullOrWhiteSpace(step.ActionLabel))
                             {
                                 <span class="btn btn-outline-secondary disabled" aria-disabled="true">@step.ActionLabel</span>
+                                <span class="section-help">Finish step 1 first.</span>
                             }
 
                             @foreach (var link in step.SecondaryLinks)

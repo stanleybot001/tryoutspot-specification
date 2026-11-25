@@ -418,7 +418,7 @@
                     {
                         <form asp-action="CancelMembership" asp-controller="Account" method="post" class="inline-form">
                             <input type="hidden" name="bundleType" value="@playerParentBundleCode" />
-                            <button type="submit" class="btn btn-outline-danger">Cancel Parent/Player paid membership</button>
+                            <button type="submit" class="btn btn-outline-danger" data-confirm="Cancel your Parent/Player paid membership? Premium features stay active until the end of the current billing period.">Cancel Parent/Player paid membership</button>
                         </form>
                     }
                 </div>
@@ -511,7 +511,7 @@
                     {
                         <form asp-action="CancelMembership" asp-controller="Account" method="post" class="inline-form">
                             <input type="hidden" name="bundleType" value="@teamBundleCode" />
-                            <button type="submit" class="btn btn-outline-danger">Cancel Team paid membership</button>
+                            <button type="submit" class="btn btn-outline-danger" data-confirm="Cancel your Team paid membership? Team features stay active until the end of the current billing period.">Cancel Team paid membership</button>
                         </form>
                     }
                 </div>
@@ -567,7 +567,7 @@
                 @if (Model.CanCancelPaidMembership && Model.CanCancelPlayerParentPaidMembership && Model.CanCancelTeamPaidMembership)
                 {
                     <form asp-action="CancelMembership" asp-controller="Account" method="post" class="inline-form">
-                        <button type="submit" class="btn btn-outline-danger">Cancel all paid memberships</button>
+                        <button type="submit" class="btn btn-outline-danger" data-confirm="Cancel all paid memberships? Paid features stay active until the end of each billing period.">Cancel all paid memberships</button>
                     </form>
                 }
             </div>
@@ -617,7 +617,6 @@
                                 {
                                     <span>@(membership.ActiveEntitlementLabel ?? "Active entitlement")</span>
                                 }
-                            }
                             </div>
                         </div>
                     }

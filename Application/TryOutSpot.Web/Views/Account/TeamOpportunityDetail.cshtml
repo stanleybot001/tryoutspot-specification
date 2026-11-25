@@ -403,11 +403,16 @@
 
                     <div class="form-field">
                         <label asp-for="RegistrationForm.PlayerId" class="form-label">Player profile <span class="required-marker">*</span></label>
-                        <select asp-for="RegistrationForm.PlayerId" class="form-select">
+                        <select asp-for="RegistrationForm.PlayerId" class="form-select" data-player-autofill>
                             <option value="">Select player</option>
                             @foreach (var player in Model.RegistrationPlayers.Where(player => !player.AlreadyRegistered))
                             {
-                                <option value="@player.PlayerId">@player.DisplayName</option>
+                                <option value="@player.PlayerId"
+                                        data-player-name="@player.ProfileName"
+                                        data-player-birthdate="@(player.ProfileBirthDate?.ToString("yyyy-MM-dd"))"
+                                        data-player-school="@player.ProfileSchool"
+                                        data-player-phone="@player.ProfilePhone"
+                                        data-player-email="@player.ProfileEmail">@player.DisplayName</option>
                             }
                         </select>
                         <span asp-validation-for="RegistrationForm.PlayerId" class="text-danger"></span>

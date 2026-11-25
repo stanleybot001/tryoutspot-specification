@@ -555,7 +555,7 @@ public sealed class AccountPageTests
     }
 
     [Fact]
-    public async Task CoachGettingStarted_RequiresWebCookieAndGuidesCoachToBasicPlan()
+    public async Task CoachGettingStarted_RequiresWebCookieAndGuidesFreeCoachToTeamProfile()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
         await factory.CreateUserAsync("coach-hub-new@example.com", [TryOutSpotRoles.TeamRepresentative]);
@@ -574,10 +574,12 @@ public sealed class AccountPageTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("Coach Getting Started Hub", html);
-        Assert.Contains("Choose Basic Team", html);
+        Assert.Contains("Add team profile", html);
+        Assert.Contains("Free Coach includes 1 published listing every 6 months.", html);
         Assert.Contains("href=\"/account/onboarding/choose-plan?bundle=team\"", html);
         Assert.Contains("Create tryout listing", html);
         Assert.Contains("Locked", html);
+        Assert.DoesNotContain("Choose Basic Team", html);
     }
 
     [Fact]

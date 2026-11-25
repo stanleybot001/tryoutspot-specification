@@ -861,6 +861,8 @@ public sealed class TeamListingsApiController(
             .Where(opportunity =>
                 opportunity.IsActive
                 || opportunity.UpdatedAt > opportunity.PublishedAt!.Value.AddHours(24))
+            .Where(opportunity => !dbContext.FlyerImports.Any(
+                flyerImport => flyerImport.OpportunityId == opportunity.Id))
             .CountAsync(cancellationToken);
 
         if (publishedCountInWindow >= postingAccess.PublishingLimit)

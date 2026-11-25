@@ -104,7 +104,7 @@
                             {
                                 <form asp-action="DeactivatePlayerListing" asp-controller="Admin" asp-route-listingId="@listing.ListingId" method="post" class="inline-form">
                                     <input type="hidden" name="returnUrl" value="@returnUrl" />
-                                    <button type="submit" class="btn btn-outline-warning btn-sm">Deactivate</button>
+                                    <button type="submit" class="btn btn-outline-warning btn-sm" data-confirm="Deactivate this item? It will be hidden from users.">Deactivate</button>
                                 </form>
                             }
                             else
@@ -116,7 +116,7 @@
                             }
                             <form asp-action="DeletePlayerListing" asp-controller="Admin" asp-route-listingId="@listing.ListingId" method="post" class="inline-form">
                                 <input type="hidden" name="returnUrl" value="@returnUrl" />
-                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                                <button type="submit" class="btn btn-outline-danger btn-sm" data-confirm="Permanently delete this item? This cannot be undone.">Delete</button>
                             </form>
                         </div>
                     </article>

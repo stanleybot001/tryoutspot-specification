@@ -63,6 +63,82 @@ public sealed class TeamOpportunityRegistrationPageTests
     }
 
     [Fact]
+    public async Task RegisteringSecondChild_UsesSelectedChildDetailsInsteadOfFirstChildPrefill()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var parentUser = await factory.CreateUserAsync("parent-two-children@example.com", [TryOutSpotRoles.Parent]);
+        var seeded = SeedPublishedTryoutOpportunity(factory, parentUser.Id, fillToCapacity: false);
+        var secondPlayerId = Guid.NewGuid();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var now = DateTime.UtcNow;
+            dbContext.Players.Add(new Player
+            {
+                Id = secondPlayerId,
+                FirstName = "Second",
+                LastName = "Child",
+                DateOfBirth = new DateTime(2014, 6, 2, 0, 0, 0, DateTimeKind.Utc),
+                SchoolName = "North Middle",
+                ContactPhone = "555-333-4444",
+                ContactEmail = "second.child@example.com",
+                ContactVisibility = "VerifiedCoachesOnly",
+                IsSearchable = true,
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsActive = true
+            });
+            dbContext.UserPlayerRelationships.Add(new UserPlayerRelationship
+            {
+                Id = Guid.NewGuid(),
+                UserId = parentUser.Id,
+                PlayerId = secondPlayerId,
+                Relationship = "Parent",
+                CanManage = true,
+                CreatedAt = now
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, parentUser.Email!);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/settings");
+        var response = await client.PostAsync(
+            $"/opportunities/{seeded.OpportunityId}/register",
+            new FormUrlEncodedContent(
+            [
+                new("__RequestVerificationToken", antiForgeryToken),
+                new("RegistrationForm.PlayerId", secondPlayerId.ToString()),
+                new("RegistrationForm.PlayerName", "Managed Player"),
+                new("RegistrationForm.PlayerBirthDate", "2012-01-15"),
+                new("RegistrationForm.PlayerSchool", "Central High"),
+                new("RegistrationForm.PlayerPhone", "555-222-1111"),
+                new("RegistrationForm.PlayerEmail", "managed.player@example.com"),
+                new("RegistrationForm.GuardianEmail", "parent-two-children@example.com"),
+                new("RegistrationForm.WaiverAcknowledged", "true"),
+                new("RegistrationForm.WaiverSignerName", "Parent Tester")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+
+        using var verifyScope = factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var registration = await verifyDb.Registrations
+            .SingleAsync(current => current.OpportunityId == seeded.OpportunityId && current.PlayerId == secondPlayerId);
+        using var document = JsonDocument.Parse(registration.RegistrationData ?? "{}");
+        var data = document.RootElement;
+        Assert.Equal("Second Child", data.GetProperty("playerName").GetString());
+        Assert.Equal("2014-06-02", data.GetProperty("playerBirthDate").GetString());
+        Assert.Equal("North Middle", data.GetProperty("playerSchool").GetString());
+        Assert.Equal("555-333-4444", data.GetProperty("playerPhone").GetString());
+        Assert.Equal("second.child@example.com", data.GetProperty("playerEmail").GetString());
+    }
+
+    [Fact]
     public async Task AnonymousTryoutPage_ShowsCreateAccountAndSignInRegistrationActions()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();

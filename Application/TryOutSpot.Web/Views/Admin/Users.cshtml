@@ -106,7 +106,7 @@
                                 {
                                     <form asp-action="SuspendUser" asp-controller="Admin" asp-route-userId="@user.UserId" method="post" class="inline-form">
                                         <input type="hidden" name="returnUrl" value="@returnUrl" />
-                                        <button type="submit" class="btn btn-outline-danger btn-sm">Suspend user</button>
+                                        <button type="submit" class="btn btn-outline-danger btn-sm" data-confirm="Suspend this user? They will be signed out and unable to sign in.">Suspend user</button>
                                     </form>
                                 }
                                 else

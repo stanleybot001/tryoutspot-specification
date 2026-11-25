@@ -1565,6 +1565,8 @@ public sealed class AdminController(
     public async Task<IActionResult> UpdateFlyerImport(
         Guid flyerImportId,
         [Bind(Prefix = "Form")] AdminFlyerImportForm form,
+        [FromForm] string? afterSave,
+        AdminCreateListingFromFlyerImportForm createListingForm,
         CancellationToken cancellationToken = default)
     {
         if (!TryGetCurrentUserId(out var adminUserId))
@@ -1615,6 +1617,15 @@ public sealed class AdminController(
             });
         }
 
+        if (string.Equals(afterSave, "create-listing", StringComparison.Ordinal))
+        {
+            return await CreateListingFromSavedFlyerImportAsync(
+                flyerImportId,
+                adminUserId,
+                createListingForm,
+                cancellationToken);
+        }
+
         TempData["StatusMessage"] = "Flyer import updated.";
         return RedirectToAction(nameof(FlyerImportDetail), new { flyerImportId });
     }
@@ -1630,6 +1641,15 @@ public sealed class AdminController(
             return Unauthorized();
         }
 
+        return await CreateListingFromSavedFlyerImportAsync(flyerImportId, adminUserId, form, cancellationToken);
+    }
+
+    private async Task<IActionResult> CreateListingFromSavedFlyerImportAsync(
+        Guid flyerImportId,
+        Guid adminUserId,
+        AdminCreateListingFromFlyerImportForm form,
+        CancellationToken cancellationToken)
+    {
         var duplicateCheck = await flyerDuplicateDetectionService.FindDuplicatesAsync(flyerImportId, cancellationToken);
         if (duplicateCheck.HasBlockingDuplicate && !form.ConfirmDuplicateOverride)
         {

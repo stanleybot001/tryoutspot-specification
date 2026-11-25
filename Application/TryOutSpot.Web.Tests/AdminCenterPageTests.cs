@@ -227,7 +227,7 @@ public sealed class AdminCenterPageTests
         Assert.Contains("Likely duplicate", html);
         Assert.Contains("100% match", html);
         Assert.Contains("same contact email and phone", html);
-        Assert.Contains("Create listing anyway", html);
+        Assert.Contains("Save and create listing anyway", html);
         Assert.Contains("Skip duplicate", html);
 
         var token = await GetAntiForgeryTokenAsync(client, detailPath);
