@@ -31,6 +31,15 @@ Site-wide pass to simplify player/parent, team, and admin flows while keeping th
 - Overview numbers link to their filtered queues.
 - Deactivating or deleting a listing marks its open reports as Action taken. Report detail has a one-click Dismiss.
 
+## Local marketing pages
+
+- Public local pages: `/tryouts/{state}/{city-slug}` (for example `/tryouts/ks/wichita`) and `/tryouts/near/{zip}`. Both reuse the normal tryout search with the city's first catalog ZIP (lowest ZIP code) as the origin.
+- Default radius is 65 miles (`TryOutSpotLocalPages.DefaultRadiusMiles`). Visitors can switch with `?radius=` chips (25/50/65/100/120); the search still caps at the viewer's plan limit (120 free).
+- City slugs come from `TryOutSpotLocalPages.Slugify` against `ZipCodeGeographies.City`. Lookup does a direct lower-case name match first and only scans the state's ZIP list for punctuated names. `st-`/`ft-`/`mt-` abbreviations and uppercase states 301-redirect to the canonical slug (the catalog uses "Saint Louis", not "St. Louis"). Unknown cities return 404.
+- Each page sets a title, meta description, and canonical URL; pages with zero results are `noindex, follow` so thin pages are not indexed.
+- Admin "Local roundup" (`/admin/local-roundup`): ZIP + radius + sport + date window builds ready-to-post text (up to 10 upcoming listings, the local page link, and city/state hashtags such as `#WichitaBaseball #KSBaseball`). Copy button for Facebook/groups, and a shorter X version through `_SocialShareButtons`. Posting is manual; nothing auto-posts, and roundups contain team listings only (never player/minor profiles).
+- Not yet built: a sitemap listing the city pages.
+
 ## Shared front-end helpers
 
 - `wwwroot/js/site.js`: copy-to-clipboard, `data-confirm`, player autofill, `data-exclusive-group` checkboxes.

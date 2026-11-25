@@ -1642,6 +1642,10 @@ public sealed class SearchTeamItemsPageModel
 
     public bool IsPublicSearch { get; set; }
 
+    public string? LocalAreaName { get; set; }
+
+    public string? LocalPagePath { get; set; }
+
     public bool HasAdvancedOpportunitySearch { get; set; }
 
     public bool CanUseOpportunityTypeFilters { get; set; }

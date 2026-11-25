@@ -1,18 +1,55 @@
 @model SearchTeamItemsPageModel
 
 @{
-    ViewData["Title"] = "Find Tryouts & Events";
+    var isLocalPage = !string.IsNullOrWhiteSpace(Model.LocalAreaName);
+    var localRadiusMiles = Model.SearchRadiusMiles ?? Model.RadiusMiles ?? TryOutSpotLocalPages.DefaultRadiusMiles;
+    ViewData["Title"] = isLocalPage ? $"Tryouts near {Model.LocalAreaName}" : "Find Tryouts & Events";
+    if (isLocalPage)
+    {
+        ViewData["MetaDescription"] = $"Upcoming baseball and softball tryouts, camps, tournaments, and roster openings within {localRadiusMiles} miles of {Model.LocalAreaName}.";
+        ViewData["CanonicalPath"] = Model.LocalPagePath;
+        if (Model.TotalCount == 0)
+        {
+            ViewData["Robots"] = "noindex, follow";
+        }
+    }
+
     var searchAction = Model.IsPublicSearch ? "PublicTryouts" : "SearchTeamItems";
+    var returnPath = isLocalPage ? Model.LocalPagePath! : "/tryouts";
+    var encodedReturnPath = Uri.EscapeDataString(returnPath);
     var upgradeUrl = Model.IsPublicSearch
-        ? "/account/register?accountType=Parent&returnUrl=%2Ftryouts"
+        ? $"/account/register?accountType=Parent&returnUrl={encodedReturnPath}"
         : "/account/onboarding/choose-plan?bundle=player_parent";
 }
 
 <section class="account-page search-page">
     <div class="account-heading">
         <p class="account-kicker">Find tryouts</p>
-        <h1>Find tryouts &amp; events near you</h1>
-        <p>Search tryouts, tournaments, camps, and roster openings. Enter your ZIP code to see what's closest first.</p>
+        @if (isLocalPage)
+        {
+            <h1>Tryouts &amp; events near @Model.LocalAreaName</h1>
+            <p>Tryouts, tournaments, camps, and roster openings within @localRadiusMiles miles, closest first.</p>
+            <nav class="local-radius-row" aria-label="Search distance">
+                <span>Within:</span>
+                @foreach (var radiusOption in TryOutSpotLocalPages.RadiusOptions.Where(option => option <= Model.MaxRadiusMiles))
+                {
+                    var radiusHref = radiusOption == TryOutSpotLocalPages.DefaultRadiusMiles
+                        ? Model.LocalPagePath
+                        : $"{Model.LocalPagePath}?radius={radiusOption}";
+                    if (Model.SportId.HasValue)
+                    {
+                        radiusHref += $"{(radiusHref!.Contains('?') ? "&" : "?")}sportId={Model.SportId}";
+                    }
+
+                    <a href="@radiusHref" class="@(radiusOption == localRadiusMiles ? "is-active" : null)" aria-current="@(radiusOption == localRadiusMiles ? "true" : null)">@radiusOption mi</a>
+                }
+            </nav>
+        }
+        else
+        {
+            <h1>Find tryouts &amp; events near you</h1>
+            <p>Search tryouts, tournaments, camps, and roster openings. Enter your ZIP code to see what's closest first.</p>
+        }
     </div>
 
     @if (TempData["StatusMessage"] is string statusMessage)
@@ -23,8 +60,8 @@
     @if (Model.IsPublicSearch)
     {
         <div class="account-alert">
-            You're browsing as a guest. <a href="/account/register?accountType=Parent&amp;returnUrl=%2Ftryouts">Create a free account</a>
-            to save tryouts and register your player online. Already have one? <a href="/account/login?returnUrl=%2Ftryouts">Sign in</a>.
+            You're browsing as a guest. <a href="/account/register?accountType=Parent&amp;returnUrl=@encodedReturnPath">Create a free account</a>
+            to save tryouts and register your player online. Already have one? <a href="/account/login?returnUrl=@encodedReturnPath">Sign in</a>.
         </div>
     }
     else if (!Model.HasAdvancedOpportunitySearch)
@@ -44,7 +81,7 @@
     }
 
     <section class="form-section">
-        <form method="get" class="account-form search-form">
+        <form method="get" class="account-form search-form" asp-action="@searchAction">
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
             <div class="form-grid three-column">
                 <div class="form-field">

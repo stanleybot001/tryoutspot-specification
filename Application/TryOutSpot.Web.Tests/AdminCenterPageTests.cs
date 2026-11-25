@@ -54,6 +54,49 @@ public sealed class AdminCenterPageTests
     }
 
     [Fact]
+    public async Task PlatformAdmin_LocalRoundup_BuildsPostTextWithLocalLinkAndHashtags()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var teamOwner = await factory.CreateUserAsync("roundup-team-owner@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var admin = await factory.CreateUserAsync("roundup-admin@example.com", [TryOutSpotRoles.PlatformAdmin]);
+        var sportId = GetActiveSportId(factory);
+        SeedTeamOpportunity(factory, teamOwner.Id, sportId, "Roundup Heat", "Roundup spring tryout");
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            dbContext.ZipCodeGeographies.Add(new ZipCodeGeography
+            {
+                ZipCode = "67202",
+                City = "Wichita",
+                State = "KS",
+                Latitude = 37.6872m,
+                Longitude = -97.3301m,
+                IsActive = true
+            });
+            dbContext.SaveChanges();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, admin.Email!);
+
+        var response = await client.GetAsync("/admin/local-roundup?zip=67202");
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+        var missing = WebUtility.HtmlDecode(await (await client.GetAsync("/admin/local-roundup?zip=99999")).Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Near Wichita, KS", html);
+        Assert.Contains("Roundup spring tryout - Roundup Heat, Wichita, KS", html);
+        Assert.Contains("See details and register: http://localhost/tryouts/ks/wichita", html);
+        Assert.Contains("#WichitaBaseball #KSBaseball #WichitaSoftball #KSSoftball #Tryouts", html);
+        Assert.Contains("https://twitter.com/intent/tweet?text=", html);
+        Assert.Contains("Copy post text", html);
+        Assert.Contains("not in the geographic catalog", missing);
+    }
+
+    [Fact]
     public async Task PlatformAdmin_CanUseAdminCenterPagesAndReviewReport()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();

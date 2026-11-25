@@ -2135,6 +2135,34 @@ details.phone-verification-panel[open] > summary {
   margin-top: 0.5rem;
 }
 
+.local-radius-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.local-radius-row a {
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--bs-border-color, #ced4da);
+  border-radius: 999px;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.local-radius-row a.is-active {
+  background: var(--bs-primary, #0d6efd);
+  border-color: var(--bs-primary, #0d6efd);
+  color: #fff;
+}
+
+.roundup-output {
+  width: 100%;
+  min-height: 14rem;
+  font-family: inherit;
+}
+
 .recruiting-link-list {
   display: grid;
   gap: 0.75rem;

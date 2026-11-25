@@ -1,0 +1,95 @@
+@model AdminLocalRoundupPageModel
+
+@{
+    ViewData["Title"] = "Local Roundup";
+}
+
+<section class="account-page admin-page">
+    <div class="account-heading">
+        <p class="account-kicker">Marketing</p>
+        <h1>Local tryout roundup</h1>
+        <p>Build a ready-to-post summary of upcoming tryouts near a ZIP code, then post it to X, Facebook, or a local parents group.</p>
+    </div>
+
+    @await Html.PartialAsync("_AdminNav")
+
+    <section class="form-section">
+        <form method="get" class="admin-filter-form">
+            <div class="form-field">
+                <label class="form-label" for="roundup-zip">ZIP code</label>
+                <input id="roundup-zip" class="form-control" name="zip" value="@Model.ZipCode" inputmode="numeric" maxlength="10" required />
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="roundup-radius">Within</label>
+                <select id="roundup-radius" class="form-select" name="radius">
+                    @foreach (var radius in Model.RadiusOptions)
+                    {
+                        <option value="@radius" selected="@(Model.RadiusMiles == radius)">@radius miles</option>
+                    }
+                </select>
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="roundup-sport">Sport</label>
+                <select id="roundup-sport" class="form-select" name="sportId">
+                    <option value="">Baseball &amp; softball (all sports)</option>
+                    @foreach (var sport in Model.Sports)
+                    {
+                        <option value="@sport.SportId" selected="@(Model.SportId == sport.SportId)">@sport.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="roundup-days">Events in the next</label>
+                <select id="roundup-days" class="form-select" name="days">
+                    @foreach (var dayCount in Model.DayOptions)
+                    {
+                        <option value="@dayCount" selected="@(Model.Days == dayCount)">@dayCount days</option>
+                    }
+                </select>
+            </div>
+            <div class="form-actions admin-filter-actions">
+                <button type="submit" class="btn btn-primary">Build roundup</button>
+            </div>
+        </form>
+    </section>
+
+    @if (Model.ErrorMessage is not null)
+    {
+        <div class="account-alert">@Model.ErrorMessage</div>
+    }
+
+    @if (Model.HasResult)
+    {
+        <section class="form-section">
+            <div class="opportunity-row-head">
+                <h2>Near @Model.AreaName</h2>
+                <span class="section-help">@Model.TotalCount upcoming within @Model.RadiusMiles miles</span>
+            </div>
+
+            @if (Model.PostText is null)
+            {
+                <p class="section-help">No upcoming listings in this area yet. Try a larger distance or a longer date range; there's nothing worth posting here today.</p>
+            }
+            else
+            {
+                <label class="form-label" for="roundup-text">Post text</label>
+                <textarea id="roundup-text" class="form-control roundup-output" readonly>@Model.PostText</textarea>
+                <div class="social-share-row">
+                    <button type="button" class="btn btn-sm btn-primary" data-copy-text="@Model.PostText" data-copy-status="#roundup-copy-status">Copy post text</button>
+                    <a class="btn btn-sm btn-outline-secondary" href="@Model.LocalPageUrl" target="_blank" rel="noopener">Open local page</a>
+                    <span id="roundup-copy-status" class="section-help" role="status"></span>
+                </div>
+                <p class="section-help mt-2">X gets a shorter version with the link attached. Facebook shares the link preview; paste the copied text as the post body. For parent groups, post manually and follow each group's rules.</p>
+                @await Html.PartialAsync("_SocialShareButtons", new SocialSharePageItem($"Tryouts near {Model.AreaName}", Model.ShortPostText!, Model.LocalPageUrl!))
+
+                <h3 class="h6 mt-4">Included listings</h3>
+                <ul class="section-help">
+                    @foreach (var item in Model.Items)
+                    {
+                        <li><a href="/opportunities/@item.OpportunityId">@item.Title</a> - @item.TeamName (@item.SportName)@(item.EventDate.HasValue ? $", {item.EventDate.Value.ToLocalTime():MMM d}" : string.Empty)</li>
+                    }
+                </ul>
+            }
+        </section>
+    }
+</section>

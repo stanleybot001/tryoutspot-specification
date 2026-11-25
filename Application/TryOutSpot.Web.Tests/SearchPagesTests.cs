@@ -56,6 +56,99 @@ public sealed class SearchPagesTests
     }
 
     [Fact]
+    public async Task LocalTryoutsByCity_DefaultsTo65MilesAndRadiusIsAdjustable()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        SeedZipCodeGeographies(factory);
+        SeedRadiusSuggestionOpportunity(factory);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var response = await client.GetAsync("/tryouts/ks/mcpherson");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+        Assert.Contains("Tryouts & events near McPherson, KS", html);
+        Assert.Contains("within 65 miles", html);
+        Assert.Contains("Wichita radius suggestion tryout", html);
+        Assert.Contains("rel=\"canonical\" href=\"http://localhost/tryouts/ks/mcpherson\"", html);
+        Assert.Contains("href=\"/tryouts/ks/mcpherson?radius=25\"", html);
+        Assert.Contains("value=\"65\" selected=\"selected\"", html);
+        Assert.DoesNotContain("value=\"ks\"", html);
+        Assert.DoesNotContain("noindex", html);
+
+        var narrowResponse = await client.GetAsync("/tryouts/ks/mcpherson?radius=25");
+        var narrowHtml = WebUtility.HtmlDecode(await narrowResponse.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, narrowResponse.StatusCode);
+        Assert.Contains("No tryouts or events matched these filters.", narrowHtml);
+        Assert.Contains("noindex", narrowHtml);
+    }
+
+    [Fact]
+    public async Task LocalTryouts_UnknownCityReturnsNotFoundAndUppercaseStateRedirects()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        SeedZipCodeGeographies(factory);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var missing = await client.GetAsync("/tryouts/ks/nowhere-town");
+        var uppercase = await client.GetAsync("/tryouts/KS/wichita?radius=100");
+        var byZip = await client.GetAsync("/tryouts/near/67202");
+
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal(HttpStatusCode.MovedPermanently, uppercase.StatusCode);
+        Assert.Equal("/tryouts/ks/wichita?radius=100", uppercase.Headers.Location?.ToString());
+        Assert.Equal(HttpStatusCode.OK, byZip.StatusCode);
+        var zipHtml = WebUtility.HtmlDecode(await byZip.Content.ReadAsStringAsync());
+        Assert.Contains("near Wichita, KS 67202", zipHtml);
+    }
+
+    [Fact]
+    public async Task LocalTryouts_AbbreviatedCityNameRedirectsToCatalogName()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            dbContext.ZipCodeGeographies.Add(new ZipCodeGeography
+            {
+                ZipCode = "63101",
+                City = "Saint Louis",
+                State = "MO",
+                Latitude = 38.6343m,
+                Longitude = -90.1910m,
+                IsActive = true
+            });
+            dbContext.SaveChanges();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var response = await client.GetAsync("/tryouts/mo/st-louis");
+
+        Assert.Equal(HttpStatusCode.MovedPermanently, response.StatusCode);
+        Assert.Equal("/tryouts/mo/saint-louis", response.Headers.Location?.ToString());
+    }
+
+    [Theory]
+    [InlineData("Wichita", "wichita")]
+    [InlineData("St. Louis", "st-louis")]
+    [InlineData("Winston-Salem", "winston-salem")]
+    [InlineData("Coeur d'Alene", "coeur-dalene")]
+    public void LocalPages_SlugifyCityNames(string city, string expected)
+    {
+        Assert.Equal(expected, TryOutSpotLocalPages.Slugify(city));
+    }
+
+    [Fact]
     public async Task PublicTryouts_SignedInVisitor_RedirectsToAccountSearch()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();

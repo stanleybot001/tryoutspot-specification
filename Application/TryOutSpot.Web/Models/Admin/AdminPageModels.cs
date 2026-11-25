@@ -12,6 +12,49 @@ public sealed record AdminDashboardPageModel(
     int ActiveTeamOpportunityCount,
     IReadOnlyCollection<AdminReportListItem> RecentReports);
 
+public sealed class AdminLocalRoundupPageModel
+{
+    public string? ZipCode { get; set; }
+
+    public int RadiusMiles { get; set; }
+
+    public Guid? SportId { get; set; }
+
+    public int Days { get; set; }
+
+    public IReadOnlyCollection<AdminSportOption> Sports { get; set; } = [];
+
+    public IReadOnlyCollection<int> RadiusOptions { get; set; } = [];
+
+    public IReadOnlyCollection<int> DayOptions { get; set; } = [];
+
+    public string? ErrorMessage { get; set; }
+
+    public string? AreaName { get; set; }
+
+    public string? LocalPageUrl { get; set; }
+
+    public int TotalCount { get; set; }
+
+    public IReadOnlyCollection<AdminLocalRoundupItem> Items { get; set; } = [];
+
+    public string? PostText { get; set; }
+
+    public string? ShortPostText { get; set; }
+
+    public bool HasResult => AreaName is not null && ErrorMessage is null;
+}
+
+public sealed record AdminLocalRoundupItem(
+    Guid OpportunityId,
+    string Title,
+    string TeamName,
+    string SportName,
+    string? AgeGroup,
+    DateTime? EventDate,
+    string? City,
+    string? State);
+
 public sealed class AdminPromotionsPageModel
 {
     public string PromotionCode { get; set; } = string.Empty;

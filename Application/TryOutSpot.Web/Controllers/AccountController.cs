@@ -150,7 +150,7 @@ public sealed class AccountController(
         "private_workout",
         "other"
     ];
-    private static readonly int[] SearchRadiusOptions = [10, 25, 30, 60, 120, 250, 500, 800, EntireUsRadiusMiles];
+    private static readonly int[] SearchRadiusOptions = [10, 25, 30, 50, 60, 65, 100, 120, 250, 500, 800, EntireUsRadiusMiles];
     private static readonly int[] SearchSuggestionRadiusMiles = [30, 60, 120, 250, 500, 800];
     private static readonly PlayerListingTypeSelectionPageItem[] PlayerListingTypeOptions =
     [
@@ -1217,6 +1217,116 @@ public sealed class AccountController(
         }
 
         var preparedModel = await BuildSearchTeamItemsPageModelAsync(null, model, cancellationToken);
+        return View(nameof(SearchTeamItems), preparedModel);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/tryouts/{state:length(2):alpha}/{citySlug:regex(^[[a-z0-9-]]+$)}")]
+    public async Task<IActionResult> LocalTryoutsByCity(
+        string state,
+        string citySlug,
+        [FromQuery] int? radius,
+        [FromQuery] Guid? sportId,
+        [FromQuery] int page = 1,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedState = state.ToUpperInvariant();
+        var spacedCityName = citySlug.Replace('-', ' ');
+        var stateCityZipCodes = dbContext.ZipCodeGeographies
+            .AsNoTracking()
+            .Where(zip => zip.IsActive && zip.State == normalizedState && zip.City != null)
+            .OrderBy(zip => zip.ZipCode)
+            .Select(zip => new { zip.ZipCode, zip.City });
+        var cityMatch = await stateCityZipCodes
+            .Where(zip => zip.City!.ToLower() == spacedCityName || zip.City!.ToLower() == citySlug)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (cityMatch is null)
+        {
+            var expandedSlug = TryOutSpotLocalPages.ExpandCitySlugAbbreviations(citySlug);
+            var stateZipCodes = await stateCityZipCodes.ToListAsync(cancellationToken);
+            cityMatch = stateZipCodes.FirstOrDefault(zip =>
+            {
+                var slug = TryOutSpotLocalPages.Slugify(zip.City!);
+                return string.Equals(slug, citySlug, StringComparison.Ordinal)
+                    || string.Equals(slug, expandedSlug, StringComparison.Ordinal);
+            });
+        }
+        if (cityMatch is null)
+        {
+            return NotFound();
+        }
+
+        var canonicalPath = TryOutSpotLocalPages.BuildCityPath(normalizedState, cityMatch.City!);
+        if (!string.Equals(Request.Path.Value, canonicalPath, StringComparison.Ordinal))
+        {
+            return RedirectPermanent($"{canonicalPath}{Request.QueryString}");
+        }
+
+        return await RenderLocalTryoutsAsync(
+            cityMatch.ZipCode,
+            $"{cityMatch.City}, {normalizedState}",
+            canonicalPath,
+            radius,
+            sportId,
+            page,
+            cancellationToken);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/tryouts/near/{zipCode:regex(^\\d{{5}}$)}")]
+    public async Task<IActionResult> LocalTryoutsByZip(
+        string zipCode,
+        [FromQuery] int? radius,
+        [FromQuery] Guid? sportId,
+        [FromQuery] int page = 1,
+        CancellationToken cancellationToken = default)
+    {
+        var zipGeography = await dbContext.ZipCodeGeographies
+            .AsNoTracking()
+            .Where(zip => zip.IsActive && zip.ZipCode == zipCode)
+            .Select(zip => new { zip.City, zip.State })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (zipGeography is null)
+        {
+            return NotFound();
+        }
+
+        var areaName = string.IsNullOrWhiteSpace(zipGeography.City) || string.IsNullOrWhiteSpace(zipGeography.State)
+            ? zipCode
+            : $"{zipGeography.City}, {zipGeography.State} {zipCode}";
+        return await RenderLocalTryoutsAsync(
+            zipCode,
+            areaName,
+            TryOutSpotLocalPages.BuildZipPath(zipCode),
+            radius,
+            sportId,
+            page,
+            cancellationToken);
+    }
+
+    private async Task<IActionResult> RenderLocalTryoutsAsync(
+        string originZipCode,
+        string areaName,
+        string localPagePath,
+        int? radius,
+        Guid? sportId,
+        int page,
+        CancellationToken cancellationToken)
+    {
+        ModelState.Clear();
+        var user = User.Identity?.IsAuthenticated == true
+            ? await GetCurrentWebUserAsync()
+            : null;
+        var model = new SearchTeamItemsPageModel
+        {
+            OriginZipCode = originZipCode,
+            RadiusMiles = radius is > 0 ? radius : TryOutSpotLocalPages.DefaultRadiusMiles,
+            SportId = sportId,
+            Page = Math.Max(page, 1)
+        };
+        var preparedModel = await BuildSearchTeamItemsPageModelAsync(user, model, cancellationToken);
+        preparedModel.LocalAreaName = areaName;
+        preparedModel.LocalPagePath = localPagePath;
         return View(nameof(SearchTeamItems), preparedModel);
     }
 

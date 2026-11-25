@@ -29,7 +29,7 @@
         nameof(Model.RecruitingProfileUrls)
     ];
     var hasOptionalDetailErrors = ViewData.ModelState.Any(entry =>
-        entry.Value.Errors.Count > 0
+        entry.Value is { Errors.Count: > 0 }
         && optionalDetailFields.Any(field => entry.Key == field || entry.Key.StartsWith(field + "[", StringComparison.Ordinal)));
     var visibleRecruitingSlotCount = Math.Min(TryOutSpotRecruitingPlatforms.MaxLinks, Math.Max(3, Model.RecruitingProfileUrls.Count + 1));
     string? GetFieldError(string key) => ViewData.ModelState.TryGetValue(key, out var entry) && entry.Errors.Count > 0

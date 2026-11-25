@@ -27,10 +27,14 @@ public sealed class AdminController(
     IFlyerDuplicateDetectionService flyerDuplicateDetectionService,
     IFlyerAiExtractionService flyerAiExtractionService,
     IFlyerImportRemoteFileFetcher flyerImportRemoteFileFetcher,
-    IPdfStorageService pdfStorageService) : Controller
+    IPdfStorageService pdfStorageService,
+    IZipRadiusSearchService zipRadiusSearchService) : Controller
 {
     private const int DefaultPageSize = 25;
     private const int MaxPageSize = 100;
+    private const int RoundupMaxItems = 10;
+    private const int RoundupDefaultDays = 30;
+    private static readonly int[] RoundupDayOptions = [7, 14, 30, 60];
     private static readonly string[] OpportunityTypeOptions =
     [
         "tryout",
@@ -85,6 +89,185 @@ public sealed class AdminController(
             activePlayerListingCount,
             activeTeamOpportunityCount,
             recentReports.Select(ToReportListItem).ToArray()));
+    }
+
+    [HttpGet("local-roundup")]
+    public async Task<IActionResult> LocalRoundup(
+        [FromQuery] string? zip,
+        [FromQuery] int? radius,
+        [FromQuery] Guid? sportId,
+        [FromQuery] int? days,
+        CancellationToken cancellationToken = default)
+    {
+        var sports = await GetSportOptionsAsync(cancellationToken);
+        var model = new AdminLocalRoundupPageModel
+        {
+            ZipCode = zip?.Trim(),
+            RadiusMiles = radius is > 0 and <= ZipRadiusSearchService.MaxRadiusMiles
+                ? radius.Value
+                : TryOutSpotLocalPages.DefaultRadiusMiles,
+            SportId = sportId,
+            Days = days is > 0 and <= 90 ? days.Value : RoundupDefaultDays,
+            Sports = sports,
+            RadiusOptions = TryOutSpotLocalPages.RadiusOptions,
+            DayOptions = RoundupDayOptions
+        };
+
+        if (string.IsNullOrWhiteSpace(zip))
+        {
+            return View(model);
+        }
+
+        var normalizedZipCode = zipRadiusSearchService.NormalizeZipCode(zip);
+        var zipRadius = normalizedZipCode is null
+            ? null
+            : await zipRadiusSearchService.ResolveZipCodesWithinRadiusAsync(
+                normalizedZipCode,
+                model.RadiusMiles,
+                cancellationToken);
+        var geography = zipRadius is null
+            ? null
+            : await dbContext.ZipCodeGeographies
+                .AsNoTracking()
+                .Where(geo => geo.ZipCode == zipRadius.OriginZipCode)
+                .Select(geo => new { geo.City, geo.State })
+                .FirstOrDefaultAsync(cancellationToken);
+        if (zipRadius is null || geography is null)
+        {
+            model.ErrorMessage = "That ZIP code is not in the geographic catalog.";
+            return View(model);
+        }
+
+        model.ZipCode = zipRadius.OriginZipCode;
+        var hasCityName = !string.IsNullOrWhiteSpace(geography.City) && !string.IsNullOrWhiteSpace(geography.State);
+        model.AreaName = hasCityName ? $"{geography.City}, {geography.State}" : zipRadius.OriginZipCode;
+        var localPath = hasCityName
+            ? TryOutSpotLocalPages.BuildCityPath(geography.State!, geography.City!)
+            : TryOutSpotLocalPages.BuildZipPath(zipRadius.OriginZipCode);
+        var localQuery = new List<string>();
+        if (model.RadiusMiles != TryOutSpotLocalPages.DefaultRadiusMiles)
+        {
+            localQuery.Add($"radius={model.RadiusMiles}");
+        }
+
+        if (sportId.HasValue)
+        {
+            localQuery.Add($"sportId={sportId.Value}");
+        }
+
+        model.LocalPageUrl = $"{Request.Scheme}://{Request.Host}{localPath}"
+            + (localQuery.Count > 0 ? "?" + string.Join("&", localQuery) : string.Empty);
+
+        var now = DateTime.UtcNow;
+        var today = now.Date;
+        var windowEnd = today.AddDays(model.Days + 1);
+        var zipCodes = zipRadius.ZipCodes.ToArray();
+        var query = dbContext.Opportunities
+            .AsNoTracking()
+            .Where(opportunity => opportunity.IsActive && opportunity.IsPublished)
+            .Where(opportunity => opportunity.ListingStartDate == null || opportunity.ListingStartDate <= now)
+            .Where(opportunity =>
+                (opportunity.ListingEndDate ?? opportunity.ExpiresAt) == null
+                || (opportunity.ListingEndDate ?? opportunity.ExpiresAt) > now)
+            .Where(opportunity => opportunity.Team.IsActive && opportunity.Team.IsSearchable)
+            .Where(opportunity => opportunity.EventDate == null
+                || (opportunity.EventDate >= today && opportunity.EventDate < windowEnd))
+            .Where(opportunity =>
+                (opportunity.ZipCode != null && zipCodes.Contains(opportunity.ZipCode))
+                || (opportunity.ZipCode == null
+                    && opportunity.Team.ZipCode != null
+                    && zipCodes.Contains(opportunity.Team.ZipCode)));
+        if (sportId.HasValue)
+        {
+            query = query.Where(opportunity => opportunity.SportId == sportId.Value);
+        }
+
+        model.TotalCount = await query.CountAsync(cancellationToken);
+        model.Items = await query
+            .OrderBy(opportunity => opportunity.EventDate == null)
+            .ThenBy(opportunity => opportunity.EventDate)
+            .ThenBy(opportunity => opportunity.Title)
+            .Take(RoundupMaxItems)
+            .Select(opportunity => new AdminLocalRoundupItem(
+                opportunity.Id,
+                opportunity.Title,
+                opportunity.Team.Name,
+                opportunity.Sport.Name,
+                opportunity.AgeGroup,
+                opportunity.EventDate,
+                opportunity.City ?? opportunity.Team.City,
+                opportunity.State ?? opportunity.Team.State))
+            .ToArrayAsync(cancellationToken);
+
+        var sportNames = sportId.HasValue
+            ? sports.Where(sport => sport.SportId == sportId.Value).Select(sport => sport.Name).ToArray()
+            : ["Baseball", "Softball"];
+        BuildRoundupPostText(model, hasCityName ? geography.City : null, geography.State, sportNames);
+        return View(model);
+    }
+
+    private static void BuildRoundupPostText(
+        AdminLocalRoundupPageModel model,
+        string? city,
+        string? state,
+        IReadOnlyCollection<string> sportNames)
+    {
+        var hashtags = new List<string>();
+        foreach (var sportName in sportNames)
+        {
+            if (!string.IsNullOrWhiteSpace(city))
+            {
+                hashtags.Add(ToHashtag(city + sportName));
+            }
+
+            if (!string.IsNullOrWhiteSpace(state))
+            {
+                hashtags.Add(ToHashtag(state + sportName));
+            }
+        }
+
+        hashtags.Add("#Tryouts");
+        var hashtagLine = string.Join(" ", hashtags.Distinct(StringComparer.OrdinalIgnoreCase));
+        var sportLabel = sportNames.Count == 1 ? sportNames.First().ToLowerInvariant() + " " : string.Empty;
+        var eventWord = model.TotalCount == 1 ? "event" : "events";
+
+        if (model.TotalCount == 0)
+        {
+            model.PostText = null;
+            model.ShortPostText = null;
+            return;
+        }
+
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine($"Upcoming {sportLabel}tryouts & events near {model.AreaName} (within {model.RadiusMiles} miles):");
+        builder.AppendLine();
+        foreach (var item in model.Items)
+        {
+            var date = item.EventDate?.ToLocalTime().ToString("MMM d") ?? "Open now";
+            var place = string.Join(", ", new[] { item.City, item.State }.Where(part => !string.IsNullOrWhiteSpace(part)));
+            var ageGroup = string.IsNullOrWhiteSpace(item.AgeGroup) ? string.Empty : $" ({item.AgeGroup})";
+            builder.Append($"- {date}: {item.Title}{ageGroup} - {item.TeamName}");
+            builder.AppendLine(string.IsNullOrWhiteSpace(place) ? string.Empty : $", {place}");
+        }
+
+        if (model.TotalCount > model.Items.Count)
+        {
+            builder.AppendLine($"...plus {model.TotalCount - model.Items.Count} more.");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine($"See details and register: {model.LocalPageUrl}");
+        builder.Append(hashtagLine);
+        model.PostText = builder.ToString();
+
+        var shortHashtags = string.Join(" ", hashtags.Take(2));
+        model.ShortPostText =
+            $"{model.TotalCount} upcoming {sportLabel}{eventWord} within {model.RadiusMiles} miles of {model.AreaName}. See dates and register: {shortHashtags}";
+    }
+
+    private static string ToHashtag(string value)
+    {
+        return "#" + new string(value.Where(char.IsAsciiLetterOrDigit).ToArray());
     }
 
     [HttpGet("promotions")]
