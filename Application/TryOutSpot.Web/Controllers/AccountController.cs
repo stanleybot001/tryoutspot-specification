@@ -3687,7 +3687,17 @@ public sealed class AccountController(
             cancellationToken);
         if (opportunity is null)
         {
-            return NotFound();
+            var hiddenOpportunity = currentUser is null
+                ? null
+                : await GetHiddenOpportunityForStaffAsync(opportunityId, currentUser, cancellationToken);
+            if (hiddenOpportunity is null)
+            {
+                return NotFound();
+            }
+
+            ViewData["HiddenListingNotice"] = DescribeHiddenOpportunity(hiddenOpportunity, DateTime.UtcNow);
+            ViewData["Robots"] = "noindex, nofollow";
+            opportunity = hiddenOpportunity;
         }
 
         var model = await BuildTeamOpportunityDetailPageModelAsync(
@@ -3696,6 +3706,72 @@ public sealed class AccountController(
             null,
             cancellationToken);
         return View(model);
+    }
+
+    private async Task<Opportunity?> GetHiddenOpportunityForStaffAsync(
+        Guid opportunityId,
+        User user,
+        CancellationToken cancellationToken)
+    {
+        var opportunity = await dbContext.Opportunities
+            .AsNoTracking()
+            .Where(currentOpportunity => currentOpportunity.Id == opportunityId)
+            .Include(currentOpportunity => currentOpportunity.Team)
+                .ThenInclude(team => team.Organization)
+            .Include(currentOpportunity => currentOpportunity.Sport)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (opportunity is null)
+        {
+            return null;
+        }
+
+        var isPlatformAdmin = (await userManager.GetRolesAsync(user))
+            .Contains(TryOutSpotRoles.PlatformAdmin, StringComparer.OrdinalIgnoreCase);
+        if (isPlatformAdmin || await UserManagesTeamAsync(user.Id, opportunity.TeamId, cancellationToken))
+        {
+            return opportunity;
+        }
+
+        return null;
+    }
+
+    private static string DescribeHiddenOpportunity(Opportunity opportunity, DateTime now)
+    {
+        var reasons = new List<string>();
+        if (!opportunity.IsActive)
+        {
+            reasons.Add("it has been deactivated");
+        }
+
+        if (!opportunity.IsPublished)
+        {
+            reasons.Add("it is not published");
+        }
+
+        var endDate = opportunity.ListingEndDate ?? opportunity.ExpiresAt;
+        if (endDate.HasValue && endDate.Value <= now)
+        {
+            reasons.Add($"its listing end date passed on {endDate.Value.ToLocalTime():MMM d, yyyy}");
+        }
+
+        if (opportunity.ListingStartDate.HasValue && opportunity.ListingStartDate.Value > now)
+        {
+            reasons.Add($"it doesn't go live until {opportunity.ListingStartDate.Value.ToLocalTime():MMM d, yyyy}");
+        }
+
+        if (!opportunity.Team.IsActive)
+        {
+            reasons.Add("the team is suspended");
+        }
+
+        if (!opportunity.Team.IsSearchable)
+        {
+            reasons.Add("the team is hidden from search");
+        }
+
+        return reasons.Count == 0
+            ? "Only team staff and admins can see this listing right now."
+            : $"The public can't see this listing because {string.Join(", and ", reasons)}. Only team staff and admins can see this page.";
     }
 
     [Authorize(

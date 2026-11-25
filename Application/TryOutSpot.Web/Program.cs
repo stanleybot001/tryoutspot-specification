@@ -383,40 +383,7 @@ app.UseForwardedHeaders();
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
-    app.UseStatusCodePages(async context =>
-    {
-        var httpContext = context.HttpContext;
-        if (httpContext.Response.StatusCode == StatusCodes.Status413PayloadTooLarge)
-        {
-            httpContext.Response.ContentType = "text/plain; charset=utf-8";
-            await httpContext.Response.WriteAsync(
-                "File upload is too large. Upload flyer files up to 10 MB.");
-            return;
-        }
-
-        var isOpportunityRegistrationPost =
-            httpContext.Response.StatusCode == StatusCodes.Status400BadRequest
-            && HttpMethods.IsPost(httpContext.Request.Method)
-            && httpContext.Request.Path.StartsWithSegments("/opportunities", StringComparison.OrdinalIgnoreCase)
-            && httpContext.Request.Path.Value?.EndsWith("/register", StringComparison.OrdinalIgnoreCase) == true;
-        if (isOpportunityRegistrationPost)
-        {
-            var statusLogger = httpContext.RequestServices
-                .GetRequiredService<ILoggerFactory>()
-                .CreateLogger("TryOutSpot.StatusCodes");
-            statusLogger.LogWarning(
-                "Team opportunity registration request returned 400. Path={Path} TraceIdentifier={TraceIdentifier} Authenticated={IsAuthenticated} Referer={Referer}",
-                httpContext.Request.Path,
-                httpContext.TraceIdentifier,
-                httpContext.User?.Identity?.IsAuthenticated ?? false,
-                httpContext.Request.Headers.Referer.ToString());
-
-            httpContext.Response.ContentType = "text/plain; charset=utf-8";
-            await httpContext.Response.WriteAsync(
-                "Registration could not be submitted. Refresh the opportunity page and try again. " +
-                "If the issue continues, sign out and sign back in before submitting.");
-        }
-    });
+    app.UseStatusCodePagesWithReExecute("/status/{0}");
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }

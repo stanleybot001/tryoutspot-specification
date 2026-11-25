@@ -54,6 +54,54 @@ public sealed class AdminCenterPageTests
     }
 
     [Fact]
+    public async Task ExpiredOpportunity_ShowsNoticeToStaffAndFriendlyNotFoundToPublic()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var teamOwner = await factory.CreateUserAsync("expired-owner@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var admin = await factory.CreateUserAsync("expired-admin@example.com", [TryOutSpotRoles.PlatformAdmin]);
+        var outsider = await factory.CreateUserAsync("expired-outsider@example.com", [TryOutSpotRoles.Parent]);
+        var sportId = GetActiveSportId(factory);
+        var (_, opportunityId) = SeedTeamOpportunity(factory, teamOwner.Id, sportId, "Expired Ravens", "Expired Ravens tryout");
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var opportunity = dbContext.Opportunities.Single(item => item.Id == opportunityId);
+            opportunity.ListingEndDate = DateTime.UtcNow.AddDays(-30);
+            dbContext.SaveChanges();
+        }
+
+        var anonymousClient = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var anonymous = await anonymousClient.GetAsync($"/opportunities/{opportunityId}");
+        var anonymousHtml = WebUtility.HtmlDecode(await anonymous.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.NotFound, anonymous.StatusCode);
+        Assert.Contains("This page isn't available", anonymousHtml);
+        Assert.Contains("This listing has ended", anonymousHtml);
+
+        var missing = await anonymousClient.GetAsync("/no-such-page");
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Contains("This page isn't available", WebUtility.HtmlDecode(await missing.Content.ReadAsStringAsync()));
+
+        foreach (var (email, canSee) in new[] { (teamOwner.Email!, true), (admin.Email!, true), (outsider.Email!, false) })
+        {
+            var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+            await LoginWebUserAsync(client, email);
+            var response = await client.GetAsync($"/opportunities/{opportunityId}");
+            var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+            if (canSee)
+            {
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                Assert.Contains("Not public.", html);
+                Assert.Contains("its listing end date passed", html);
+                Assert.Contains("Expired Ravens tryout", html);
+            }
+            else
+            {
+                Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            }
+        }
+    }
+
+    [Fact]
     public async Task PlatformAdmin_LocalRoundup_BuildsPostTextWithLocalLinkAndHashtags()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();

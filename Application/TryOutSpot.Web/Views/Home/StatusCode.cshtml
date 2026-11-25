@@ -1,0 +1,18 @@
+@model StatusCodePageModel
+
+@{
+    ViewData["Title"] = Model.Title;
+}
+
+<section class="account-page">
+    <div class="account-heading">
+        <p class="account-kicker">Error @Model.StatusCode</p>
+        <h1>@Model.Title</h1>
+        <p>@Model.Message</p>
+    </div>
+
+    <div class="form-actions">
+        <a class="btn btn-primary" href="/tryouts">Find tryouts</a>
+        <a class="btn btn-outline-secondary" href="/">Go to home page</a>
+    </div>
+</section>

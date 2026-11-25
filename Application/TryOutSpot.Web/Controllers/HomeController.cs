@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using TryOutSpot.Web.Billing;
 using TryOutSpot.Web.Models;
@@ -62,6 +63,79 @@ public class HomeController : Controller
         };
 
         return View(model);
+    }
+
+    [AcceptVerbs("GET", "POST", Route = "/status/{code:int}")]
+    [IgnoreAntiforgeryToken]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+    public IActionResult StatusCodePage(int code)
+    {
+        var feature = HttpContext.Features.Get<IStatusCodeReExecuteFeature>();
+        if (feature is null)
+        {
+            return NotFound();
+        }
+
+        var originalPath = feature.OriginalPath ?? string.Empty;
+        if (originalPath.StartsWith("/api", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(code);
+        }
+
+        var model = code switch
+        {
+            StatusCodes.Status404NotFound => new StatusCodePageModel(
+                code,
+                "This page isn't available",
+                originalPath.StartsWith("/opportunities", StringComparison.OrdinalIgnoreCase)
+                    ? "This listing has ended, been taken down, or is no longer public. Tryout listings come down automatically after their end date."
+                    : "The link may be old or mistyped, or the page may have been removed."),
+            StatusCodes.Status403Forbidden => new StatusCodePageModel(
+                code,
+                "You don't have access to this page",
+                "Sign in with an account that has access, or go back and try another page."),
+            StatusCodes.Status413PayloadTooLarge => new StatusCodePageModel(
+                code,
+                "That file is too large",
+                "Upload flyer files up to 10 MB."),
+            StatusCodes.Status400BadRequest when IsOpportunityRegistrationPost(originalPath) => new StatusCodePageModel(
+                code,
+                "Registration could not be submitted",
+                "Refresh the tryout page and try again. If it keeps happening, sign out and sign back in before submitting."),
+            StatusCodes.Status400BadRequest => new StatusCodePageModel(
+                code,
+                "Something about that request didn't work",
+                "Go back, refresh the page, and try again."),
+            StatusCodes.Status429TooManyRequests => new StatusCodePageModel(
+                code,
+                "Too many attempts",
+                "Wait a minute and try again."),
+            _ => new StatusCodePageModel(
+                code,
+                "Something went wrong",
+                "Go back and try again. If it keeps happening, contact support.")
+        };
+
+        if (code == StatusCodes.Status400BadRequest && IsOpportunityRegistrationPost(originalPath))
+        {
+            _logger.LogWarning(
+                "Team opportunity registration request returned 400. Path={Path} TraceIdentifier={TraceIdentifier} Authenticated={IsAuthenticated} Referer={Referer}",
+                originalPath,
+                HttpContext.TraceIdentifier,
+                User.Identity?.IsAuthenticated ?? false,
+                Request.Headers.Referer.ToString());
+        }
+
+        Response.StatusCode = code;
+        ViewData["Robots"] = "noindex, follow";
+        return View("StatusCode", model);
+    }
+
+    private bool IsOpportunityRegistrationPost(string originalPath)
+    {
+        return HttpMethods.IsPost(Request.Method)
+            && originalPath.StartsWith("/opportunities", StringComparison.OrdinalIgnoreCase)
+            && originalPath.EndsWith("/register", StringComparison.OrdinalIgnoreCase);
     }
 
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]

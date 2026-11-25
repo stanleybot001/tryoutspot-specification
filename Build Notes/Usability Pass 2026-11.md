@@ -40,6 +40,12 @@ Site-wide pass to simplify player/parent, team, and admin flows while keeping th
 - Admin "Local roundup" (`/admin/local-roundup`): ZIP + radius + sport + date window builds ready-to-post text (up to 10 upcoming listings, the local page link, and city/state hashtags such as `#WichitaBaseball #KSBaseball`). Copy button for Facebook/groups, and a shorter X version through `_SocialShareButtons`. Posting is manual; nothing auto-posts, and roundups contain team listings only (never player/minor profiles).
 - Not yet built: a sitemap listing the city pages.
 
+## Error pages
+
+- `UseStatusCodePagesWithReExecute("/status/{0}")` renders `Views/Home/StatusCode.cshtml` for empty-body error responses (404, 403, 400, 413, 429, others) so browsers no longer show their own blank error screen. `/api` paths still get a bare status code. The oversized-upload and failed-registration messages moved into `HomeController.StatusCodePage`.
+- `/opportunities/{id}` for a listing the public can't see (expired, unpublished, deactivated, scheduled, or team hidden/suspended) still returns 404 to the public, but platform admins and the team's own staff see the page with a "Not public" banner explaining why.
+- Production WAF note: Plesk ModSecurity rule `931130` (OWASP CRS RFI off-domain link) blocks the Google sign-in callback because Google returns `iss` and `scope` values containing URLs. Disable that rule for tryoutspot.com.
+
 ## Shared front-end helpers
 
 - `wwwroot/js/site.js`: copy-to-clipboard, `data-confirm`, player autofill, `data-exclusive-group` checkboxes.
