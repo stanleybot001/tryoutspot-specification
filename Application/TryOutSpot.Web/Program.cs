@@ -21,9 +21,15 @@ using TryOutSpot.Web.Services;
 var builder = WebApplication.CreateBuilder(args);
 const long ListingFlyerMaxUploadBytes = 10L * 1024L * 1024L;
 const long MultipartRequestLimitBytes = ListingFlyerMaxUploadBytes + (2L * 1024L * 1024L);
+builder.Configuration.AddJsonFile("appsettings.instance.json", optional: true, reloadOnChange: true);
 if (builder.Environment.IsDevelopment())
 {
     builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+}
+builder.Configuration.AddEnvironmentVariables();
+if (args.Length > 0)
+{
+    builder.Configuration.AddCommandLine(args);
 }
 
 builder.Logging.ClearProviders();

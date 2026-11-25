@@ -17,3 +17,12 @@ This is intentionally a blank MVC application with EF Core wired in but no domai
 ## Local Configuration
 
 The checked-in `appsettings.json` contains a placeholder connection string only. Do not store real database credentials in source control. Use user secrets, environment variables, or another local secret source for real values.
+
+For machine or server-specific file configuration:
+
+- Copy `Application/TryOutSpot.Web/appsettings.instance.template.json` to `appsettings.instance.json`.
+- Fill in only the values required by that deployment.
+- `appsettings.instance.json` is ignored by Git and included in local build and publish output when it exists.
+- The application loads the instance file in every environment. Local development settings can override it through `appsettings.Local.json`.
+- Environment variables and command-line arguments have the highest precedence.
+- The template is documentation only and is excluded from build and publish output.

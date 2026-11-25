@@ -11,6 +11,8 @@
   <ItemGroup>
     <Content Remove="appsettings.Local.json" />
     <Content Update="appsettings.Production.json" Condition="Exists('appsettings.Production.json')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Update="appsettings.instance.json" Condition="Exists('appsettings.instance.json')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Update="appsettings.instance.template.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
   <ItemGroup>
