@@ -413,6 +413,7 @@
                                         data-copy-text="@opportunityShareText"
                                         data-copy-status="#shareStatus-@opportunity.OpportunityId">Copy post</button>
                                 <span class="copy-status section-help" id="shareStatus-@opportunity.OpportunityId" aria-live="polite"></span>
+                                <partial name="_SocialShareButtons" model="@(new SocialSharePageItem(opportunity.Title, $"{Model.Team.TeamName}: {opportunity.Title} on TryOutSpot", publicOpportunityUrl))" />
                             }
                             <a class="btn btn-outline-primary btn-sm" href="/account/onboarding/team-opportunities/@Model.Team.TeamId/@opportunity.OpportunityId/edit">Edit</a>
 

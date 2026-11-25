@@ -8077,11 +8077,6 @@ public sealed class AccountController(
         socialLinks.TryGetValue("highlight_video_1", out var highlightVideoUrl1);
         socialLinks.TryGetValue("highlight_video_2", out var highlightVideoUrl2);
 
-        recruitingLinks.TryGetValue("sportsrecruits", out var sportsRecruitsProfileUrl);
-        recruitingLinks.TryGetValue("fieldlevel", out var fieldLevelProfileUrl);
-        recruitingLinks.TryGetValue("ncsa", out var ncsaProfileUrl);
-        recruitingLinks.TryGetValue("other", out var otherRecruitingProfileUrl);
-
         return new AddPlayerProfilePageModel
         {
             PlayerId = player.Id,
@@ -8122,10 +8117,7 @@ public sealed class AccountController(
             InstagramUrl = instagramUrl,
             YouTubeUrl = youTubeUrl,
             TikTokUrl = tikTokUrl,
-            SportsRecruitsProfileUrl = sportsRecruitsProfileUrl,
-            FieldLevelProfileUrl = fieldLevelProfileUrl,
-            NcsaProfileUrl = ncsaProfileUrl,
-            OtherRecruitingProfileUrl = otherRecruitingProfileUrl,
+            RecruitingProfileUrls = recruitingLinks.Values.Select(url => (string?)url).ToList(),
             SportDetails = player.PlayerSports
                 .Where(playerSport => playerSport.IsActive)
                 .OrderBy(playerSport => playerSport.Sport.Name)
@@ -8195,6 +8187,31 @@ public sealed class AccountController(
             }
         }
 
+        var populatedRecruitingUrlCount = 0;
+        for (var linkIndex = 0; linkIndex < model.RecruitingProfileUrls.Count; linkIndex++)
+        {
+            var recruitingUrl = model.RecruitingProfileUrls[linkIndex];
+            if (string.IsNullOrWhiteSpace(recruitingUrl))
+            {
+                continue;
+            }
+
+            populatedRecruitingUrlCount++;
+            if (recruitingUrl.Trim().Length > 500 || !TryNormalizeAbsoluteLink(recruitingUrl, out _))
+            {
+                ModelState.AddModelError(
+                    $"{nameof(model.RecruitingProfileUrls)}[{linkIndex}]",
+                    "Paste the full profile link, starting with https://");
+            }
+        }
+
+        if (populatedRecruitingUrlCount > TryOutSpotRecruitingPlatforms.MaxLinks)
+        {
+            ModelState.AddModelError(
+                nameof(model.RecruitingProfileUrls),
+                $"Add up to {TryOutSpotRecruitingPlatforms.MaxLinks} recruiting profile links.");
+        }
+
         if (!ModelState.IsValid || string.IsNullOrWhiteSpace(relationship) || contactVisibility is null)
         {
             return null;
@@ -8250,12 +8267,49 @@ public sealed class AccountController(
             ("highlight_video_1", model.HighlightVideoUrl1),
             ("highlight_video_2", model.HighlightVideoUrl2));
         player.RecruitingProfileLinks = SerializeLinkCollection(
-            ("sportsrecruits", model.SportsRecruitsProfileUrl),
-            ("fieldlevel", model.FieldLevelProfileUrl),
-            ("ncsa", model.NcsaProfileUrl),
-            ("other", model.OtherRecruitingProfileUrl));
+            BuildRecruitingProfileLinkPairs(model.RecruitingProfileUrls));
         player.IsSearchable = model.IsSearchable;
         player.UpdatedAt = now;
+    }
+
+    private static (string Key, string? Value)[] BuildRecruitingProfileLinkPairs(IEnumerable<string?> recruitingProfileUrls)
+    {
+        var pairs = new List<(string Key, string? Value)>();
+        var usedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var recruitingUrl in recruitingProfileUrls)
+        {
+            if (!TryNormalizeAbsoluteLink(recruitingUrl, out var normalizedUrl) || !seenUrls.Add(normalizedUrl))
+            {
+                continue;
+            }
+
+            var baseKey = TryOutSpotRecruitingPlatforms.Detect(new Uri(normalizedUrl))?.Code
+                ?? TryOutSpotRecruitingPlatforms.OtherCode;
+            var key = baseKey;
+            for (var suffix = 2; !usedKeys.Add(key); suffix++)
+            {
+                key = $"{baseKey}_{suffix}";
+            }
+
+            pairs.Add((key, normalizedUrl));
+            if (pairs.Count == TryOutSpotRecruitingPlatforms.MaxLinks)
+            {
+                break;
+            }
+        }
+
+        return pairs.ToArray();
+    }
+
+    private static IReadOnlyCollection<ExternalProfileLinkPageItem> BuildRecruitingLinkItems(string? serializedLinks)
+    {
+        return DeserializeLinkCollection(serializedLinks)
+            .Where(link => TryNormalizeAbsoluteLink(link.Value, out _))
+            .Select(link => new ExternalProfileLinkPageItem(
+                TryOutSpotRecruitingPlatforms.GetLabel(link.Key, link.Value),
+                link.Value))
+            .ToArray();
     }
 
     private static IReadOnlyDictionary<string, string> DeserializeLinkCollection(string? serializedLinks)
@@ -8580,12 +8634,7 @@ public sealed class AccountController(
                 ("highlight_video_2", "Highlight video 2"))
             : [];
         var recruitingLinks = hasEnhancedProfileVisibility
-            ? BuildPlayerExternalLinkItems(
-                player.RecruitingProfileLinks,
-                ("sportsrecruits", "SportsRecruits"),
-                ("fieldlevel", "FieldLevel"),
-                ("ncsa", "NCSA"),
-                ("other", "Other recruiting profile"))
+            ? BuildRecruitingLinkItems(player.RecruitingProfileLinks)
             : [];
 
         var now = DateTime.UtcNow;
@@ -8706,12 +8755,7 @@ public sealed class AccountController(
             ("highlight_video_2", "Highlight video 2"))
             : [];
         var recruitingLinks = hasEnhancedProfileVisibility
-            ? BuildPlayerExternalLinkItems(
-            player?.RecruitingProfileLinks,
-            ("sportsrecruits", "SportsRecruits"),
-            ("fieldlevel", "FieldLevel"),
-            ("ncsa", "NCSA"),
-            ("other", "Other recruiting profile"))
+            ? BuildRecruitingLinkItems(player?.RecruitingProfileLinks)
             : [];
         var isFavorited = currentUser is not null
             && await dbContext.UserFavorites

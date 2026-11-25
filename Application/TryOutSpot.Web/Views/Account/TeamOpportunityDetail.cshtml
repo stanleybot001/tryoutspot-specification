@@ -8,6 +8,7 @@
     var locationText = FormatLocation(Model.City, Model.State, Model.ZipCode);
     var metaDescription = BuildMetaDescription(Model.Title, Model.TeamName, Model.SportName, locationText, Model.RegistrationRequired);
     var shareText = $"{Model.TeamName} posted {FormatOpportunityType(Model.Type).ToLowerInvariant()} details for {Model.Title} on TryOutSpot: {shareUrl}";
+    var socialShareText = $"{Model.TeamName}: {Model.Title} ({FormatOpportunityType(Model.Type).ToLowerInvariant()}{(string.IsNullOrWhiteSpace(locationText) ? string.Empty : $", {locationText}")}) on TryOutSpot";
     var reportPageUrl = $"/opportunities/{Model.OpportunityId}/report";
     var reportHref = Model.ViewerIsAuthenticated
         ? reportPageUrl
@@ -64,6 +65,7 @@
                 }
             </p>
         </div>
+        <partial name="_SocialShareButtons" model="@(new SocialSharePageItem(Model.Title, socialShareText, shareUrl))" />
     </div>
 
     <partial name="_StatusMessage" />

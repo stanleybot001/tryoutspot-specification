@@ -1,0 +1,14 @@
+@model SocialSharePageItem
+
+@{
+    var encodedUrl = Uri.EscapeDataString(Model.Url);
+    var xShareUrl = $"https://twitter.com/intent/tweet?text={Uri.EscapeDataString(Model.Text)}&url={encodedUrl}";
+    var facebookShareUrl = $"https://www.facebook.com/sharer/sharer.php?u={encodedUrl}";
+}
+
+<div class="social-share-row" aria-label="Share on social media">
+    <a class="btn btn-sm btn-outline-dark" href="@xShareUrl" target="_blank" rel="noopener">Post on X</a>
+    <a class="btn btn-sm btn-outline-primary" href="@facebookShareUrl" target="_blank" rel="noopener">Share on Facebook</a>
+    <button type="button" class="btn btn-sm btn-outline-secondary" hidden
+            data-native-share data-share-title="@Model.Title" data-share-text="@Model.Text" data-share-url="@Model.Url">More ways to share</button>
+</div>

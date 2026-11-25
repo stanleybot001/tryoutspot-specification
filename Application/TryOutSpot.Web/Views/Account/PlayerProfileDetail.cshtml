@@ -68,6 +68,7 @@
                 <button type="button" class="btn btn-primary" data-copy-text="@shareText" data-copy-status="#profileShareStatus">Copy post</button>
             </div>
             <p class="copy-status section-help" id="profileShareStatus" aria-live="polite"></p>
+            <partial name="_SocialShareButtons" model="@(new SocialSharePageItem(Model.PlayerName, $"{Model.PlayerName}'s player profile on TryOutSpot", shareUrl))" />
         </section>
     }
 

@@ -26,11 +26,15 @@
         nameof(Model.AdditionalMetrics), nameof(Model.ProfileImageUpload), nameof(Model.HighlightVideoUrl1),
         nameof(Model.HighlightVideoUrl2), nameof(Model.FacebookPageUrl), nameof(Model.XPageUrl),
         nameof(Model.InstagramUrl), nameof(Model.YouTubeUrl), nameof(Model.TikTokUrl),
-        nameof(Model.SportsRecruitsProfileUrl), nameof(Model.FieldLevelProfileUrl), nameof(Model.NcsaProfileUrl),
-        nameof(Model.OtherRecruitingProfileUrl)
+        nameof(Model.RecruitingProfileUrls)
     ];
-    var hasOptionalDetailErrors = optionalDetailFields.Any(field =>
-        ViewData.ModelState.TryGetValue(field, out var entry) && entry.Errors.Count > 0);
+    var hasOptionalDetailErrors = ViewData.ModelState.Any(entry =>
+        entry.Value.Errors.Count > 0
+        && optionalDetailFields.Any(field => entry.Key == field || entry.Key.StartsWith(field + "[", StringComparison.Ordinal)));
+    var visibleRecruitingSlotCount = Math.Min(TryOutSpotRecruitingPlatforms.MaxLinks, Math.Max(3, Model.RecruitingProfileUrls.Count + 1));
+    string? GetFieldError(string key) => ViewData.ModelState.TryGetValue(key, out var entry) && entry.Errors.Count > 0
+        ? entry.Errors[0].ErrorMessage
+        : null;
 
     ViewData["Title"] = isEditMode ? "Edit Player Profile" : "Add Player Profile";
 }
@@ -374,28 +378,25 @@
 
             <fieldset class="form-fieldset">
                 <legend>Recruiting profiles</legend>
-                <p class="section-help">Add external recruiting profile links when they exist.</p>
-                <div class="form-grid two-column">
-                    <div class="form-field">
-                        <label asp-for="SportsRecruitsProfileUrl" class="form-label">SportsRecruits</label>
-                        <input asp-for="SportsRecruitsProfileUrl" class="form-control" placeholder="https://sportsrecruits.com/..." />
-                        <span asp-validation-for="SportsRecruitsProfileUrl" class="text-danger"></span>
-                    </div>
-                    <div class="form-field">
-                        <label asp-for="FieldLevelProfileUrl" class="form-label">FieldLevel</label>
-                        <input asp-for="FieldLevelProfileUrl" class="form-control" placeholder="https://fieldlevel.com/..." />
-                        <span asp-validation-for="FieldLevelProfileUrl" class="text-danger"></span>
-                    </div>
-                    <div class="form-field">
-                        <label asp-for="NcsaProfileUrl" class="form-label">NCSA</label>
-                        <input asp-for="NcsaProfileUrl" class="form-control" placeholder="https://recruit-match.ncsasports.org/..." />
-                        <span asp-validation-for="NcsaProfileUrl" class="text-danger"></span>
-                    </div>
-                    <div class="form-field">
-                        <label asp-for="OtherRecruitingProfileUrl" class="form-label">Other recruiting profile</label>
-                        <input asp-for="OtherRecruitingProfileUrl" class="form-control" placeholder="https://..." />
-                        <span asp-validation-for="OtherRecruitingProfileUrl" class="text-danger"></span>
-                    </div>
+                <p class="section-help">
+                    Paste links to the player's profiles on other recruiting sites. We recognize
+                    @string.Join(", ", TryOutSpotRecruitingPlatforms.All.Take(9).Select(platform => platform.Name)), and more,
+                    and show each one to coaches as a labeled link.
+                </p>
+                <span asp-validation-for="RecruitingProfileUrls" class="text-danger"></span>
+                <div class="recruiting-link-list" data-reveal-group>
+                    @for (var linkIndex = 0; linkIndex < TryOutSpotRecruitingPlatforms.MaxLinks; linkIndex++)
+                    {
+                        var linkValue = linkIndex < Model.RecruitingProfileUrls.Count ? Model.RecruitingProfileUrls[linkIndex] : null;
+                        var isHiddenSlot = linkIndex >= visibleRecruitingSlotCount;
+                        <div class="form-field" hidden="@isHiddenSlot" data-reveal-item>
+                            <label class="form-label" for="RecruitingProfileUrls_@linkIndex">Recruiting profile link @(linkIndex + 1)</label>
+                            <input id="RecruitingProfileUrls_@linkIndex" name="RecruitingProfileUrls[@linkIndex]" value="@linkValue"
+                                   class="form-control" type="url" inputmode="url" placeholder="https://www.fieldlevel.com/app/profile/..." />
+                            <span class="text-danger field-validation-error">@GetFieldError($"RecruitingProfileUrls[{linkIndex}]")</span>
+                        </div>
+                    }
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-reveal-next hidden>Add another link</button>
                 </div>
             </fieldset>
             </details>

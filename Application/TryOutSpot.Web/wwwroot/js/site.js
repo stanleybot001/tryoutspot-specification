@@ -1,4 +1,4 @@
-﻿// Please see documentation at https://learn.microsoft.com/aspnet/core/client-side/bundling-and-minification
+// Please see documentation at https://learn.microsoft.com/aspnet/core/client-side/bundling-and-minification
 // for details on configuring this project to bundle and minify static web assets.
 
 document.addEventListener("click", async (event) => {
@@ -59,6 +59,40 @@ document.addEventListener("change", (event) => {
             }
         });
     }
+});
+
+document.querySelectorAll("[data-reveal-group]").forEach((group) => {
+    const button = group.querySelector("[data-reveal-next]");
+    const hiddenItems = () => group.querySelectorAll("[data-reveal-item][hidden]");
+    if (!button || hiddenItems().length === 0) {
+        return;
+    }
+
+    button.hidden = false;
+    button.addEventListener("click", () => {
+        const next = hiddenItems()[0];
+        if (next) {
+            next.hidden = false;
+            next.querySelector("input")?.focus();
+        }
+
+        button.hidden = hiddenItems().length === 0;
+    });
+});
+
+document.querySelectorAll("[data-native-share]").forEach((button) => {
+    if (!navigator.share) {
+        return;
+    }
+
+    button.hidden = false;
+    button.addEventListener("click", () => {
+        navigator.share({
+            title: button.getAttribute("data-share-title") || document.title,
+            text: button.getAttribute("data-share-text") || "",
+            url: button.getAttribute("data-share-url") || window.location.href
+        }).catch(() => { });
+    });
 });
 
 document.addEventListener("change", (event) => {

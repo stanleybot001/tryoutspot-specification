@@ -2128,6 +2128,23 @@ details.phone-verification-panel[open] > summary {
   background: #f0fdf4;
 }
 
+.social-share-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.recruiting-link-list {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+}
+
+.recruiting-link-list > .form-field {
+  width: 100%;
+}
+
 .plans-track-jump {
   display: none;
   gap: 0.5rem;

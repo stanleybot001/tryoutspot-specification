@@ -455,21 +455,8 @@ public sealed class AddPlayerProfilePageModel
     [Display(Name = "TikTok username")]
     public string? TikTokUrl { get; set; }
 
-    [MaxLength(500)]
-    [Display(Name = "SportsRecruits profile")]
-    public string? SportsRecruitsProfileUrl { get; set; }
-
-    [MaxLength(500)]
-    [Display(Name = "FieldLevel profile")]
-    public string? FieldLevelProfileUrl { get; set; }
-
-    [MaxLength(500)]
-    [Display(Name = "NCSA profile")]
-    public string? NcsaProfileUrl { get; set; }
-
-    [MaxLength(500)]
-    [Display(Name = "Other recruiting profile")]
-    public string? OtherRecruitingProfileUrl { get; set; }
+    [Display(Name = "Recruiting profile links")]
+    public List<string?> RecruitingProfileUrls { get; set; } = [];
 
     public List<PlayerSportDetailPageModel> SportDetails { get; set; } = [];
 
@@ -2273,6 +2260,11 @@ public sealed record PlayerListingSportSummaryPageItem(
     string? ExperienceLevel,
     int? YearsPlaying,
     string? Availability);
+
+public sealed record SocialSharePageItem(
+    string Title,
+    string Text,
+    string Url);
 
 public sealed record ExternalProfileLinkPageItem(
     string Label,

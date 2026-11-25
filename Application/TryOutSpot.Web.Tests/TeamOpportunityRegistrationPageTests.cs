@@ -80,6 +80,8 @@ public sealed class TeamOpportunityRegistrationPageTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
         Assert.Matches("name=\"RegistrationForm.GuardianEmail\"[^>]*value=\"parent-guardian-prefill@example.com\"", html);
+        Assert.Contains("https://twitter.com/intent/tweet?text=", html, StringComparison.Ordinal);
+        Assert.Contains("https://www.facebook.com/sharer/sharer.php?u=", html, StringComparison.Ordinal);
     }
 
     [Fact]

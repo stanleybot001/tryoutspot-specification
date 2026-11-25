@@ -80,6 +80,7 @@
                 <button type="button" class="btn btn-primary" data-copy-text="@shareText" data-copy-status="#playerListingShareStatus">Copy post</button>
             </div>
             <p class="copy-status section-help" id="playerListingShareStatus" aria-live="polite"></p>
+            <partial name="_SocialShareButtons" model="@(new SocialSharePageItem(Model.Title, $"{Model.Title} on TryOutSpot", shareUrl))" />
         </section>
     }
 

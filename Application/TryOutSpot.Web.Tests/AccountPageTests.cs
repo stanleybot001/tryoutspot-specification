@@ -2073,10 +2073,13 @@ public sealed class AccountPageTests
                 new("InstagramUrl", "alex.ig"),
                 new("YouTubeUrl", "https://youtube.com/@alex"),
                 new("TikTokUrl", "@alextok"),
-                new("SportsRecruitsProfileUrl", "https://sportsrecruits.com/athlete/alex"),
-                new("FieldLevelProfileUrl", "https://fieldlevel.com/alex"),
-                new("NcsaProfileUrl", "https://recruit-match.ncsasports.org/alex"),
-                new("OtherRecruitingProfileUrl", "https://example.com/alex-recruiting"),
+                new("RecruitingProfileUrls[0]", "https://sportsrecruits.com/athlete/alex"),
+                new("RecruitingProfileUrls[1]", "https://fieldlevel.com/alex"),
+                new("RecruitingProfileUrls[2]", "https://recruit-match.ncsasports.org/alex"),
+                new("RecruitingProfileUrls[3]", "https://example.com/alex-recruiting"),
+                new("RecruitingProfileUrls[4]", "https://www.perfectgame.org/Players/Playerprofile.aspx?ID=12345"),
+                new("RecruitingProfileUrls[5]", "https://www.fieldlevel.com/app/profile/alex.2"),
+                new("RecruitingProfileUrls[6]", ""),
                 new("SportDetails[0].SportId", sportId.ToString()),
                 new("SportDetails[0].SportName", "Softball"),
                 new("SportDetails[0].IsSelected", "true"),
@@ -2145,6 +2148,9 @@ public sealed class AccountPageTests
         Assert.Equal("https://fieldlevel.com/alex", recruitingProfileLinks?["fieldlevel"]);
         Assert.Equal("https://recruit-match.ncsasports.org/alex", recruitingProfileLinks?["ncsa"]);
         Assert.Equal("https://example.com/alex-recruiting", recruitingProfileLinks?["other"]);
+        Assert.Equal("https://www.perfectgame.org/Players/Playerprofile.aspx?ID=12345", recruitingProfileLinks?["perfectgame"]);
+        Assert.Equal("https://www.fieldlevel.com/app/profile/alex.2", recruitingProfileLinks?["fieldlevel_2"]);
+        Assert.Equal(6, recruitingProfileLinks?.Count);
     }
 
     [Fact]
