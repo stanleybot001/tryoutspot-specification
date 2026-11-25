@@ -43,6 +43,10 @@
 }
 
 <section class="account-page">
+    @if (ViewData["HiddenListingNotice"] is string hiddenListingNotice)
+    {
+        <div class="account-alert" role="status"><strong>Not public.</strong> @hiddenListingNotice</div>
+    }
     <div class="account-heading">
         <p class="account-kicker">Player listing</p>
         <h1>@Model.Title</h1>

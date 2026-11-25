@@ -43,7 +43,7 @@ Site-wide pass to simplify player/parent, team, and admin flows while keeping th
 ## Error pages
 
 - `UseStatusCodePagesWithReExecute("/status/{0}")` renders `Views/Home/StatusCode.cshtml` for empty-body error responses (404, 403, 400, 413, 429, others) so browsers no longer show their own blank error screen. `/api` paths still get a bare status code. The oversized-upload and failed-registration messages moved into `HomeController.StatusCodePage`.
-- `/opportunities/{id}` for a listing the public can't see (expired, unpublished, deactivated, scheduled, or team hidden/suspended) still returns 404 to the public, but platform admins and the team's own staff see the page with a "Not public" banner explaining why.
+- `/opportunities/{id}`, `/player-listings/{id}`, and `/players/{id}` for an item the public can't see (expired, unpublished, deactivated, scheduled, or team hidden/suspended) still returns 404 to the public, but platform admins, the team's own staff (team listings), and the listing owner or player's managing parents (player pages) see the page with a "Not public" banner explaining why.
 - Production WAF note: Plesk ModSecurity rule `931130` (OWASP CRS RFI off-domain link) blocks the Google sign-in callback because Google returns `iss` and `scope` values containing URLs. Disable that rule for tryoutspot.com.
 
 ## Shared front-end helpers

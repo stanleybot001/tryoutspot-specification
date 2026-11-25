@@ -102,6 +102,56 @@ public sealed class AdminCenterPageTests
     }
 
     [Fact]
+    public async Task HiddenPlayerListingAndProfile_ShowNoticeToOwnerAndAdminOnly()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var owner = await factory.CreateUserAsync("hidden-player-owner@example.com", [TryOutSpotRoles.Parent]);
+        var admin = await factory.CreateUserAsync("hidden-player-admin@example.com", [TryOutSpotRoles.PlatformAdmin]);
+        var outsider = await factory.CreateUserAsync("hidden-player-outsider@example.com", [TryOutSpotRoles.TeamRepresentative]);
+        var sportId = GetActiveSportId(factory);
+        var playerId = SeedPlayerProfile(factory, owner.Id, sportId);
+        var listingId = SeedPlayerListing(factory, owner.Id, sportId, playerId, "Hidden pickup listing");
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            dbContext.PlayerListings.Single(item => item.Id == listingId).ExpiresAt = DateTime.UtcNow.AddDays(-5);
+            dbContext.Players.Single(item => item.Id == playerId).IsSearchable = false;
+            dbContext.SaveChanges();
+        }
+
+        var anonymousClient = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var anonymousListing = await anonymousClient.GetAsync($"/player-listings/{listingId}");
+        Assert.Equal(HttpStatusCode.NotFound, anonymousListing.StatusCode);
+        Assert.Contains("This player listing has expired", WebUtility.HtmlDecode(await anonymousListing.Content.ReadAsStringAsync()));
+        var anonymousProfile = await anonymousClient.GetAsync($"/players/{playerId}");
+        Assert.Equal(HttpStatusCode.NotFound, anonymousProfile.StatusCode);
+        Assert.Contains("This player profile is private", WebUtility.HtmlDecode(await anonymousProfile.Content.ReadAsStringAsync()));
+
+        foreach (var (email, canSee) in new[] { (owner.Email!, true), (admin.Email!, true), (outsider.Email!, false) })
+        {
+            var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+            await LoginWebUserAsync(client, email);
+            var listingResponse = await client.GetAsync($"/player-listings/{listingId}");
+            var profileResponse = await client.GetAsync($"/players/{playerId}");
+            if (canSee)
+            {
+                var listingHtml = WebUtility.HtmlDecode(await listingResponse.Content.ReadAsStringAsync());
+                var profileHtml = WebUtility.HtmlDecode(await profileResponse.Content.ReadAsStringAsync());
+                Assert.Equal(HttpStatusCode.OK, listingResponse.StatusCode);
+                Assert.Contains("Not public.", listingHtml);
+                Assert.Contains("it expired on", listingHtml);
+                Assert.Equal(HttpStatusCode.OK, profileResponse.StatusCode);
+                Assert.Contains("the profile is set to private", profileHtml);
+            }
+            else
+            {
+                Assert.Equal(HttpStatusCode.NotFound, listingResponse.StatusCode);
+                Assert.Equal(HttpStatusCode.NotFound, profileResponse.StatusCode);
+            }
+        }
+    }
+
+    [Fact]
     public async Task PlatformAdmin_LocalRoundup_BuildsPostTextWithLocalLinkAndHashtags()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();

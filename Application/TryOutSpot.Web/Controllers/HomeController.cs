@@ -89,7 +89,11 @@ public class HomeController : Controller
                 "This page isn't available",
                 originalPath.StartsWith("/opportunities", StringComparison.OrdinalIgnoreCase)
                     ? "This listing has ended, been taken down, or is no longer public. Tryout listings come down automatically after their end date."
-                    : "The link may be old or mistyped, or the page may have been removed."),
+                    : originalPath.StartsWith("/player-listings", StringComparison.OrdinalIgnoreCase)
+                        ? "This player listing has expired, been taken down, or is no longer public."
+                        : originalPath.StartsWith("/players", StringComparison.OrdinalIgnoreCase)
+                            ? "This player profile is private or no longer available."
+                            : "The link may be old or mistyped, or the page may have been removed."),
             StatusCodes.Status403Forbidden => new StatusCodePageModel(
                 code,
                 "You don't have access to this page",

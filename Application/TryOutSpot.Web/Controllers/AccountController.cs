@@ -1829,7 +1829,35 @@ public sealed class AccountController(
             .SingleOrDefaultAsync(cancellationToken);
         if (player is null)
         {
-            return NotFound();
+            var hiddenPlayer = currentUser is null
+                ? null
+                : await dbContext.Players
+                    .AsNoTracking()
+                    .Where(currentPlayer => currentPlayer.Id == playerId)
+                    .Include(currentPlayer => currentPlayer.PlayerSports)
+                        .ThenInclude(playerSport => playerSport.Sport)
+                    .SingleOrDefaultAsync(cancellationToken);
+            if (hiddenPlayer is null
+                || !(await IsPlatformAdminAsync(currentUser!)
+                    || await UserManagesPlayerAsync(currentUser!.Id, playerId, cancellationToken)))
+            {
+                return NotFound();
+            }
+
+            var reasons = new List<string>();
+            if (!hiddenPlayer.IsActive)
+            {
+                reasons.Add("the profile is deactivated");
+            }
+
+            if (!hiddenPlayer.IsSearchable)
+            {
+                reasons.Add("the profile is set to private");
+            }
+
+            ViewData["HiddenListingNotice"] = BuildHiddenNotice(reasons, "the people who manage this player");
+            ViewData["Robots"] = "noindex, nofollow";
+            player = hiddenPlayer;
         }
 
         var model = await BuildPlayerProfileDetailPageModelAsync(player, currentUser, cancellationToken);
@@ -2187,7 +2215,55 @@ public sealed class AccountController(
             .SingleOrDefaultAsync(cancellationToken);
         if (listing is null)
         {
-            return NotFound();
+            var hiddenListing = currentUser is null
+                ? null
+                : await dbContext.PlayerListings
+                    .AsNoTracking()
+                    .Where(currentListing => currentListing.Id == listingId)
+                    .Include(currentListing => currentListing.Player)
+                        .ThenInclude(player => player!.PlayerSports)
+                            .ThenInclude(playerSport => playerSport.Sport)
+                    .Include(currentListing => currentListing.Sport)
+                    .SingleOrDefaultAsync(cancellationToken);
+            var canSeeHiddenListing = hiddenListing is not null
+                && (hiddenListing.UserId == currentUser!.Id
+                    || await IsPlatformAdminAsync(currentUser)
+                    || (hiddenListing.PlayerId.HasValue
+                        && await UserManagesPlayerAsync(currentUser.Id, hiddenListing.PlayerId.Value, cancellationToken)));
+            if (!canSeeHiddenListing)
+            {
+                return NotFound();
+            }
+
+            var reasons = new List<string>();
+            if (!hiddenListing!.IsActive)
+            {
+                reasons.Add("it has been deactivated");
+            }
+
+            if (!hiddenListing.IsPublished)
+            {
+                reasons.Add("it is not published");
+            }
+
+            if (!hiddenListing.IsSearchable)
+            {
+                reasons.Add("it is hidden from search");
+            }
+
+            if (hiddenListing.ExpiresAt.HasValue && hiddenListing.ExpiresAt.Value <= now)
+            {
+                reasons.Add($"it expired on {hiddenListing.ExpiresAt.Value.ToLocalTime():MMM d, yyyy}");
+            }
+
+            if (hiddenListing.Player is { } listingPlayer && (!listingPlayer.IsActive || !listingPlayer.IsSearchable))
+            {
+                reasons.Add("the player's profile is private or deactivated");
+            }
+
+            ViewData["HiddenListingNotice"] = BuildHiddenNotice(reasons, "the listing owner and admins");
+            ViewData["Robots"] = "noindex, nofollow";
+            listing = hiddenListing;
         }
 
         var model = await BuildPlayerListingDetailPageModelAsync(listing, currentUser, cancellationToken);
@@ -3725,14 +3801,36 @@ public sealed class AccountController(
             return null;
         }
 
-        var isPlatformAdmin = (await userManager.GetRolesAsync(user))
-            .Contains(TryOutSpotRoles.PlatformAdmin, StringComparer.OrdinalIgnoreCase);
-        if (isPlatformAdmin || await UserManagesTeamAsync(user.Id, opportunity.TeamId, cancellationToken))
+        if (await IsPlatformAdminAsync(user) || await UserManagesTeamAsync(user.Id, opportunity.TeamId, cancellationToken))
         {
             return opportunity;
         }
 
         return null;
+    }
+
+    private async Task<bool> IsPlatformAdminAsync(User user)
+    {
+        return (await userManager.GetRolesAsync(user))
+            .Contains(TryOutSpotRoles.PlatformAdmin, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private Task<bool> UserManagesPlayerAsync(Guid userId, Guid playerId, CancellationToken cancellationToken)
+    {
+        return dbContext.UserPlayerRelationships
+            .AsNoTracking()
+            .AnyAsync(
+                relationship => relationship.UserId == userId
+                    && relationship.PlayerId == playerId
+                    && relationship.CanManage,
+                cancellationToken);
+    }
+
+    private static string BuildHiddenNotice(IReadOnlyCollection<string> reasons, string audience)
+    {
+        return reasons.Count == 0
+            ? $"Only {audience} can see this page right now."
+            : $"The public can't see this because {string.Join(", and ", reasons)}. Only {audience} can see this page.";
     }
 
     private static string DescribeHiddenOpportunity(Opportunity opportunity, DateTime now)
@@ -3769,9 +3867,7 @@ public sealed class AccountController(
             reasons.Add("the team is hidden from search");
         }
 
-        return reasons.Count == 0
-            ? "Only team staff and admins can see this listing right now."
-            : $"The public can't see this listing because {string.Join(", and ", reasons)}. Only team staff and admins can see this page.";
+        return BuildHiddenNotice(reasons, "team staff and admins");
     }
 
     [Authorize(
