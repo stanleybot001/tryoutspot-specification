@@ -13,36 +13,36 @@
 
     @await Html.PartialAsync("_AdminNav")
 
-    <section class="account-summary-strip admin-summary-grid">
-        <div>
+    <nav class="account-summary-strip admin-summary-grid" aria-label="Admin queues">
+        <a class="admin-summary-link @(Model.PendingReportCount > 0 ? "needs-attention" : null)" href="/admin/reports?status=@TryOutSpotListingReportStatuses.Pending">
             <span>Pending reports</span>
             <strong>@Model.PendingReportCount</strong>
-        </div>
-        <div>
+        </a>
+        <a class="admin-summary-link" href="/admin/reports?status=@TryOutSpotListingReportStatuses.InReview">
             <span>In review</span>
             <strong>@Model.InReviewReportCount</strong>
-        </div>
-        <div>
+        </a>
+        <a class="admin-summary-link @(Model.PendingFlyerImportCount > 0 ? "needs-attention" : null)" href="/admin/flyer-imports?status=@TryOutSpotFlyerImportStatuses.PendingReview">
             <span>Flyers pending</span>
             <strong>@Model.PendingFlyerImportCount</strong>
-        </div>
-        <div>
+        </a>
+        <a class="admin-summary-link" href="/admin/users?isActive=true">
             <span>Active users</span>
             <strong>@Model.ActiveUserCount</strong>
-        </div>
-        <div>
+        </a>
+        <a class="admin-summary-link" href="/admin/teams?isActive=true">
             <span>Active teams</span>
             <strong>@Model.ActiveTeamCount</strong>
-        </div>
-        <div>
+        </a>
+        <a class="admin-summary-link" href="/admin/player-listings?isActive=true">
             <span>Player listings</span>
             <strong>@Model.ActivePlayerListingCount</strong>
-        </div>
-        <div>
+        </a>
+        <a class="admin-summary-link" href="/admin/team-opportunities?isActive=true">
             <span>Team opportunities</span>
             <strong>@Model.ActiveTeamOpportunityCount</strong>
-        </div>
-    </section>
+        </a>
+    </nav>
 
     <section class="form-section">
         <div class="opportunity-row-head">

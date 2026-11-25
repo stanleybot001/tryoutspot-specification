@@ -2179,6 +2179,25 @@ details.phone-verification-panel[open] > summary {
   overflow-wrap: anywhere;
 }
 
+.admin-summary-link {
+  display: block;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.admin-summary-link:hover,
+.admin-summary-link:focus-visible {
+  border-color: #93c5fd;
+  background: #ffffff;
+}
+
+.admin-summary-link.needs-attention strong {
+  color: #b45309;
+}
+
 .admin-filter-form {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(130px, 0.45fr)) auto;

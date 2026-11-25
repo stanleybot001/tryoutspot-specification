@@ -80,9 +80,18 @@
                 </div>
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">Save review</button>
-                    <a class="btn btn-outline-secondary" href="/admin/reports">Back to reports</a>
+                    <a class="btn btn-outline-secondary" href="/admin/reports?status=@TryOutSpotListingReportStatuses.Pending">Back to pending reports</a>
                 </div>
             </form>
+            @if (TryOutSpotListingReportStatuses.OpenStatuses.Contains(Model.Report.Status, StringComparer.OrdinalIgnoreCase))
+            {
+                <form asp-action="ReviewReport" asp-controller="Admin" asp-route-reportId="@Model.Report.ReportId" method="post" class="inline-form mt-2">
+                    <input type="hidden" name="Status" value="@TryOutSpotListingReportStatuses.Dismissed" />
+                    <input type="hidden" name="AdminNotes" value="@Model.AdminNotes" />
+                    <button type="submit" class="btn btn-outline-secondary btn-sm">Dismiss report (no action needed)</button>
+                </form>
+                <p class="section-help small mt-2">Deactivating or deleting the listing below closes its open reports automatically.</p>
+            }
         </section>
     </div>
 

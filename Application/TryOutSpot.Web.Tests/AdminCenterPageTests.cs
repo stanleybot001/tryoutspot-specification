@@ -542,6 +542,7 @@ public sealed class AdminCenterPageTests
         var playerId = SeedPlayerProfile(factory, owner.Id, sportId);
         var playerListingId = SeedPlayerListing(factory, owner.Id, sportId, playerId, "Admin action pickup listing");
         var (teamId, opportunityId) = SeedTeamOpportunity(factory, teamOwner.Id, sportId, "Admin Action Aces", "Admin action tryout");
+        var opportunityReportId = SeedListingReport(factory, owner.Id, opportunityId: opportunityId);
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false
@@ -609,6 +610,10 @@ public sealed class AdminCenterPageTests
         Assert.NotNull(playerListing.ExpiresAt);
         Assert.False(opportunity.IsActive);
         Assert.False(opportunity.IsPublished);
+
+        var opportunityReport = await dbContext.ListingReports.SingleAsync(report => report.Id == opportunityReportId);
+        Assert.Equal(TryOutSpotListingReportStatuses.ActionTaken, opportunityReport.Status);
+        Assert.Equal(admin.Id, opportunityReport.ReviewedByUserId);
     }
 
     [Fact]

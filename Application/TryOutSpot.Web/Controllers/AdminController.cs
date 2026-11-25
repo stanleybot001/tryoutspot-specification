@@ -960,13 +960,20 @@ public sealed class AdminController(
             return NotFound();
         }
 
+        var now = DateTime.UtcNow;
         listing.IsActive = false;
         listing.IsPublished = false;
         listing.PublishedAt = null;
-        listing.UpdatedAt = DateTime.UtcNow;
+        listing.UpdatedAt = now;
+        var closedReportCount = await CloseOpenReportsForTargetAsync(
+            playerListingId: listingId,
+            opportunityId: null,
+            "Listing deactivated by admin.",
+            now,
+            cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        TempData["StatusMessage"] = "Player listing deactivated.";
+        TempData["StatusMessage"] = "Player listing deactivated." + FormatClosedReportsMessage(closedReportCount);
         return RedirectToLocalOrAdmin(returnUrl, nameof(PlayerListings));
     }
 
@@ -1011,9 +1018,16 @@ public sealed class AdminController(
         listing.PublishedAt = null;
         listing.ExpiresAt = now;
         listing.UpdatedAt = now;
+        var closedReportCount = await CloseOpenReportsForTargetAsync(
+            playerListingId: listingId,
+            opportunityId: null,
+            "Listing deleted by admin.",
+            now,
+            cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        TempData["StatusMessage"] = "Player listing deleted from public and owner-facing listings. The record is retained for admin audit history.";
+        TempData["StatusMessage"] = "Player listing deleted from public and owner-facing listings. The record is retained for admin audit history."
+            + FormatClosedReportsMessage(closedReportCount);
         return RedirectToLocalOrAdmin(returnUrl, nameof(PlayerListings));
     }
 
@@ -1305,12 +1319,19 @@ public sealed class AdminController(
             return NotFound();
         }
 
+        var now = DateTime.UtcNow;
         opportunity.IsActive = false;
         opportunity.IsPublished = false;
-        opportunity.UpdatedAt = DateTime.UtcNow;
+        opportunity.UpdatedAt = now;
+        var closedReportCount = await CloseOpenReportsForTargetAsync(
+            playerListingId: null,
+            opportunityId: opportunityId,
+            "Listing deactivated by admin.",
+            now,
+            cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        TempData["StatusMessage"] = "Team opportunity deactivated.";
+        TempData["StatusMessage"] = "Team opportunity deactivated." + FormatClosedReportsMessage(closedReportCount);
         return RedirectToLocalOrAdmin(returnUrl, nameof(TeamOpportunities));
     }
 
@@ -1354,10 +1375,59 @@ public sealed class AdminController(
         opportunity.ListingEndDate = now;
         opportunity.ExpiresAt = now;
         opportunity.UpdatedAt = now;
+        var closedReportCount = await CloseOpenReportsForTargetAsync(
+            playerListingId: null,
+            opportunityId: opportunityId,
+            "Listing deleted by admin.",
+            now,
+            cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        TempData["StatusMessage"] = "Team opportunity deleted from public and owner-facing listings. The record is retained for admin audit history.";
+        TempData["StatusMessage"] = "Team opportunity deleted from public and owner-facing listings. The record is retained for admin audit history."
+            + FormatClosedReportsMessage(closedReportCount);
         return RedirectToLocalOrAdmin(returnUrl, nameof(TeamOpportunities));
+    }
+
+    private async Task<int> CloseOpenReportsForTargetAsync(
+        Guid? playerListingId,
+        Guid? opportunityId,
+        string actionNote,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var adminUserId))
+        {
+            return 0;
+        }
+
+        var openReportsQuery = dbContext.ListingReports
+            .Where(report => TryOutSpotListingReportStatuses.OpenStatuses.Contains(report.Status));
+        openReportsQuery = playerListingId.HasValue
+            ? openReportsQuery.Where(report => report.PlayerListingId == playerListingId)
+            : openReportsQuery.Where(report => report.OpportunityId == opportunityId);
+        var openReports = await openReportsQuery.ToListAsync(cancellationToken);
+        foreach (var report in openReports)
+        {
+            report.Status = TryOutSpotListingReportStatuses.ActionTaken;
+            report.AdminNotes = string.IsNullOrWhiteSpace(report.AdminNotes)
+                ? actionNote
+                : $"{report.AdminNotes.Trim()}\n{actionNote}";
+            report.ReviewedByUserId = adminUserId;
+            report.ReviewedAt = now;
+            report.UpdatedAt = now;
+        }
+
+        return openReports.Count;
+    }
+
+    private static string FormatClosedReportsMessage(int closedReportCount)
+    {
+        return closedReportCount switch
+        {
+            0 => string.Empty,
+            1 => " Its open report was marked Action taken.",
+            _ => $" Its {closedReportCount} open reports were marked Action taken."
+        };
     }
 
     [HttpGet("flyer-imports")]

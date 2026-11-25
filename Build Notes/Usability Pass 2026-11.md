@@ -1,0 +1,38 @@
+# Usability Pass (November 2026)
+
+Site-wide pass to simplify player/parent, team, and admin flows while keeping the paid-plan limits that drive revenue.
+
+## Monetization limits kept as-is
+
+- Free Coach: 1 published listing per 6 months. Basic Team: 9 per 12 months. Professional Team: 24. Enterprise: 50.
+- Online tryout registration requires Basic Team or higher.
+- Free player search is capped at the free radius; the level filter stays premium.
+- Upgrade prompts now link straight to `/account/onboarding/choose-plan?bundle=team` or `?bundle=player_parent` instead of generic pages.
+
+## Player and parent flow
+
+- Public tryout search at `/tryouts` for signed-out visitors (free-tier limits, sign-up banner). Signed-in users are redirected to the account search.
+- The tryout a visitor started from is carried through register, email verification (via the `TryOutSpot.ReturnUrl` cookie, 3 days), sign-in, and add-child.
+- Registration form: plain-language account types, optional fields collapsed.
+- Child profile form: identity, sports, contact, school first; build, measurables, media, social, and recruiting links collapsed under "More profile details". The "manage this profile" checkbox was removed (always true) so parents cannot lock themselves out.
+- Tryout registration prefills guardian name/email/phone from a parent account and the emergency contact from the user's most recent registration. Medical info is intentionally not prefilled.
+- New My Registrations page (`/account/registrations`) with upcoming/past tabs and withdraw. Withdrawn registrations do not block re-registering.
+- Saving a searchable player listing makes the player profile visible automatically.
+
+## Team flow
+
+- After creating a team, the coach lands on that team's listings page with a "Post a tryout" prompt.
+- Listing quota is shown in plain language, with an upgrade link at the limit.
+- Posting-limit and registration-plan errors now display next to the Publish/Registration fields.
+- Tryout-day check-in page is interactive: name/number/school search, tap to check in or mark waiver received, live "X of Y checked in" counter. Updates use `fetch` with `X-Requested-With: fetch`; the attendance and waiver endpoints return JSON for those requests and otherwise redirect (back to check-in when `returnTo=check-in`). Print layout is unchanged.
+
+## Admin
+
+- Overview numbers link to their filtered queues.
+- Deactivating or deleting a listing marks its open reports as Action taken. Report detail has a one-click Dismiss.
+
+## Shared front-end helpers
+
+- `wwwroot/js/site.js`: copy-to-clipboard, `data-confirm`, player autofill, `data-exclusive-group` checkboxes.
+- `wwwroot/js/check-in.js`: check-in page only.
+- `Views/Shared/_StatusMessage.cshtml`: renders `TempData["StatusMessage"]` plus an optional local `StatusLinkUrl`/`StatusLinkLabel` action link.
