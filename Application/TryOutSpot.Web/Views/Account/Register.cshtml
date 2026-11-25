@@ -6,9 +6,9 @@
 
 <section class="account-page">
     <div class="account-heading">
-        <p class="account-kicker">Create your TryOutSpot account</p>
-        <h1>Start with the basics.</h1>
-        <p>Choose one or more account types now. You can add more later if you coach, manage a team, or also use TryOutSpot as a parent or player.</p>
+        <p class="account-kicker">Create your free TryOutSpot account</p>
+        <h1>Create your free account</h1>
+        <p>It takes about a minute. You can add kids, teams, and more details after you sign in.</p>
         <p class="required-note"><span class="required-marker">*</span> Required field</p>
     </div>
 
@@ -52,7 +52,8 @@
                 </div>
                 <div class="form-field">
                     <label asp-for="Password" class="form-label">Password <span class="required-marker">*</span></label>
-                    <input asp-for="Password" class="form-control" autocomplete="new-password" />
+                    <input asp-for="Password" class="form-control" autocomplete="new-password" aria-describedby="password-hint" />
+                    <span id="password-hint" class="field-hint">At least 8 characters with an uppercase letter, a lowercase letter, and a number.</span>
                     <span asp-validation-for="Password" class="text-danger"></span>
                 </div>
                 <div class="form-field">
@@ -81,13 +82,14 @@
         </section>
 
         <section class="form-section">
-            <h2>Account type <span class="required-marker">*</span></h2>
-            <p class="section-help">Pick every role that fits. Parent or guardian accounts manage player profiles; they do not create a searchable player profile for the adult account holder.</p>
+            <h2>How will you use TryOutSpot? <span class="required-marker">*</span></h2>
+            <p class="section-help">Choose parent or player (not both). Coaches who are also parents can choose both a parent role and the coach role.</p>
             <div class="account-type-grid">
                 @foreach (var accountType in Model.AvailableAccountTypes)
                 {
+                    var exclusiveGroup = accountType.Name is TryOutSpotRoles.Parent or TryOutSpotRoles.Player ? "player-side" : null;
                     <label class="account-type-option" for="account-type-@accountType.Name">
-                        <input class="form-check-input" id="account-type-@accountType.Name" name="AccountTypes" type="checkbox" value="@accountType.Name" checked="@accountType.IsSelected" />
+                        <input class="form-check-input" id="account-type-@accountType.Name" name="AccountTypes" type="checkbox" value="@accountType.Name" checked="@accountType.IsSelected" data-exclusive-group="@exclusiveGroup" />
                         <span>
                             <strong>@accountType.Label</strong>
                             <small>@accountType.Description</small>
@@ -99,35 +101,48 @@
         </section>
 
         <section class="form-section">
-            <h2>Optional account holder details</h2>
-            <p class="section-help">These belong to the account holder. Player and child details are entered later on the player profile screen.</p>
-            <div class="form-grid three-column">
-                <div class="form-field">
-                    <label asp-for="PhoneNumber" class="form-label">Phone number</label>
-                    <input asp-for="PhoneNumber" class="form-control" autocomplete="tel" />
-                    <span asp-validation-for="PhoneNumber" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="DateOfBirth" class="form-label">Account holder date of birth</label>
-                    <input asp-for="DateOfBirth" class="form-control" />
-                    <span asp-validation-for="DateOfBirth" class="text-danger"></span>
-                </div>
+            <h2>Where are you located?</h2>
+            <p class="section-help">Your ZIP code is used to show tryouts and players near you first.</p>
+            <div class="form-grid two-column">
                 <div class="form-field">
                     <label asp-for="ZipCode" class="form-label">ZIP code</label>
-                    <input asp-for="ZipCode" class="form-control" autocomplete="postal-code" />
+                    <input asp-for="ZipCode" class="form-control" autocomplete="postal-code" inputmode="numeric" />
                     <span asp-validation-for="ZipCode" class="text-danger"></span>
                 </div>
-                <div class="form-field">
-                    <label asp-for="City" class="form-label">City</label>
-                    <input asp-for="City" class="form-control" autocomplete="address-level2" />
-                    <span asp-validation-for="City" class="text-danger"></span>
-                </div>
-                <div class="form-field">
-                    <label asp-for="State" class="form-label">State</label>
-                    <input asp-for="State" class="form-control" autocomplete="address-level1" maxlength="2" />
-                    <span asp-validation-for="State" class="text-danger"></span>
-                </div>
             </div>
+            @{
+                var openOptionalDetails = Model.SmsConsentAccepted
+                    || !string.IsNullOrWhiteSpace(Model.PhoneNumber)
+                    || (ViewData.ModelState.ErrorCount > 0 && (
+                        ViewData.ModelState[nameof(Model.PhoneNumber)]?.Errors.Count > 0
+                        || ViewData.ModelState[nameof(Model.SmsConsentAccepted)]?.Errors.Count > 0
+                        || ViewData.ModelState[nameof(Model.DateOfBirth)]?.Errors.Count > 0
+                        || ViewData.ModelState[nameof(Model.State)]?.Errors.Count > 0));
+            }
+            <details class="optional-details" open="@openOptionalDetails">
+                <summary>Add phone, text alerts, and more (optional)</summary>
+                <div class="form-grid three-column">
+                    <div class="form-field">
+                        <label asp-for="PhoneNumber" class="form-label">Phone number</label>
+                        <input asp-for="PhoneNumber" class="form-control" autocomplete="tel" inputmode="tel" />
+                        <span asp-validation-for="PhoneNumber" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="DateOfBirth" class="form-label">Your date of birth</label>
+                        <input asp-for="DateOfBirth" class="form-control" />
+                        <span asp-validation-for="DateOfBirth" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="City" class="form-label">City</label>
+                        <input asp-for="City" class="form-control" autocomplete="address-level2" />
+                        <span asp-validation-for="City" class="text-danger"></span>
+                    </div>
+                    <div class="form-field">
+                        <label asp-for="State" class="form-label">State</label>
+                        <input asp-for="State" class="form-control" autocomplete="address-level1" maxlength="2" />
+                        <span asp-validation-for="State" class="text-danger"></span>
+                    </div>
+                </div>
             <label class="sms-consent-option" for="SmsConsentAccepted">
                 <input asp-for="SmsConsentAccepted" class="form-check-input" />
                 <span>@TryOutSpotSmsConsent.CheckboxText</span>
@@ -138,11 +153,12 @@
                 <a href="/terms-and-conditions">Terms and Conditions</a>.
             </p>
             <span asp-validation-for="SmsConsentAccepted" class="text-danger"></span>
+            </details>
         </section>
 
         <div class="form-actions">
-            <button type="submit" class="btn btn-primary">Create account</button>
-            <a asp-action="Login" asp-controller="Account" class="btn btn-link">I already have an account</a>
+            <button type="submit" class="btn btn-primary">Create free account</button>
+            <a asp-action="Login" asp-controller="Account" asp-route-returnUrl="@Model.ReturnUrl" class="btn btn-link">I already have an account</a>
         </div>
     </form>
 </section>

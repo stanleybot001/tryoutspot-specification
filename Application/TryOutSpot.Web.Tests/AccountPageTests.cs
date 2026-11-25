@@ -35,7 +35,7 @@ public sealed class AccountPageTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Create your TryOutSpot account", html);
+        Assert.Contains("Create your free account", html);
         Assert.Contains("name=\"Email\"", html);
         Assert.Contains("name=\"Password\"", html);
         Assert.Contains("name=\"ConfirmPassword\"", html);
@@ -1205,7 +1205,8 @@ public sealed class AccountPageTests
         Assert.Contains("name=\"playerParentRole\"", html);
         Assert.Contains("name=\"teamRole\"", html);
         Assert.Contains("name=\"SmsConsent.SmsConsentAccepted\"", html);
-        Assert.Contains("Membership access", html);
+        Assert.Contains("Plan &amp; billing", html);
+        Assert.Contains("id=\"membership\"", html);
         Assert.Contains("Choose or change Parent/Player plan", html);
         Assert.Contains("Choose or change Team plan", html);
         Assert.Contains("Dashboard activity", html);
@@ -1230,12 +1231,12 @@ public sealed class AccountPageTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
 
-        Assert.Contains("Current membership: Premium Player", html);
+        Assert.Contains("Parent/Player membership: Premium Player", html);
         Assert.Contains("Status: Complimentary", html);
         Assert.Contains("Access ends:", html);
         Assert.Contains("Complimentary access", html);
-        Assert.Contains("players.profiles.enhanced", html);
-        Assert.DoesNotContain("Current membership: Free Player/Parent", html);
+        Assert.DoesNotContain("players.profiles.enhanced", html);
+        Assert.DoesNotContain("Parent/Player membership: Free Player/Parent", html);
     }
 
     [Fact]
@@ -1267,7 +1268,7 @@ public sealed class AccountPageTests
     }
 
     [Fact]
-    public async Task Logout_PostWithoutAntiforgeryToken_SignsOutAndRedirectsToLogin()
+    public async Task Logout_PostWithoutAntiforgeryToken_SignsOutAndRedirectsToHome()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
         await factory.CreateUserAsync("logout-page@example.com", [TryOutSpotRoles.Parent]);
@@ -1280,7 +1281,7 @@ public sealed class AccountPageTests
 
         var logoutResponse = await client.PostAsync("/account/logout", new FormUrlEncodedContent([]));
         Assert.Equal(HttpStatusCode.Redirect, logoutResponse.StatusCode);
-        Assert.Equal("/account/login", logoutResponse.Headers.Location?.ToString());
+        Assert.Equal("/", logoutResponse.Headers.Location?.ToString());
 
         var onboardingResponse = await client.GetAsync("/account/onboarding");
         Assert.Equal(HttpStatusCode.Redirect, onboardingResponse.StatusCode);

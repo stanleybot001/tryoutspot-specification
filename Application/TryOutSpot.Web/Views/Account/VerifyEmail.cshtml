@@ -2,16 +2,42 @@
     ViewData["Title"] = "Email Verification";
     var verified = ViewData["Verified"] as bool? == true;
     var message = ViewData["Message"] as string ?? "Email verification could not be completed.";
+    var email = ViewData["Email"] as string;
+    var isSignedIn = User.Identity?.IsAuthenticated ?? false;
 }
 
 <section class="account-page compact">
     <div class="account-heading">
         <p class="account-kicker">Email verification</p>
-        <h1>@(verified ? "Your email is verified." : "Verification failed.")</h1>
+        <h1>@(verified ? "Your email is verified" : "That link didn't work")</h1>
         <p>@message</p>
     </div>
 
-    <div class="form-actions">
-        <a asp-action="Login" asp-controller="Account" class="btn btn-primary">Go to login</a>
-    </div>
+    @if (verified)
+    {
+        <div class="form-actions">
+            @if (isSignedIn)
+            {
+                <a href="/account/onboarding" class="btn btn-primary">Continue to your dashboard</a>
+            }
+            else
+            {
+                <a href="/account/login?email=@Uri.EscapeDataString(email ?? string.Empty)" class="btn btn-primary">Sign in to continue</a>
+            }
+        </div>
+    }
+    else
+    {
+        <form asp-action="ResendVerificationEmail" asp-controller="Account" method="post" class="account-form">
+            <p class="section-help">Verification links expire. Enter your email and we'll send a new one.</p>
+            <div class="form-field">
+                <label for="resend-email" class="form-label">Email address</label>
+                <input id="resend-email" name="email" type="email" class="form-control" autocomplete="email" value="@email" required />
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Send a new verification link</button>
+                <a href="/account/login" class="btn btn-link">Sign in</a>
+            </div>
+        </form>
+    }
 </section>

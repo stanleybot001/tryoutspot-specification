@@ -1,7 +1,7 @@
 @model LoginPageModel
 
 @{
-    ViewData["Title"] = "Login";
+    ViewData["Title"] = "Sign in";
 }
 
 <section class="account-page compact">
@@ -88,7 +88,7 @@
 
     <p class="account-secondary-link">
         New to TryOutSpot?
-        <a asp-action="Register" asp-controller="Account" asp-route-returnUrl="@Model.ReturnUrl">Create an account</a>
+        <a asp-action="Register" asp-controller="Account" asp-route-returnUrl="@Model.ReturnUrl">Create a free account</a>
     </p>
 </section>
 

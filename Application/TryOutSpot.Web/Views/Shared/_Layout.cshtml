@@ -95,105 +95,129 @@
     var action = ViewContext.RouteData.Values["action"]?.ToString();
     var isSplashPage = string.Equals(controller, "Home", StringComparison.OrdinalIgnoreCase)
         && string.Equals(action, "Index", StringComparison.OrdinalIgnoreCase);
+    var currentPath = Context.Request.Path.Value ?? "/";
+    var isSignedIn = User.Identity?.IsAuthenticated ?? false;
+    var isPlayerSide = User.IsInRole(TryOutSpotRoles.Parent) || User.IsInRole(TryOutSpotRoles.Player);
+    var isTeamSide = User.IsInRole(TryOutSpotRoles.TeamRepresentative)
+        || User.IsInRole(TryOutSpotRoles.Coach)
+        || User.IsInRole(TryOutSpotRoles.TeamManager)
+        || User.IsInRole(TryOutSpotRoles.AcademyDirector)
+        || User.IsInRole(TryOutSpotRoles.OrganizationAdmin);
+    var isPlatformAdmin = User.IsInRole(TryOutSpotRoles.PlatformAdmin);
+    var accountLabel = User.FindFirst(System.Security.Claims.ClaimTypes.GivenName)?.Value;
+    if (string.IsNullOrWhiteSpace(accountLabel))
+    {
+        accountLabel = "Account";
+    }
+
+    var mainLinks = new List<(string Href, string Label, string[] Prefixes)>();
+    if (!isSignedIn)
+    {
+        mainLinks.Add(("/tryouts", "Find Tryouts", ["/tryouts", "/opportunities"]));
+        mainLinks.Add(("/plans-and-features", "Plans & Pricing", ["/plans-and-features"]));
+    }
+    else
+    {
+        mainLinks.Add(("/account/onboarding", "Dashboard", ["/account/onboarding"]));
+        if (isPlayerSide || !isTeamSide)
+        {
+            mainLinks.Add(("/tryouts", "Find Tryouts", ["/tryouts", "/account/search/team-items", "/opportunities"]));
+        }
+        if (isPlayerSide)
+        {
+            mainLinks.Add(("/account/onboarding/player-profiles", "My Players", ["/account/onboarding/player-profiles", "/account/onboarding/add-player-profile", "/account/onboarding/player-listings"]));
+            mainLinks.Add(("/account/registrations", "My Registrations", ["/account/registrations"]));
+        }
+        if (isTeamSide)
+        {
+            mainLinks.Add(("/account/onboarding/team-opportunities", "My Teams", ["/account/onboarding/team-opportunities", "/account/onboarding/add-team-or-organization", "/account/onboarding/coach-getting-started"]));
+            mainLinks.Add(("/account/search/players", "Find Players", ["/account/search/players", "/player-listings", "/players"]));
+        }
+        mainLinks.Add(("/account/onboarding/favorites", "Saved", ["/account/onboarding/favorites"]));
+        if (isPlatformAdmin)
+        {
+            mainLinks.Add(("/admin", "Admin", ["/admin"]));
+        }
+    }
+
+    string? ActiveLinkHref()
+    {
+        string? best = null;
+        var bestLength = 0;
+        foreach (var link in mainLinks)
+        {
+            foreach (var prefix in link.Prefixes)
+            {
+                var matches = string.Equals(currentPath, prefix, StringComparison.OrdinalIgnoreCase)
+                    || currentPath.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase);
+                if (matches && prefix.Length > bestLength)
+                {
+                    best = link.Href;
+                    bestLength = prefix.Length;
+                }
+            }
+        }
+
+        return best;
+    }
+
+    var activeHref = ActiveLinkHref();
 }
 <body class="@(isSplashPage ? "splash-page" : string.Empty)">
+    <a class="skip-link" href="#main-content">Skip to main content</a>
     @if (!isSplashPage)
     {
         <header>
-            <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
+            <nav class="navbar navbar-expand-md navbar-toggleable-md navbar-light bg-white border-bottom box-shadow mb-3" aria-label="Main">
                 <div class="container-fluid">
-                    <a class="navbar-brand brand-lockup" asp-area="" asp-controller="Home" asp-action="Index">
-                        <img src="~/logo/TryOutSpotLogo.png" asp-append-version="true" alt="TryOutSpot logo" class="brand-logo" />
+                    <a class="navbar-brand brand-lockup" href="@(isSignedIn ? "/account/onboarding" : "/")">
+                        <img src="~/logo/TryOutSpotLogo.png" asp-append-version="true" alt="TryOutSpot home" class="brand-logo" />
                     </a>
-                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#main-navigation" aria-controls="main-navigation"
                             aria-expanded="false" aria-label="Toggle navigation">
                         <span class="navbar-toggler-icon"></span>
                     </button>
-                    <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
+                    <div id="main-navigation" class="navbar-collapse collapse d-md-inline-flex justify-content-between">
                         <ul class="navbar-nav flex-grow-1">
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index">Home</a>
-                            </li>
-@*                             <li class="nav-item">
-                                <a class="nav-link text-dark" href="/privacy-policy">Privacy</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" href="/terms-and-conditions">Terms</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" href="/account-deletion">Account Deletion</a>
-                            </li> *@
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" href="/plans-and-features">Plans &amp; Features</a>
-                            </li>
-                            @if (User.Identity?.IsAuthenticated ?? false)
+                            @foreach (var link in mainLinks)
                             {
-                                var showTeamItemSearch = User.IsInRole(TryOutSpotRoles.Parent)
-                                    || User.IsInRole(TryOutSpotRoles.Player);
-                                var showPlayerSearch = User.IsInRole(TryOutSpotRoles.TeamRepresentative)
-                                    || User.IsInRole(TryOutSpotRoles.Coach)
-                                    || User.IsInRole(TryOutSpotRoles.TeamManager)
-                                    || User.IsInRole(TryOutSpotRoles.AcademyDirector)
-                                    || User.IsInRole(TryOutSpotRoles.OrganizationAdmin);
-                                var showAdminCenter = User.IsInRole(TryOutSpotRoles.PlatformAdmin);
+                                var isActive = string.Equals(link.Href, activeHref, StringComparison.Ordinal);
                                 <li class="nav-item">
-                                    <a class="nav-link text-dark" asp-area="" asp-controller="Account" asp-action="Onboarding">Dashboard</a>
+                                    <a class="nav-link text-dark @(isActive ? "active" : null)" href="@link.Href" aria-current="@(isActive ? "page" : null)">@link.Label</a>
                                 </li>
-                                @if (showAdminCenter)
-                                {
-                                    <li class="nav-item">
-                                        <a class="nav-link text-dark" asp-area="" asp-controller="Admin" asp-action="Index">Admin</a>
-                                    </li>
-                                }
-                                @if (showTeamItemSearch)
-                                {
-                                    <li class="nav-item">
-                                        <a class="nav-link text-dark" asp-area="" asp-controller="Account" asp-action="SearchTeamItems">Search Team Items</a>
-                                    </li>
-                                }
-                                @if (showPlayerSearch)
-                                {
-                                    <li class="nav-item">
-                                        <a class="nav-link text-dark" asp-area="" asp-controller="Account" asp-action="SearchPlayers">Search Players</a>
-                                    </li>
-                                }
-                                <li class="nav-item d-sm-none">
-                                    <a class="nav-link text-dark" asp-area="" asp-controller="Account" asp-action="Settings">Account Settings</a>
+                            }
+                            @if (isSignedIn)
+                            {
+                                <li class="nav-item d-md-none">
+                                    <a class="nav-link text-dark" href="/account/settings">Account Settings</a>
                                 </li>
-                                <li class="nav-item d-sm-none">
+                                <li class="nav-item d-md-none">
+                                    <a class="nav-link text-dark" href="/account/settings#membership">Plan &amp; Billing</a>
+                                </li>
+                                <li class="nav-item d-md-none">
                                     <form asp-action="Logout" asp-controller="Account" method="post" class="nav-signout-form">
                                         <button type="submit" class="nav-link text-dark btn btn-link">Sign out</button>
                                     </form>
                                 </li>
                             }
-                            else
-                            {
-                                <li class="nav-item">
-                                    <a class="nav-link text-dark" asp-area="" asp-controller="Account" asp-action="Register">Create Account</a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link text-dark" asp-area="" asp-controller="Account" asp-action="Login">Login</a>
-                                </li>
-                            }
                         </ul>
-                        @if (User.Identity?.IsAuthenticated ?? false)
+                        @if (isSignedIn)
                         {
-                            <ul class="navbar-nav account-nav d-none d-sm-flex">
+                            <ul class="navbar-nav account-nav d-none d-md-flex">
                                 <li class="nav-item dropdown">
-                                    <button class="nav-link account-menu-toggle" type="button" id="accountMenuButton" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Open account menu">
+                                    <button class="nav-link account-menu-toggle account-menu-toggle-labeled" type="button" id="accountMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
                                         <span class="account-menu-icon" aria-hidden="true">
                                             <svg viewBox="0 0 24 24" focusable="false" role="img">
                                                 <path d="M12 12.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
                                                 <path d="M4.75 20a7.25 7.25 0 0 1 14.5 0" />
                                             </svg>
                                         </span>
+                                        <span>@accountLabel</span>
                                     </button>
                                     <div class="dropdown-menu dropdown-menu-end account-menu" aria-labelledby="accountMenuButton">
-                                        @if (User.IsInRole(TryOutSpotRoles.PlatformAdmin))
-                                        {
-                                            <a class="dropdown-item" asp-area="" asp-controller="Admin" asp-action="Index">Admin Center</a>
-                                        }
-                                        <a class="dropdown-item" asp-area="" asp-controller="Account" asp-action="Settings">Account Settings</a>
+                                        <a class="dropdown-item" href="/account/settings">Account Settings</a>
+                                        <a class="dropdown-item" href="/account/settings#membership">Plan &amp; Billing</a>
+                                        <a class="dropdown-item" href="/plans-and-features">Compare plans</a>
                                         <form asp-action="Logout" asp-controller="Account" method="post" class="nav-signout-form">
                                             <button type="submit" class="dropdown-item">Sign out</button>
                                         </form>
@@ -201,17 +225,30 @@
                                 </li>
                             </ul>
                         }
+                        else
+                        {
+                            <div class="navbar-nav account-nav nav-auth-actions">
+                                <a class="nav-link text-dark" href="/account/login">Sign in</a>
+                                <a class="btn btn-primary btn-sm" href="/account/register">Create free account</a>
+                            </div>
+                        }
                     </div>
                 </div>
             </nav>
         </header>
     }
     <div class="@(isSplashPage ? "container-fluid px-0" : "container")">
-        <main role="main" class="@(isSplashPage ? string.Empty : "pb-3")">
+        <main id="main-content" role="main" tabindex="-1" class="@(isSplashPage ? string.Empty : "pb-3")">
             @RenderBody()
         </main>
     </div>
-    @if (!isSplashPage)
+    @if (isSplashPage)
+    {
+        <footer class="splash-footer">
+            <a href="/privacy-policy">Privacy Policy</a> &middot; <a href="/terms-and-conditions">Terms and Conditions</a> &middot; <a href="/account-deletion">Account Deletion</a> &middot; <a href="/sms-consent">SMS Consent</a>
+        </footer>
+    }
+    else
     {
         <footer class="border-top footer text-muted">
             <div class="container">

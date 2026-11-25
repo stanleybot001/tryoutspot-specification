@@ -7,6 +7,7 @@
     ViewData["OpenGraphType"] = "website";
 
     var demoListingUrl = "https://tryoutspot.com/opportunities/967602f9-4866-4c75-bc6f-ff86c3f448a5";
+    var isSignedIn = User.Identity?.IsAuthenticated ?? false;
     var homePageUrl = $"{Context.Request.Scheme}://{Context.Request.Host}/";
     var logoUrl = $"{Context.Request.Scheme}://{Context.Request.Host}{Url.Content("~/logo/MainLogoSized.png")}";
     var websiteJsonLd = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
@@ -46,9 +47,17 @@
         <div class="start-hero-card">
             <header class="start-hero-topbar">
                 <nav aria-label="Hero navigation">
-                    <a asp-controller="Account" asp-action="Register">Sign up</a>
-                    <a asp-controller="Account" asp-action="Login">Log in</a>
-                    <a asp-controller="Home" asp-action="PlansAndFeatures">Learn more</a>
+                    <a href="/tryouts">Find tryouts</a>
+                    @if (isSignedIn)
+                    {
+                        <a href="/account/onboarding">Dashboard</a>
+                    }
+                    else
+                    {
+                        <a asp-controller="Account" asp-action="Register">Create free account</a>
+                        <a asp-controller="Account" asp-action="Login">Sign in</a>
+                    }
+                    <a asp-controller="Home" asp-action="PlansAndFeatures">Plans &amp; pricing</a>
                 </nav>
             </header>
 
@@ -69,29 +78,56 @@
                             <li>Find local players ready to compete this season.</li>
                         </ul>
                     </section>
+                    <form class="start-search-form" action="/tryouts" method="get" role="search" aria-label="Find tryouts">
+                        <label class="visually-hidden" for="start-search-zip">ZIP code</label>
+                        <input id="start-search-zip" name="OriginZipCode" class="form-control" inputmode="numeric" maxlength="10" placeholder="Your ZIP code" autocomplete="postal-code" />
+                        <button class="btn start-btn-primary" type="submit">Find tryouts near me</button>
+                    </form>
                     <div class="start-actions">
-                        <a class="btn start-btn-primary" asp-controller="Account" asp-action="Register">Sign up free</a>
-                        <a class="btn start-btn-secondary" asp-controller="Account" asp-action="Login">Log in</a>
-                        <a class="btn start-btn-tertiary" asp-controller="Home" asp-action="PlansAndFeatures">Learn more</a>
+                        @if (isSignedIn)
+                        {
+                            <a class="btn start-btn-secondary" href="/account/onboarding">Go to your dashboard</a>
+                        }
+                        else
+                        {
+                            <a class="btn start-btn-secondary" asp-controller="Account" asp-action="Register">Create free account</a>
+                            <a class="btn start-btn-tertiary" asp-controller="Account" asp-action="Login">Sign in</a>
+                        }
                     </div>
                 </div>
                 <aside class="start-feature-panel start-next-panel" aria-labelledby="start-next-title">
                     <p class="start-feature-kicker">Start Here</p>
                     <h2 id="start-next-title">What do you want to do next?</h2>
                     <div class="start-next-actions">
-                        <a class="start-next-link start-next-primary" asp-controller="Account" asp-action="Register">
-                            <span>New here?</span>
-                            <strong>Sign up</strong>
-                            <small>Create a player, parent, or team account.</small>
+                        <a class="start-next-link start-next-primary" href="/tryouts">
+                            <span>Parents and players</span>
+                            <strong>Find tryouts</strong>
+                            <small>Search tryouts, camps, and roster openings near you. No account needed to look.</small>
                         </a>
-                        <a class="start-next-link" asp-controller="Account" asp-action="Login">
-                            <span>Already have an account?</span>
-                            <strong>Log in</strong>
-                            <small>Go to your dashboard and keep moving.</small>
-                        </a>
+                        @if (isSignedIn)
+                        {
+                            <a class="start-next-link" href="/account/onboarding">
+                                <span>Welcome back</span>
+                                <strong>Go to your dashboard</strong>
+                                <small>Pick up where you left off.</small>
+                            </a>
+                        }
+                        else
+                        {
+                            <a class="start-next-link" href="/account/register?accountType=TeamRepresentative">
+                                <span>Coaches and teams</span>
+                                <strong>Post a tryout free</strong>
+                                <small>Free Coach includes one published listing every six months.</small>
+                            </a>
+                            <a class="start-next-link" asp-controller="Account" asp-action="Login">
+                                <span>Already have an account?</span>
+                                <strong>Sign in</strong>
+                                <small>Go to your dashboard and keep moving.</small>
+                            </a>
+                        }
                         <a class="start-next-link" asp-controller="Home" asp-action="PlansAndFeatures">
                             <span>Still deciding?</span>
-                            <strong>Learn more</strong>
+                            <strong>Compare plans</strong>
                             <small>Compare features for players and teams.</small>
                         </a>
                         <a class="start-next-link" href="@demoListingUrl">

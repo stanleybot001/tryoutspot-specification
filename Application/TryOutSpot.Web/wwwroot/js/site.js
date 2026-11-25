@@ -50,6 +50,18 @@ document.addEventListener("submit", (event) => {
 });
 
 document.addEventListener("change", (event) => {
+    const exclusive = event.target.closest("input[type=checkbox][data-exclusive-group]");
+    if (exclusive && exclusive.checked) {
+        const group = exclusive.getAttribute("data-exclusive-group");
+        document.querySelectorAll(`input[type=checkbox][data-exclusive-group="${group}"]`).forEach((other) => {
+            if (other !== exclusive) {
+                other.checked = false;
+            }
+        });
+    }
+});
+
+document.addEventListener("change", (event) => {
     const select = event.target.closest("select[data-player-autofill]");
     if (!select) {
         return;

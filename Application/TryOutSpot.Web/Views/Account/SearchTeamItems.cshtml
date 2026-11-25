@@ -1,14 +1,18 @@
 @model SearchTeamItemsPageModel
 
 @{
-    ViewData["Title"] = "Search Team Items";
+    ViewData["Title"] = "Find Tryouts & Events";
+    var searchAction = Model.IsPublicSearch ? "PublicTryouts" : "SearchTeamItems";
+    var upgradeUrl = Model.IsPublicSearch
+        ? "/account/register?accountType=Parent&returnUrl=%2Ftryouts"
+        : "/account/onboarding/choose-plan?bundle=player_parent";
 }
 
 <section class="account-page search-page">
     <div class="account-heading">
-        <p class="account-kicker">Discovery</p>
-        <h1>Search team items.</h1>
-        <p>Find tryouts, tournaments, camps, roster openings, and other team opportunities using the filters included with your membership.</p>
+        <p class="account-kicker">Find tryouts</p>
+        <h1>Find tryouts &amp; events near you</h1>
+        <p>Search tryouts, tournaments, camps, and roster openings. Enter your ZIP code to see what's closest first.</p>
     </div>
 
     @if (TempData["StatusMessage"] is string statusMessage)
@@ -16,20 +20,27 @@
         <div class="account-alert">@statusMessage</div>
     }
 
-    @if (!Model.HasAdvancedOpportunitySearch)
+    @if (Model.IsPublicSearch)
     {
         <div class="account-alert">
-            Free Player/Parent search includes all public team item types, age filters, and a radius up to @Model.MaxRadiusMiles miles.
-            Premium Player unlocks competition level filters and expanded radius.
+            You're browsing as a guest. <a href="/account/register?accountType=Parent&amp;returnUrl=%2Ftryouts">Create a free account</a>
+            to save tryouts and register your player online. Already have one? <a href="/account/login?returnUrl=%2Ftryouts">Sign in</a>.
+        </div>
+    }
+    else if (!Model.HasAdvancedOpportunitySearch)
+    {
+        <div class="account-alert">
+            Free search covers every event type within @Model.MaxRadiusMiles miles.
+            <a class="upgrade-link" href="@upgradeUrl">Upgrade to Premium Player</a> to filter by competition level and search farther away.
         </div>
     }
     @if (Model.CompetitionLevelFilterIgnored)
     {
-        <div class="account-alert">Competition level filters require Premium Player.</div>
+        <div class="account-alert">Competition level filters are a Premium Player feature. <a class="upgrade-link" href="@upgradeUrl">See plans</a></div>
     }
     @if (Model.RadiusWasConstrained)
     {
-        <div class="account-alert">Radius was capped at @Model.MaxRadiusMiles miles for your current plan.</div>
+        <div class="account-alert">Search distance was limited to @Model.MaxRadiusMiles miles. <a class="upgrade-link" href="@upgradeUrl">Upgrade to search farther</a></div>
     }
 
     <section class="form-section">
@@ -109,8 +120,7 @@
             </div>
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">Search</button>
-                <a class="btn btn-outline-secondary" asp-action="SearchTeamItems">Reset</a>
-                <a class="btn btn-outline-secondary" asp-action="Onboarding">Back to dashboard</a>
+                <a class="btn btn-outline-secondary" asp-action="@searchAction">Reset</a>
             </div>
         </form>
     </section>
@@ -139,7 +149,7 @@
 
         @if (Model.Results.Count == 0)
         {
-            <p class="section-help">No team items matched these filters.</p>
+            <p class="section-help">No tryouts or events matched these filters. Try a larger distance, a different age group, or clear the date range.</p>
         }
         else
         {
@@ -159,7 +169,7 @@
                                 }
                                 @if (result.IsFavorited)
                                 {
-                                    <span>Favorited</span>
+                                    <span>Saved</span>
                                 }
                             </div>
                         </div>
@@ -190,7 +200,7 @@
                 @if (Model.HasPreviousPage)
                 {
                     <a class="btn btn-outline-secondary"
-                       asp-action="SearchTeamItems"
+                       asp-action="@searchAction"
                        asp-route-q="@Model.Q"
                        asp-route-sportId="@Model.SportId"
                        asp-route-type="@Model.Type"
@@ -209,7 +219,7 @@
                 @if (Model.HasNextPage)
                 {
                     <a class="btn btn-outline-secondary"
-                       asp-action="SearchTeamItems"
+                       asp-action="@searchAction"
                        asp-route-q="@Model.Q"
                        asp-route-sportId="@Model.SportId"
                        asp-route-type="@Model.Type"
@@ -242,7 +252,7 @@
                                 <span>Additional matches outside your selected radius</span>
                             </div>
                             <a class="btn btn-outline-primary btn-sm"
-                               asp-action="SearchTeamItems"
+                               asp-action="@searchAction"
                                asp-route-q="@Model.Q"
                                asp-route-sportId="@Model.SportId"
                                asp-route-type="@Model.Type"

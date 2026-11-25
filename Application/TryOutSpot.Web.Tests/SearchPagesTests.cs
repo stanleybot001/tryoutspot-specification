@@ -30,9 +30,46 @@ public sealed class SearchPagesTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
-        Assert.Contains("Free Player/Parent search includes all public team item types", html);
+        Assert.Contains("Free search covers every event type", html);
+        Assert.Contains("/account/onboarding/choose-plan?bundle=player_parent", html);
         Assert.Contains("Free parent visible tryout", html);
         Assert.Contains("Free parent visible tournament", html);
+    }
+
+    [Fact]
+    public async Task PublicTryouts_AnonymousVisitor_SeesResultsWithFreeLimitsAndSignUpPrompt()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        SeedTeamItemSearchData(factory);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var response = await client.GetAsync("/tryouts?type=all&competitionLevel=AAA");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+        Assert.Contains("You're browsing as a guest", html);
+        Assert.Contains("Free parent visible tryout", html);
+        Assert.Contains("Competition level filters are a Premium Player feature", html);
+    }
+
+    [Fact]
+    public async Task PublicTryouts_SignedInVisitor_RedirectsToAccountSearch()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var parent = await factory.CreateUserAsync("public-tryouts-redirect@example.com", [TryOutSpotRoles.Parent]);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, parent.Email!);
+
+        var response = await client.GetAsync("/tryouts?OriginZipCode=50309");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/account/search/team-items?OriginZipCode=50309", response.Headers.Location?.ToString());
     }
 
     [Fact]
@@ -164,7 +201,7 @@ public sealed class SearchPagesTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
-        Assert.Contains("No team items matched these filters.", html);
+        Assert.Contains("No tryouts or events matched these filters.", html);
         Assert.Contains("Within 60 miles", html);
         Assert.Contains("Wichita radius suggestion tryout", html);
     }

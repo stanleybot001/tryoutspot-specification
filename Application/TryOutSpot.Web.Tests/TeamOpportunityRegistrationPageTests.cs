@@ -372,6 +372,56 @@ public sealed class TeamOpportunityRegistrationPageTests
         Assert.Contains(">1</td>", html, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task MyRegistrations_ListsRegistrationAndAllowsWithdraw()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var parentUser = await factory.CreateUserAsync("parent-my-registrations@example.com", [TryOutSpotRoles.Parent]);
+        var seeded = SeedPublishedTryoutOpportunity(factory, parentUser.Id, fillToCapacity: true);
+        Guid registrationId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            registrationId = await dbContext.Registrations
+                .Where(registration => registration.OpportunityId == seeded.OpportunityId)
+                .Select(registration => registration.Id)
+                .SingleAsync();
+        }
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, parentUser.Email!);
+
+        var listResponse = await client.GetAsync("/account/registrations");
+        Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
+        var listHtml = WebUtility.HtmlDecode(await listResponse.Content.ReadAsStringAsync());
+        Assert.Contains("Already Registered - Registration Workflow Tryout", listHtml);
+        Assert.Contains("Waiting for team review", listHtml);
+        Assert.Contains($"/account/registrations/{registrationId}/withdraw", listHtml);
+
+        var antiForgeryToken = await GetAntiForgeryTokenAsync(client, "/account/registrations");
+        var withdrawResponse = await client.PostAsync(
+            $"/account/registrations/{registrationId}/withdraw",
+            new FormUrlEncodedContent([new("__RequestVerificationToken", antiForgeryToken)]));
+        Assert.Equal(HttpStatusCode.Redirect, withdrawResponse.StatusCode);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var status = await dbContext.Registrations
+                .Where(registration => registration.Id == registrationId)
+                .Select(registration => registration.Status)
+                .SingleAsync();
+            Assert.Equal("withdrawn", status);
+        }
+
+        var afterHtml = WebUtility.HtmlDecode(await (await client.GetAsync("/account/registrations")).Content.ReadAsStringAsync());
+        Assert.Contains("Withdrawn", afterHtml);
+        Assert.DoesNotContain($"/account/registrations/{registrationId}/withdraw", afterHtml);
+    }
+
     private static (Guid OpportunityId, Guid ManagedPlayerId) SeedPublishedTryoutOpportunity(
         TryOutSpotWebApplicationFactory factory,
         Guid parentUserId,

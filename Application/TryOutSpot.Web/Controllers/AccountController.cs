@@ -218,9 +218,21 @@ public sealed class AccountController(
     ];
 
     [HttpGet("register")]
-    public async Task<IActionResult> Register([FromQuery] string? returnUrl = null)
+    public async Task<IActionResult> Register(
+        [FromQuery] string? returnUrl = null,
+        [FromQuery] string? accountType = null)
     {
-        var model = PrepareRegisterModel(new RegisterPageModel { ReturnUrl = returnUrl });
+        if (User.Identity?.IsAuthenticated == true)
+        {
+            return RedirectToLocalOrOnboarding(returnUrl);
+        }
+
+        var preselected = TryOutSpotRoles.NormalizePublicRegistrationRole(accountType);
+        var model = PrepareRegisterModel(new RegisterPageModel
+        {
+            ReturnUrl = returnUrl,
+            AccountTypes = preselected is null ? [] : [preselected]
+        });
         await PopulateExternalProviderAvailabilityAsync(model);
         return View(model);
     }
@@ -292,8 +304,39 @@ public sealed class AccountController(
         var confirmationToken = await userManager.GenerateEmailConfirmationTokenAsync(user);
         await accountEmailSender.SendEmailConfirmationTokenAsync(user, confirmationToken, cancellationToken);
 
+        RememberPendingReturnUrl(model.ReturnUrl);
         TempData["StatusMessage"] = "Account created. Check your email to verify your address before signing in.";
         return RedirectToAction(nameof(RegisterConfirmation), new { email = user.Email });
+    }
+
+    private const string PendingReturnUrlCookieName = "TryOutSpot.ReturnUrl";
+
+    private void RememberPendingReturnUrl(string? returnUrl)
+    {
+        if (string.IsNullOrWhiteSpace(returnUrl) || !Url.IsLocalUrl(returnUrl))
+        {
+            return;
+        }
+
+        Response.Cookies.Append(PendingReturnUrlCookieName, returnUrl, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = Request.IsHttps,
+            SameSite = SameSiteMode.Lax,
+            MaxAge = TimeSpan.FromDays(3),
+            IsEssential = true
+        });
+    }
+
+    private string? TakePendingReturnUrl()
+    {
+        if (!Request.Cookies.TryGetValue(PendingReturnUrlCookieName, out var returnUrl))
+        {
+            return null;
+        }
+
+        Response.Cookies.Delete(PendingReturnUrlCookieName);
+        return Url.IsLocalUrl(returnUrl) ? returnUrl : null;
     }
 
     [HttpGet("register-confirmation")]
@@ -338,6 +381,11 @@ public sealed class AccountController(
         [FromQuery] string? email = null,
         [FromQuery] string? externalLoginStatus = null)
     {
+        if (User.Identity?.IsAuthenticated == true)
+        {
+            return RedirectToLocalOrOnboarding(returnUrl);
+        }
+
         if (string.Equals(externalLoginStatus, "failed", StringComparison.OrdinalIgnoreCase))
         {
             TempData["StatusMessage"] = "The social login session expired or could not be verified. Please start social sign-in again.";
@@ -403,12 +451,9 @@ public sealed class AccountController(
 
         await SignInWebUserAsync(user, model.RememberMe);
 
-        if (!string.IsNullOrWhiteSpace(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
-        {
-            return LocalRedirect(model.ReturnUrl);
-        }
-
-        return RedirectToAction(nameof(Onboarding));
+        var pendingReturnUrl = TakePendingReturnUrl();
+        return RedirectToLocalOrOnboarding(
+            string.IsNullOrWhiteSpace(model.ReturnUrl) ? pendingReturnUrl : model.ReturnUrl);
     }
 
     [HttpPost("logout")]
@@ -416,8 +461,7 @@ public sealed class AccountController(
     public async Task<IActionResult> Logout()
     {
         await HttpContext.SignOutAsync(TryOutSpotAuthenticationSchemes.WebCookie);
-        TempData["StatusMessage"] = "You have been signed out.";
-        return RedirectToAction(nameof(Login));
+        return Redirect("/");
     }
 
     [HttpGet("forgot-password")]
@@ -522,7 +566,10 @@ public sealed class AccountController(
         await userManager.UpdateAsync(user);
 
         ViewData["Verified"] = true;
-        ViewData["Message"] = "Your email has been verified.";
+        ViewData["Email"] = user.Email;
+        ViewData["Message"] = User.Identity?.IsAuthenticated == true
+            ? "Your email has been verified."
+            : "Your email has been verified. Sign in to continue.";
         return View();
     }
 
@@ -982,6 +1029,195 @@ public sealed class AccountController(
         }
 
         return View(await BuildFavoritesPageModelAsync(user, page, pageSize, cancellationToken));
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
+    [HttpGet("registrations")]
+    public async Task<IActionResult> MyRegistrations(
+        [FromQuery] string? show = null,
+        [FromQuery] int page = 1,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(MyRegistrations)) });
+        }
+
+        var showPast = string.Equals(show, "past", StringComparison.OrdinalIgnoreCase);
+        var model = new MyRegistrationsPageModel { Show = showPast ? "past" : "upcoming" };
+        var cutoffDate = DateTime.UtcNow.Date.AddDays(-1);
+        var userId = user.Id;
+
+        model.HasManagedPlayers = await dbContext.UserPlayerRelationships
+            .AsNoTracking()
+            .AnyAsync(relationship => relationship.UserId == userId && relationship.CanManage, cancellationToken);
+
+        var baseQuery = dbContext.Registrations
+            .AsNoTracking()
+            .Where(registration =>
+                registration.RegisteredByUserId == userId
+                || registration.Player.UserPlayerRelationships.Any(relationship =>
+                    relationship.UserId == userId
+                    && relationship.CanManage));
+        var upcomingQuery = baseQuery.Where(registration =>
+            (registration.Opportunity.EventEndDate
+             ?? registration.Opportunity.EventDate
+             ?? registration.Opportunity.RegistrationDeadline
+             ?? registration.Opportunity.ExpiresAt
+             ?? registration.CreatedAt) >= cutoffDate);
+        var pastQuery = baseQuery.Where(registration =>
+            (registration.Opportunity.EventEndDate
+             ?? registration.Opportunity.EventDate
+             ?? registration.Opportunity.RegistrationDeadline
+             ?? registration.Opportunity.ExpiresAt
+             ?? registration.CreatedAt) < cutoffDate);
+
+        model.UpcomingCount = await upcomingQuery.CountAsync(cancellationToken);
+        model.PastCount = await pastQuery.CountAsync(cancellationToken);
+        model.TotalCount = showPast ? model.PastCount : model.UpcomingCount;
+        model.TotalPages = Math.Max(1, (int)Math.Ceiling(model.TotalCount / (double)model.PageSize));
+        model.Page = Math.Clamp(page, 1, model.TotalPages);
+
+        var orderedQuery = showPast
+            ? pastQuery.OrderByDescending(registration =>
+                registration.Opportunity.EventDate ?? registration.CreatedAt)
+            : upcomingQuery.OrderBy(registration =>
+                registration.Opportunity.EventDate ?? registration.Opportunity.RegistrationDeadline ?? registration.CreatedAt);
+        var rows = await orderedQuery
+            .ThenBy(registration => registration.Player.FirstName)
+            .Skip((model.Page - 1) * model.PageSize)
+            .Take(model.PageSize)
+            .Select(registration => new
+            {
+                registration.Id,
+                registration.OpportunityId,
+                PlayerName = registration.Player.FirstName + " " + registration.Player.LastName,
+                OpportunityTitle = registration.Opportunity.Title,
+                OpportunityType = registration.Opportunity.Type,
+                TeamName = registration.Opportunity.Team.Name,
+                SportName = registration.Opportunity.Sport.Name,
+                registration.Status,
+                registration.Opportunity.EventDate,
+                registration.Opportunity.RegistrationDeadline,
+                registration.CreatedAt,
+                registration.Opportunity.City,
+                registration.Opportunity.State
+            })
+            .ToArrayAsync(cancellationToken);
+
+        model.Registrations = rows
+            .Select(row =>
+            {
+                var statusCode = ToMyRegistrationStatusCode(row.Status);
+                return new MyRegistrationPageItem(
+                    row.Id,
+                    row.OpportunityId,
+                    row.PlayerName.Trim(),
+                    row.OpportunityTitle,
+                    GetOpportunityTypeLabel(row.OpportunityType),
+                    row.TeamName,
+                    row.SportName,
+                    FormatMyRegistrationStatusLabel(statusCode),
+                    statusCode,
+                    row.EventDate,
+                    row.RegistrationDeadline,
+                    row.CreatedAt,
+                    row.City,
+                    row.State,
+                    CanWithdraw: !showPast && statusCode is "pending" or "accepted");
+            })
+            .ToArray();
+
+        return View(model);
+    }
+
+    [Authorize(
+        AuthenticationSchemes = TryOutSpotAuthenticationSchemes.WebCookie,
+        Policy = TryOutSpotAuthorizationPolicies.ActiveUser)]
+    [HttpPost("registrations/{registrationId:guid}/withdraw")]
+    public async Task<IActionResult> WithdrawRegistration(
+        Guid registrationId,
+        CancellationToken cancellationToken)
+    {
+        var user = await GetCurrentWebUserAsync();
+        if (user is null)
+        {
+            return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(MyRegistrations)) });
+        }
+
+        var userId = user.Id;
+        var registration = await dbContext.Registrations
+            .Where(candidate => candidate.Id == registrationId)
+            .Where(candidate =>
+                candidate.RegisteredByUserId == userId
+                || candidate.Player.UserPlayerRelationships.Any(relationship =>
+                    relationship.UserId == userId
+                    && relationship.CanManage))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (registration is null)
+        {
+            TempData["StatusMessage"] = "That registration could not be found.";
+            return RedirectToAction(nameof(MyRegistrations));
+        }
+
+        if (ToMyRegistrationStatusCode(registration.Status) is "withdrawn" or "declined")
+        {
+            TempData["StatusMessage"] = "That registration is no longer active.";
+            return RedirectToAction(nameof(MyRegistrations));
+        }
+
+        registration.Status = "withdrawn";
+        registration.UpdatedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        TempData["StatusMessage"] = "Registration withdrawn. The team will see that your player is no longer attending. Contact the team directly about any fee refund.";
+        return RedirectToAction(nameof(MyRegistrations));
+    }
+
+    private static string ToMyRegistrationStatusCode(string? status)
+    {
+        var normalized = status?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (normalized.Contains("withdraw", StringComparison.Ordinal)
+            || normalized.Contains("cancel", StringComparison.Ordinal))
+        {
+            return "withdrawn";
+        }
+
+        return ClassifyRegistrationStatus(status) switch
+        {
+            RegistrationStatusCategory.Approved => "accepted",
+            RegistrationStatusCategory.Declined => "declined",
+            _ => "pending"
+        };
+    }
+
+    private static string FormatMyRegistrationStatusLabel(string statusCode)
+    {
+        return statusCode switch
+        {
+            "accepted" => "Accepted",
+            "declined" => "Not selected",
+            "withdrawn" => "Withdrawn",
+            _ => "Waiting for team review"
+        };
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/tryouts")]
+    public async Task<IActionResult> PublicTryouts(
+        [FromQuery] SearchTeamItemsPageModel model,
+        CancellationToken cancellationToken = default)
+    {
+        if (User.Identity?.IsAuthenticated == true)
+        {
+            return Redirect($"{Url.Action(nameof(SearchTeamItems))}{Request.QueryString}");
+        }
+
+        var preparedModel = await BuildSearchTeamItemsPageModelAsync(null, model, cancellationToken);
+        return View(nameof(SearchTeamItems), preparedModel);
     }
 
     [Authorize(
@@ -5305,15 +5541,22 @@ public sealed class AccountController(
     }
 
     private async Task<SearchTeamItemsPageModel> BuildSearchTeamItemsPageModelAsync(
-        User user,
+        User? user,
         SearchTeamItemsPageModel model,
         CancellationToken cancellationToken)
     {
-        var entitlements = await entitlementService.GetEntitlementsAsync(user.Id, cancellationToken);
-        var roles = entitlements?.AccountTypes ?? await GetCanonicalPublicRolesAsync(user);
+        var entitlements = user is null
+            ? null
+            : await entitlementService.GetEntitlementsAsync(user.Id, cancellationToken);
+        IReadOnlyCollection<string> roles = user is null
+            ? []
+            : entitlements?.AccountTypes ?? await GetCanonicalPublicRolesAsync(user);
         var featureCodes = entitlements?.FeatureCodes ?? [];
-        var hasPlayerParentAccess = roles.Any(TryOutSpotRoles.IsPlayerParentRole)
+        var hasPlayerParentAccess = user is null
+            || roles.Any(TryOutSpotRoles.IsPlayerParentRole)
             || featureCodes.Contains(TryOutSpotFeatureCodes.BrowseOpportunities, StringComparer.Ordinal);
+        var viewerUserId = user?.Id ?? Guid.Empty;
+        model.IsPublicSearch = user is null;
         var hasAdvancedOpportunitySearch = featureCodes.Contains(
             TryOutSpotFeatureCodes.AdvancedOpportunitySearch,
             StringComparer.Ordinal);
@@ -5412,7 +5655,7 @@ public sealed class AccountController(
                 query,
                 normalizedSearch,
                 zipRadius,
-                user.Id,
+                viewerUserId,
                 hasSearch: !string.IsNullOrWhiteSpace(normalizedSearch),
                 hasRadius: zipRadius is not null)
             .Skip((model.Page - 1) * model.PageSize)
@@ -5425,7 +5668,7 @@ public sealed class AccountController(
         if (zipRadius is not null)
         {
             model.RadiusSuggestions = await BuildTeamItemRadiusSuggestionsAsync(
-                user.Id,
+                viewerUserId,
                 normalizedSearch,
                 model,
                 normalizedType,
@@ -11474,6 +11717,10 @@ public sealed class AccountController(
             new(ClaimTypes.Email, user.Email ?? string.Empty),
             new("security_stamp", user.SecurityStamp ?? string.Empty)
         };
+        if (!string.IsNullOrWhiteSpace(user.FirstName))
+        {
+            claims.Add(new Claim(ClaimTypes.GivenName, user.FirstName.Trim()));
+        }
         claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
 
         var identity = new ClaimsIdentity(claims, TryOutSpotAuthenticationSchemes.WebCookie);
@@ -11577,20 +11824,20 @@ public sealed class AccountController(
         [
             new(
                 TryOutSpotRoles.Parent,
-                "Parent or guardian",
-                "Adult account for managing one or more player profiles and registrations. The account holder is not shown in player search.",
+                "I'm a parent or guardian",
+                "Find tryouts and register one or more kids. You are not shown in player search.",
                 true,
                 selected.Contains(TryOutSpotRoles.Parent)),
             new(
                 TryOutSpotRoles.Player,
-                "Player",
-                "Use when the player is creating their own account for profile and discovery workflows.",
+                "I'm a player",
+                "Create your own player profile, find tryouts, and register yourself.",
                 true,
                 selected.Contains(TryOutSpotRoles.Player)),
             new(
                 TryOutSpotRoles.TeamRepresentative,
-                "Team representative",
-                "Team role. Eligible for Free Coach and paid team plans.",
+                "I'm a coach or team manager",
+                "Post tryouts, take registrations, and find players. Free Coach includes 1 published listing every 6 months.",
                 true,
                 selected.Contains(TryOutSpotRoles.TeamRepresentative))
         ];

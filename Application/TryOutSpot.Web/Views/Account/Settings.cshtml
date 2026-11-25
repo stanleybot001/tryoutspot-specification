@@ -20,10 +20,20 @@
 <section class="account-page">
     <div class="account-heading">
         <p class="account-kicker">Account settings</p>
-        <h1>Manage your access, profile, and notifications.</h1>
-        <p>These settings control how you sign in, how TryOutSpot identifies your account type, and which account messages you can receive.</p>
+        <h1>Account settings</h1>
+        <p>Update your profile, sign-in details, notifications, and plan.</p>
         <p class="required-note"><span class="required-marker">*</span> Required field</p>
     </div>
+
+    <nav class="settings-jump-nav" aria-label="Settings sections">
+        <a href="#profile">Profile</a>
+        <a href="#email">Email</a>
+        <a href="#phone">Phone</a>
+        <a href="#password">Password</a>
+        <a href="#account-types">Account types</a>
+        <a href="#sms">Text messages</a>
+        <a href="#membership">Plan &amp; billing</a>
+    </nav>
 
     @if (TempData["StatusMessage"] is string statusMessage)
     {
@@ -56,7 +66,7 @@
     <partial name="_FlyerTeamClaimPanel" model="Model.ClaimableFlyerTeams" />
 
     <div class="settings-layout">
-        <section class="form-section">
+        <section class="form-section" id="profile">
             <h2>Profile</h2>
             <form asp-action="UpdateProfile" asp-controller="Account" method="post" class="stacked-form">
                 <div class="form-grid two-column">
@@ -97,9 +107,19 @@
             </form>
         </section>
 
-        <section class="form-section">
+        <section class="form-section" id="email">
             <h2>Email</h2>
-            <p class="section-help">Changing email requires confirmation from the new address.</p>
+            @if (!Model.Email.EmailConfirmed)
+            {
+                <div class="account-alert">
+                    Your email address isn't verified yet.
+                    <form asp-action="ResendVerificationEmail" asp-controller="Account" method="post" class="inline-form">
+                        <input type="hidden" name="email" value="@Model.Email.CurrentEmail" />
+                        <button type="submit" class="btn btn-link p-0 align-baseline">Send a new verification email</button>
+                    </form>
+                </div>
+            }
+            <p class="section-help">To change your email, enter the new address. We'll send a confirmation link to it.</p>
             <form asp-action="RequestEmailChange" asp-controller="Account" method="post" class="stacked-form">
                 <input asp-for="Email.CurrentEmail" type="hidden" />
                 <input asp-for="Email.EmailConfirmed" type="hidden" />
@@ -125,7 +145,7 @@
             </form>
         </section>
 
-        <section class="form-section">
+        <section class="form-section" id="phone">
             <h2>Phone</h2>
             <p class="section-help">Phone verification uses transactional SMS and requires SMS consent.</p>
             <form asp-action="UpdatePhone" asp-controller="Account" method="post" class="stacked-form">
@@ -161,7 +181,7 @@
             </form>
         </section>
 
-        <section class="form-section">
+        <section class="form-section" id="password">
             <h2>Password</h2>
             <p class="section-help">
                 @(Model.Password.HasLocalPassword
@@ -196,9 +216,9 @@
             </form>
         </section>
 
-        <section class="form-section settings-wide">
+        <section class="form-section settings-wide" id="account-types">
             <h2>Account types <span class="required-marker">*</span></h2>
-            <p class="section-help">Choose one role per bundle. Roles control plan eligibility. Active subscription controls unlocked features.</p>
+            <p class="section-help">Choose parent or player for your family side, and add the coach role if you also run a team. Your account types decide which plans and tools you see.</p>
             <form asp-action="UpdateAccountTypes" asp-controller="Account" method="post" class="stacked-form">
                 @{
                     var selectedPlayerParentRole = Model.AccountTypes.AccountTypes
@@ -334,8 +354,8 @@
             </section>
         }
 
-        <section class="form-section settings-wide">
-            <h2>SMS consent</h2>
+        <section class="form-section settings-wide" id="sms">
+            <h2>Text messages</h2>
             <p class="section-help">SMS consent is optional and is not required to use TryOutSpot. It allows transactional messages such as verification codes, security notices, password reset notices, and tryout registration updates.</p>
             <form asp-action="UpdateSmsConsent" asp-controller="Account" method="post" class="stacked-form">
                 <div class="form-grid two-column">
@@ -368,9 +388,9 @@
             </form>
         </section>
 
-        <section class="form-section settings-wide">
-            <h2>Membership access</h2>
-            <p class="section-help">Paid plans redirect to Stripe checkout when selected. Upgrades are enabled after Stripe confirms payment. Downgrades and cancellations schedule Stripe period-end cancellation so access stays active through the paid term.</p>
+        <section class="form-section settings-wide" id="membership">
+            <h2>Plan &amp; billing</h2>
+            <p class="section-help">Upgrades take effect as soon as payment is confirmed. If you downgrade or cancel, you keep paid features until the end of the period you already paid for.</p>
             @if (playerParentPlans.Length > 0)
             {
                 var currentPlayerParentPlanName = playerParentMembership?.PlanName ?? "Free Player/Parent";
@@ -586,50 +606,6 @@
             @if (Model.HasScheduledPaidCancellation && Model.ScheduledPaidCancellationAt is not null)
             {
                 <p class="section-help">At least one paid cancellation is scheduled. Access remains until the matching paid period ends.</p>
-            }
-            @if (Model.MembershipSummaries.Count > 0)
-            {
-                <div class="plan-list membership-summary-list">
-                    @foreach (var membership in Model.MembershipSummaries)
-                    {
-                        <div class="plan-row">
-                            <div>
-                                <strong>Current membership: @membership.PlanName</strong>
-                                <span>@FormatBundleLabel(membership.BundleType) bundle</span>
-                                <p>Status: @membership.Status</p>
-                                @if (membership.CurrentPeriodEnd is not null)
-                                {
-                                    var periodEndLabel = membership.CurrentPeriodEndLabel
-                                        ?? (membership.CancelAtPeriodEnd
-                                        ? "Access ends"
-                                        : "Next billing date");
-                                    <p>@periodEndLabel: @FormatLocalDate(membership.CurrentPeriodEnd.Value)</p>
-                                }
-                            </div>
-                            <div class="plan-price">
-                                <strong>@membership.Price</strong>
-                                <span>@membership.BillingInterval</span>
-                                @if (membership.CancelAtPeriodEnd)
-                                {
-                                    <span>Cancels at period end</span>
-                                }
-                                else if (membership.HasActiveEntitlement)
-                                {
-                                    <span>@(membership.ActiveEntitlementLabel ?? "Active entitlement")</span>
-                                }
-                            </div>
-                        </div>
-                    }
-                </div>
-            }
-            @if (Model.FeatureCodes.Count > 0)
-            {
-                <div class="feature-code-list settings-feature-list">
-                    @foreach (var featureCode in Model.FeatureCodes.OrderBy(code => code))
-                    {
-                        <span>@featureCode</span>
-                    }
-                </div>
             }
         </section>
     </div>

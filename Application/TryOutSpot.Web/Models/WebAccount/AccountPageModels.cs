@@ -1653,6 +1653,8 @@ public sealed class SearchTeamItemsPageModel
 
     public bool CanSearchTeamItems { get; set; }
 
+    public bool IsPublicSearch { get; set; }
+
     public bool HasAdvancedOpportunitySearch { get; set; }
 
     public bool CanUseOpportunityTypeFilters { get; set; }
@@ -2183,6 +2185,48 @@ public sealed record OnboardingStepPageItem(
     string Description,
     bool IsRequired,
     bool IsComplete);
+
+public sealed class MyRegistrationsPageModel
+{
+    public string Show { get; set; } = "upcoming";
+
+    public int Page { get; set; } = 1;
+
+    public int PageSize { get; set; } = 20;
+
+    public int TotalCount { get; set; }
+
+    public int TotalPages { get; set; } = 1;
+
+    public int UpcomingCount { get; set; }
+
+    public int PastCount { get; set; }
+
+    public bool HasManagedPlayers { get; set; }
+
+    public IReadOnlyCollection<MyRegistrationPageItem> Registrations { get; set; } = [];
+
+    public bool HasPreviousPage => Page > 1;
+
+    public bool HasNextPage => Page < TotalPages;
+}
+
+public sealed record MyRegistrationPageItem(
+    Guid RegistrationId,
+    Guid OpportunityId,
+    string PlayerName,
+    string OpportunityTitle,
+    string TypeLabel,
+    string TeamName,
+    string SportName,
+    string StatusLabel,
+    string StatusCode,
+    DateTime? EventDate,
+    DateTime? RegistrationDeadline,
+    DateTime RegisteredAt,
+    string? City,
+    string? State,
+    bool CanWithdraw);
 
 public sealed record OnboardingTryoutRegistrationPageItem(
     Guid RegistrationId,
