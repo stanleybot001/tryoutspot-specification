@@ -23,7 +23,7 @@
     @if (!Model.CanPostOpportunities)
     {
         <div class="account-alert">
-            Your current membership does not include opportunity posting. Upgrade to Free Coach, Team Basic, or Team Professional to publish new listings.
+            To publish new listings, add the "coach or team manager" account type in <a href="/account/settings#account-types">Settings</a>. Free Coach is free and includes 1 published listing every 6 months.
         </div>
     }
     else if (Model.HasLimitedPosting && !Model.HasUnlimitedPosting)
@@ -98,7 +98,7 @@
         }
         else
         {
-            <p class="section-help">Listing reporting unlocks with Team Basic or higher plans.</p>
+            <p class="section-help">Listing reports are included with Basic Team and higher. <a class="upgrade-link" href="/account/onboarding/choose-plan?bundle=team">Compare team plans</a></p>
         }
         @if (Model.Opportunities.Count == 0)
         {

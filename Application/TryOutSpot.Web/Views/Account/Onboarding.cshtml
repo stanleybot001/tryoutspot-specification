@@ -3,7 +3,7 @@
 @using TryOutSpot.Web.Identity
 
 @{
-    ViewData["Title"] = "Account Setup";
+    ViewData["Title"] = "Dashboard";
     var hiddenWhenCompleteStepCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "choose_account_types",
@@ -40,17 +40,15 @@
         string.Equals(step.Code, "choose_account_types", StringComparison.OrdinalIgnoreCase) && step.IsComplete);
     var hasCompletedTeamOrganizationDetails = Model.Steps.Any(step =>
         string.Equals(step.Code, "add_team_or_organization", StringComparison.OrdinalIgnoreCase) && step.IsComplete);
-    var pageKicker = hasCompletedTeamOrganizationDetails ? "Dashboard" : "Setup";
-    var pageHeading = hasCompletedTeamOrganizationDetails
-        ? $"{Model.FirstName}, manage your TryOutSpot activity."
+    var hasPlayerSideRole = isParentOrGuardianAccount || isSelfPlayerAccount;
+    var hasTeamRole = Model.AccountTypes.Any(TryOutSpotRoles.IsTeamBundleRole);
+    var pageIntro = hasTeamRole && hasPlayerSideRole
+        ? "Manage your players and your teams from one place."
+        : hasTeamRole
+            ? "Post tryouts, manage registrations, and find players."
         : isParentOrGuardianAccount && !isSelfPlayerAccount
-            ? $"{Model.FirstName}, finish your parent/guardian setup."
-        : $"{Model.FirstName}, finish the pieces that matter.";
-    var pageIntro = hasCompletedTeamOrganizationDetails
-        ? "Keep team details, listings, favorites, and account settings ready for everyday work."
-        : isParentOrGuardianAccount && !isSelfPlayerAccount
-            ? "This is your parent/guardian account. Add a separate player profile for each child or player you manage; teams discover players through published player listings."
-        : "TryOutSpot keeps signup light. These items help tailor the next screens for players, parents, coaches, and organization staff.";
+            ? "Add each child once, then find tryouts and register in a couple of clicks."
+        : "Find tryouts, register, and keep your player profile up to date.";
     const string phoneVerificationReturnUrl = "/account/onboarding#verify-phone";
     var showPhoneVerificationPrompt = !Model.PhoneNumberConfirmed;
     var canSendPhoneVerificationCode = showPhoneVerificationPrompt
@@ -60,31 +58,44 @@
 
 <section class="account-page">
     <div class="account-heading">
-        <p class="account-kicker">@pageKicker</p>
-        <h1>@pageHeading</h1>
+        <p class="account-kicker">Dashboard</p>
+        <h1>Welcome, @Model.FirstName</h1>
         <p>@pageIntro</p>
-        <p class="required-note"><span class="required-marker">*</span> Required item</p>
     </div>
 
     @if (TempData["StatusMessage"] is string statusMessage)
     {
-        <div class="account-alert">@statusMessage</div>
+        <div class="account-alert" role="status">@statusMessage</div>
     }
 
-    <section class="account-summary-strip">
-        <div>
-            <span>Email</span>
-            <strong>@Model.Email</strong>
+    @if (!Model.EmailConfirmed)
+    {
+        <div class="account-alert">
+            Please verify @Model.Email using the link we emailed you.
+            <form asp-action="ResendVerificationEmail" asp-controller="Account" method="post" class="inline-form">
+                <input type="hidden" name="email" value="@Model.Email" />
+                <button type="submit" class="btn btn-link p-0 align-baseline">Send a new link</button>
+            </form>
         </div>
-        <div>
-            <span>Email status</span>
-            <strong>@(Model.EmailConfirmed ? "Verified" : "Not verified")</strong>
-        </div>
-        <div>
-            <span>Phone</span>
-            <strong>@(string.IsNullOrWhiteSpace(Model.PhoneNumber) ? "Not added" : Model.PhoneNumber)</strong>
-        </div>
-    </section>
+    }
+
+    <nav class="dashboard-quick-actions" aria-label="Quick actions">
+        @if (hasPlayerSideRole)
+        {
+            <a class="btn btn-primary" href="/account/search/team-items">Find tryouts</a>
+            <a class="btn btn-outline-primary" href="/account/onboarding/add-player-profile">@(isParentOrGuardianAccount ? "Add a child" : "Edit my profile")</a>
+            <a class="btn btn-outline-primary" href="/account/registrations">My registrations</a>
+        }
+        @if (hasTeamRole)
+        {
+            <a class="btn @(hasPlayerSideRole ? "btn-outline-primary" : "btn-primary")" href="/account/onboarding/team-opportunities">Post a tryout</a>
+            <a class="btn btn-outline-primary" href="/account/search/players">Find players</a>
+        }
+        @if (!hasPlayerSideRole && !hasTeamRole)
+        {
+            <a class="btn btn-primary" href="#onboarding-account-types">Choose how you'll use TryOutSpot</a>
+        }
+    </nav>
 
     @if (Model.ActivationAssistance is { ShouldShow: true } activationAssistance)
     {
@@ -135,64 +146,19 @@
 
     <partial name="_FlyerTeamClaimPanel" model="Model.ClaimableFlyerTeams" />
 
-    @if (showPhoneVerificationPrompt)
-    {
-        <section class="form-section phone-verification-panel" id="verify-phone">
-            <h2>Verify your phone number</h2>
-            @if (string.IsNullOrWhiteSpace(Model.PhoneNumber))
-            {
-                <p class="section-help">Add a phone number in account settings before requesting a verification code.</p>
-                <div class="form-actions">
-                    <a class="btn btn-outline-primary" href="/account/settings">Add phone number</a>
-                </div>
-            }
-            else if (!Model.SmsConsentAccepted)
-            {
-                <p class="section-help">SMS consent is required before TryOutSpot can text a verification code to @Model.PhoneNumber.</p>
-                <div class="form-actions">
-                    <a class="btn btn-outline-primary" href="/account/settings">Update SMS consent</a>
-                </div>
-            }
-            else if (canSendPhoneVerificationCode)
-            {
-                <p class="section-help">We will text a verification code to @Model.PhoneNumber. Enter the code here to confirm that number for your account.</p>
-                <div class="phone-verification-grid">
-                    <form asp-action="SendPhoneVerification" asp-controller="Account" method="post" class="stacked-form">
-                        <input type="hidden" name="Phone.PhoneNumber" value="@Model.PhoneNumber" />
-                        <input type="hidden" name="Phone.ReturnUrl" value="@phoneVerificationReturnUrl" />
-                        <div class="form-actions">
-                            <button type="submit" class="btn btn-outline-primary">Send / resend code</button>
-                        </div>
-                    </form>
-                    <form asp-action="VerifyPhone" asp-controller="Account" method="post" class="stacked-form">
-                        <input type="hidden" name="Phone.PhoneNumber" value="@Model.PhoneNumber" />
-                        <input type="hidden" name="Phone.ReturnUrl" value="@phoneVerificationReturnUrl" />
-                        <div class="form-grid two-column">
-                            <div class="form-field">
-                                <label class="form-label" for="DashboardPhoneVerificationCode">Verification code</label>
-                                <input id="DashboardPhoneVerificationCode" name="Phone.VerificationCode" class="form-control" autocomplete="one-time-code" />
-                            </div>
-                        </div>
-                        <div class="form-actions">
-                            <button type="submit" class="btn btn-primary">Verify phone</button>
-                        </div>
-                    </form>
-                </div>
-            }
-        </section>
-    }
-
     <div class="onboarding-layout">
         <section class="form-section dashboard-menu-section">
-            <h2>Dashboard menu</h2>
-            <p class="section-help">Use these shortcuts to manage the areas tied to your account.</p>
-            <div class="coach-hub-dashboard-link">
-                <div>
-                    <strong>Coach Getting Started Hub</strong>
-                    <span>Follow the short path for team setup, tryout listings, registration sheets, and pickup player listings.</span>
+            <h2>Your shortcuts</h2>
+            @if (hasTeamRole)
+            {
+                <div class="coach-hub-dashboard-link">
+                    <div>
+                        <strong>Coach Getting Started Hub</strong>
+                        <span>Follow the short path for team setup, tryout listings, registration sheets, and pickup player listings.</span>
+                    </div>
+                    <a class="btn btn-sm btn-primary" href="/account/onboarding/coach-getting-started">Open hub</a>
                 </div>
-                <a class="btn btn-sm btn-primary" href="/account/onboarding/coach-getting-started">Open hub</a>
-            </div>
+            }
             @if (menuGroups.Length == 0)
             {
                 <p class="section-help">No dashboard actions are available yet.</p>
@@ -212,14 +178,13 @@
                                         <span>@step.Description</span>
                                     </div>
                                     <div class="dashboard-menu-action">
-                                        @if (step.IsRequired)
+                                        @if (step.IsRequired && !step.IsComplete)
                                         {
-                                            <span class="required-pill">Required</span>
+                                            <span class="required-pill">To do</span>
                                         }
-                                        <span class="dashboard-menu-state">@(step.IsComplete ? "Complete" : "Next")</span>
                                         @if (TryGetStepOpenUrl(step.Code, out var stepOpenUrl))
                                         {
-                                            <a class="btn btn-sm btn-outline-primary" href="@stepOpenUrl">@(step.IsComplete ? "View" : "Open")</a>
+                                            <a class="btn btn-sm @(step.IsComplete ? "btn-outline-primary" : "btn-primary")" href="@stepOpenUrl">@(step.IsComplete ? "Open" : "Start")</a>
                                         }
                                     </div>
                                 </article>
@@ -431,11 +396,14 @@
     @if (Model.ShowTryoutRegistrationList)
     {
         <section class="form-section">
-            <h2>Upcoming tryout registrations</h2>
+            <div class="section-heading-row">
+                <h2>Upcoming tryouts</h2>
+                <a class="btn btn-sm btn-outline-primary" href="/account/registrations">All registrations</a>
+            </div>
             @if (Model.UpcomingTryoutRegistrations.Count == 0)
             {
                 <p class="section-help">
-                    No upcoming tryout registrations yet. Register a player from any tryout listing and it will appear here.
+                    No upcoming tryouts yet. <a href="/account/search/team-items">Find a tryout</a> and register your player; it will show up here.
                 </p>
             }
             else
@@ -474,11 +442,12 @@
     @if (Model.ShowRecommendedPlans)
     {
         <section class="form-section">
-            <h2>Recommended plan options</h2>
-            <p class="section-help">Stay on the free path or upgrade now. Paid plans redirect to Stripe checkout; free plans apply immediately.</p>
+            <h2>Plans for you</h2>
+            <p class="section-help">You can keep using TryOutSpot free. Upgrade any time for more listings, wider search, and team tools.</p>
             <div class="plan-list">
                 @foreach (var plan in Model.RecommendedPlans)
                 {
+                    var planBundle = IsTeamPlanCode(plan.Code) ? "team" : "player_parent";
                     <div class="plan-row">
                         <div>
                             <strong>@plan.Name</strong>
@@ -503,6 +472,10 @@
                             {
                                 <span>No payment required</span>
                             }
+                            @if (plan.RequiresStripeSubscription)
+                            {
+                                <a class="btn btn-sm btn-primary mt-1" href="/account/onboarding/choose-plan?bundle=@planBundle">Choose @plan.Name</a>
+                            }
                         </div>
                     </div>
                 }
@@ -510,9 +483,52 @@
         </section>
     }
 
-    <form asp-action="Logout" asp-controller="Account" method="post" class="logout-form">
-        <button type="submit" class="btn btn-outline-secondary">Sign out</button>
-    </form>
+    @if (showPhoneVerificationPrompt)
+    {
+        <details class="form-section phone-verification-panel" id="verify-phone" open="@canSendPhoneVerificationCode">
+            <summary><strong>Verify your phone number</strong> <span class="section-help">Optional. Get registration updates by text.</span></summary>
+            @if (string.IsNullOrWhiteSpace(Model.PhoneNumber))
+            {
+                <p class="section-help">Add a phone number in account settings to get started.</p>
+                <div class="form-actions">
+                    <a class="btn btn-outline-primary" href="/account/settings">Add phone number</a>
+                </div>
+            }
+            else if (!Model.SmsConsentAccepted)
+            {
+                <p class="section-help">SMS consent is required before TryOutSpot can text a verification code to @Model.PhoneNumber.</p>
+                <div class="form-actions">
+                    <a class="btn btn-outline-primary" href="/account/settings">Update SMS consent</a>
+                </div>
+            }
+            else if (canSendPhoneVerificationCode)
+            {
+                <p class="section-help">We will text a verification code to @Model.PhoneNumber. Enter the code here to confirm that number for your account.</p>
+                <div class="phone-verification-grid">
+                    <form asp-action="SendPhoneVerification" asp-controller="Account" method="post" class="stacked-form">
+                        <input type="hidden" name="Phone.PhoneNumber" value="@Model.PhoneNumber" />
+                        <input type="hidden" name="Phone.ReturnUrl" value="@phoneVerificationReturnUrl" />
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-outline-primary">Send / resend code</button>
+                        </div>
+                    </form>
+                    <form asp-action="VerifyPhone" asp-controller="Account" method="post" class="stacked-form">
+                        <input type="hidden" name="Phone.PhoneNumber" value="@Model.PhoneNumber" />
+                        <input type="hidden" name="Phone.ReturnUrl" value="@phoneVerificationReturnUrl" />
+                        <div class="form-grid two-column">
+                            <div class="form-field">
+                                <label class="form-label" for="DashboardPhoneVerificationCode">Verification code</label>
+                                <input id="DashboardPhoneVerificationCode" name="Phone.VerificationCode" class="form-control" autocomplete="one-time-code" />
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Verify phone</button>
+                        </div>
+                    </form>
+                </div>
+            }
+        </details>
+    }
 </section>
 
 @functions {
@@ -544,6 +560,14 @@
         };
 
         return !string.IsNullOrWhiteSpace(url);
+    }
+
+    private static bool IsTeamPlanCode(string planCode)
+    {
+        return string.Equals(planCode, TryOutSpotPlanCodes.FreeCoach, StringComparison.Ordinal)
+            || string.Equals(planCode, TryOutSpotPlanCodes.TeamBasic, StringComparison.Ordinal)
+            || string.Equals(planCode, TryOutSpotPlanCodes.TeamProfessional, StringComparison.Ordinal)
+            || string.Equals(planCode, TryOutSpotPlanCodes.EnterpriseOrganization, StringComparison.Ordinal);
     }
 
     private static bool IsAccountSetupStep(string stepCode)

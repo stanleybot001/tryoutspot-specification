@@ -19,16 +19,17 @@
     @if (!Model.HasAdvancedPlayerSearch)
     {
         <div class="account-alert">
-            Free Coach search includes age and radius filters up to @Model.MaxRadiusMiles miles. Skill-level filters require Team Basic or higher.
+            Free Coach search includes age and distance filters up to @Model.MaxRadiusMiles miles.
+            <a class="upgrade-link" href="/account/onboarding/choose-plan?bundle=team">Upgrade to Basic Team</a> to filter by skill level and search farther away.
         </div>
     }
     @if (Model.SkillLevelFilterIgnored)
     {
-        <div class="account-alert">Skill-level filters require Team Basic, Team Professional, or Enterprise.</div>
+        <div class="account-alert">Skill-level filters are included with Basic Team and higher. <a class="upgrade-link" href="/account/onboarding/choose-plan?bundle=team">Compare team plans</a></div>
     }
     @if (Model.RadiusWasConstrained)
     {
-        <div class="account-alert">Radius was capped at @Model.MaxRadiusMiles miles for your current plan.</div>
+        <div class="account-alert">Search distance was limited to @Model.MaxRadiusMiles miles. <a class="upgrade-link" href="/account/onboarding/choose-plan?bundle=team">Upgrade to search farther</a></div>
     }
 
     <section class="form-section">

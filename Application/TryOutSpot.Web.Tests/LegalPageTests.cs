@@ -9,7 +9,7 @@ public sealed class LegalPageTests
     [InlineData("/terms-and-conditions", "Reply STOP to opt out")]
     [InlineData("/account-deletion", "How To Request Account Deletion")]
     [InlineData("/sms-consent", "TryOutSpot SMS Consent Flow")]
-    [InlineData("/plans-and-features", "Account Type To Plan Matrix")]
+    [InlineData("/plans-and-features", "Who can use each plan")]
     public async Task LegalPages_RenderPublicly(string path, string expectedContent)
     {
         await using var factory = new TryOutSpotWebApplicationFactory();

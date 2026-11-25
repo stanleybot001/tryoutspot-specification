@@ -37,7 +37,7 @@
     @if (!Model.CanPostOpportunities)
     {
         <div class="account-alert">
-            Your current membership does not include opportunity posting. Upgrade to Free Coach, Team Basic, or Team Professional to publish listings.
+            To publish listings, add the "coach or team manager" account type in <a href="/account/settings#account-types">Settings</a>. Free Coach is free and includes 1 published listing every 6 months.
         </div>
     }
     else if (Model.HasLimitedPosting && !Model.HasUnlimitedPosting)
@@ -248,7 +248,8 @@
                 @if (!Model.CanConfigureTryoutRegistration)
                 {
                     <p class="section-help">
-                        Tryout registration management is available on Team Basic and higher plans.
+                        Online registration and check-in are included with Basic Team and higher.
+                        <a class="upgrade-link" href="/account/onboarding/choose-plan?bundle=team">Compare team plans</a>
                     </p>
                 }
 
@@ -256,6 +257,7 @@
                     <input asp-for="RegistrationRequired" class="form-check-input" />
                     <span>Enable tryout registration for this listing.</span>
                 </label>
+                <span asp-validation-for="RegistrationRequired" class="text-danger"></span>
 
                 <label class="sms-consent-option" for="LimitRegistrationCapacity">
                     <input asp-for="LimitRegistrationCapacity" class="form-check-input" />
@@ -382,6 +384,14 @@
                     <input asp-for="IsPublished" class="form-check-input" />
                     <span>Publish this opportunity now so it appears in discovery.</span>
                 </label>
+                <span asp-validation-for="IsPublished" class="text-danger"></span>
+                @if (ViewData.ModelState[nameof(Model.IsPublished)]?.Errors.Count > 0)
+                {
+                    <div class="account-alert mt-2">
+                        You can save this listing as a draft now and publish it later, or
+                        <a class="upgrade-link" href="/account/onboarding/choose-plan?bundle=team">upgrade your team plan</a> to publish more listings.
+                    </div>
+                }
             </fieldset>
 
             <div class="form-actions">

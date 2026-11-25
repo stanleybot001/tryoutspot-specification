@@ -1,0 +1,10 @@
+@if (TempData["StatusMessage"] is string statusMessage)
+{
+    <div class="account-alert" role="status">
+        @statusMessage
+        @if (TempData["StatusLinkUrl"] is string linkUrl && Url.IsLocalUrl(linkUrl))
+        {
+            <a class="upgrade-link" href="@linkUrl">@(TempData["StatusLinkLabel"] as string ?? "Learn more")</a>
+        }
+    </div>
+}

@@ -1354,6 +1354,7 @@ public sealed class AccountController(
     [HttpGet("onboarding/add-player-profile")]
     public async Task<IActionResult> AddPlayerProfile(
         [FromQuery] bool createNew = false,
+        [FromQuery] string? returnUrl = null,
         CancellationToken cancellationToken = default)
     {
         var user = await GetCurrentWebUserAsync();
@@ -1362,7 +1363,8 @@ public sealed class AccountController(
             return RedirectToAction(nameof(Login), new { returnUrl = Url.Action(nameof(AddPlayerProfile)) });
         }
 
-        if (!createNew)
+        var localReturnUrl = !string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl) ? returnUrl : null;
+        if (!createNew && localReturnUrl is null)
         {
             var hasManagedProfiles = await dbContext.UserPlayerRelationships
                 .AsNoTracking()
@@ -1382,14 +1384,13 @@ public sealed class AccountController(
             new AddPlayerProfilePageModel
             {
                 IsEditMode = false,
-                ReturnUrl = Url.Action(nameof(ManagePlayerProfiles)),
+                ReturnUrl = localReturnUrl ?? Url.Action(nameof(ManagePlayerProfiles)),
                 ContactEmail = user.Email,
                 ContactPhone = user.PhoneNumber,
                 City = user.City,
                 State = user.State,
                 ZipCode = user.ZipCode,
-                IsSearchable = false,
-                DateOfBirth = DateTime.UtcNow.Date.AddYears(-12)
+                IsSearchable = false
             },
             cancellationToken);
         return View(model);
@@ -1481,6 +1482,15 @@ public sealed class AccountController(
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        var managePlayerProfilesUrl = Url.Action(nameof(ManagePlayerProfiles));
+        if (!string.IsNullOrWhiteSpace(model.ReturnUrl)
+            && Url.IsLocalUrl(model.ReturnUrl)
+            && !string.Equals(model.ReturnUrl, managePlayerProfilesUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            TempData["StatusMessage"] = $"{player.FirstName} was added. You can finish registering now.";
+            return LocalRedirect(model.ReturnUrl);
+        }
+
         TempData["StatusMessage"] = "Player profile added.";
         return RedirectToAction(nameof(ManagePlayerProfiles));
     }
@@ -1789,6 +1799,10 @@ public sealed class AccountController(
             return View("EditPlayerListing", model);
         }
 
+        await EnsurePlayerProfileVisibleForSearchableListingAsync(
+            validationContext.Player,
+            model.IsSearchable,
+            cancellationToken);
         var now = DateTime.UtcNow;
         var listing = new PlayerListing
         {
@@ -1903,6 +1917,10 @@ public sealed class AccountController(
             return View("EditPlayerListing", model);
         }
 
+        await EnsurePlayerProfileVisibleForSearchableListingAsync(
+            validationContext.Player,
+            model.IsSearchable,
+            cancellationToken);
         listing.PlayerId = validationContext.Player?.Id;
         listing.SportId = model.SportId;
         listing.ListingType = validationContext.ListingTypeOption.Code;
@@ -2271,6 +2289,8 @@ public sealed class AccountController(
         if (!teamCreationAccess.CanCreateAdditionalTeam)
         {
             TempData["StatusMessage"] = teamCreationAccess.BlockReason;
+            TempData["StatusLinkUrl"] = "/account/onboarding/choose-plan?bundle=team";
+            TempData["StatusLinkLabel"] = "Compare team plans";
             return RedirectToAction(nameof(ManageTeamOpportunities));
         }
 
@@ -2320,6 +2340,8 @@ public sealed class AccountController(
         if (!teamCreationAccess.CanCreateAdditionalTeam)
         {
             TempData["StatusMessage"] = teamCreationAccess.BlockReason;
+            TempData["StatusLinkUrl"] = "/account/onboarding/choose-plan?bundle=team";
+            TempData["StatusLinkLabel"] = "Compare team plans";
             return RedirectToAction(nameof(ManageTeamOpportunities));
         }
 
@@ -3885,7 +3907,15 @@ public sealed class AccountController(
             registrationForm.PlayerId,
             registration.Id);
 
-        TempData["StatusMessage"] = "Registration submitted. The team will review your entry.";
+        var registeredPlayerName = string.IsNullOrWhiteSpace(registrationForm.PlayerName)
+            ? "Your player"
+            : registrationForm.PlayerName.Trim();
+        var feeReminder = opportunity.RegistrationFee > 0
+            ? $" Bring {opportunity.RegistrationFee:C} to pay at check-in."
+            : string.Empty;
+        TempData["StatusMessage"] = $"{registeredPlayerName} is registered. The team will review the entry and you'll see their decision in My Registrations.{feeReminder}";
+        TempData["StatusLinkUrl"] = Url.Action(nameof(MyRegistrations));
+        TempData["StatusLinkLabel"] = "View my registrations";
         return RedirectToAction(nameof(TeamOpportunityDetail), new { opportunityId });
     }
 
@@ -8272,9 +8302,9 @@ public sealed class AccountController(
         {
             model = new PlayerListingEditorPageModel
             {
-                ListingType = TryOutSpotPlayerListingTypes.PickupPlayer,
+                ListingType = TryOutSpotPlayerListingTypes.LookingForTeam,
                 Currency = "USD",
-                IsSearchable = false,
+                IsSearchable = true,
                 IsPublished = true,
                 VisibleSocialLinkKeys = GetDefaultVisibleSocialLinkKeys().ToList(),
                 City = user.City,
@@ -8384,12 +8414,6 @@ public sealed class AccountController(
         {
             ModelState.AddModelError(nameof(model.IsSearchable), "Choose a player profile before making this listing searchable.");
         }
-        else if (model.IsSearchable && player is not null && !player.IsSearchable)
-        {
-            ModelState.AddModelError(
-                nameof(model.IsSearchable),
-                "Turn on public profile visibility for this player before making the listing searchable.");
-        }
 
         if (model.SportId.HasValue)
         {
@@ -8424,6 +8448,22 @@ public sealed class AccountController(
         }
 
         return new PlayerListingValidationContext(listingTypeOption, player);
+    }
+
+    private async Task EnsurePlayerProfileVisibleForSearchableListingAsync(
+        Player? validatedPlayer,
+        bool listingIsSearchable,
+        CancellationToken cancellationToken)
+    {
+        if (!listingIsSearchable || validatedPlayer is null || validatedPlayer.IsSearchable)
+        {
+            return;
+        }
+
+        var trackedPlayer = await dbContext.Players
+            .SingleAsync(player => player.Id == validatedPlayer.Id, cancellationToken);
+        trackedPlayer.IsSearchable = true;
+        trackedPlayer.UpdatedAt = DateTime.UtcNow;
     }
 
     private async Task<PlayerProfileDetailPageModel> BuildPlayerProfileDetailPageModelAsync(
@@ -9643,7 +9683,7 @@ public sealed class AccountController(
         {
             ModelState.AddModelError(
                 nameof(model.RegistrationRequired),
-                "Tryout registration requires Team Basic or higher.");
+                "Online tryout registration is included with Basic Team and higher.");
         }
 
         var isTryoutType = string.Equals(
@@ -9940,7 +9980,7 @@ public sealed class AccountController(
         {
             ModelState.AddModelError(
                 nameof(TeamOpportunityEditorPageModel.IsPublished),
-                "Your current membership does not include opportunity posting.");
+                "Add the coach or team manager account type in Settings to publish listings.");
             return;
         }
 
@@ -9952,7 +9992,7 @@ public sealed class AccountController(
         {
             ModelState.AddModelError(
                 nameof(TeamOpportunityEditorPageModel.IsPublished),
-                $"{postingAccess.PlanLabel} includes up to {postingAccess.PublishingLimit} published opportunities every {postingAccess.PublishingWindowMonths} months.");
+                $"You've used all {postingAccess.PublishingLimit} published listing(s) your {postingAccess.PlanLabel} plan includes every {postingAccess.PublishingWindowMonths} months.");
         }
     }
 

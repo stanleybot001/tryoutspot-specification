@@ -16,8 +16,8 @@
     var opportunityReturnUrl = $"/opportunities/{Model.OpportunityId}";
     var encodedOpportunityReturnUrl = Uri.EscapeDataString(opportunityReturnUrl);
     var loginToRegisterUrl = $"/account/login?returnUrl={encodedOpportunityReturnUrl}";
-    var createAccountToRegisterUrl = $"/account/register?returnUrl={encodedOpportunityReturnUrl}";
-    var addPlayerProfileUrl = $"/account/onboarding/add-player-profile?createNew=true";
+    var createAccountToRegisterUrl = $"/account/register?accountType=Parent&returnUrl={encodedOpportunityReturnUrl}";
+    var addPlayerProfileUrl = $"/account/onboarding/add-player-profile?createNew=true&returnUrl={encodedOpportunityReturnUrl}";
     var teamRegistrationDashboardUrl = $"/account/onboarding/team-opportunities/{Model.TeamId}";
     var authenticationRequiredForRegistration = Model.RegistrationRequired
         && !Model.ViewerIsAuthenticated
@@ -66,10 +66,7 @@
         </div>
     </div>
 
-    @if (TempData["StatusMessage"] is string statusMessage)
-    {
-        <div class="account-alert">@statusMessage</div>
-    }
+    <partial name="_StatusMessage" />
 
     @if (Model.ViewerManagesTeam)
     {

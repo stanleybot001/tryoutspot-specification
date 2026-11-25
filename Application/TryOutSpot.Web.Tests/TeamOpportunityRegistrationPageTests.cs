@@ -152,7 +152,7 @@ public sealed class TeamOpportunityRegistrationPageTests
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("Create Free Account to Register", html, StringComparison.Ordinal);
         Assert.Contains("Sign in to register", html, StringComparison.Ordinal);
-        Assert.Contains($"/account/register?returnUrl=%2Fopportunities%2F{seeded.OpportunityId}", html, StringComparison.Ordinal);
+        Assert.Contains($"/account/register?accountType=Parent&amp;returnUrl=%2Fopportunities%2F{seeded.OpportunityId}", html, StringComparison.Ordinal);
         Assert.Contains($"/account/login?returnUrl=%2Fopportunities%2F{seeded.OpportunityId}", html, StringComparison.Ordinal);
     }
 

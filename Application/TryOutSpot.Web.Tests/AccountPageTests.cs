@@ -422,22 +422,23 @@ public sealed class AccountPageTests
         Assert.Equal(HttpStatusCode.OK, onboardingResponse.StatusCode);
 
         var html = await onboardingResponse.Content.ReadAsStringAsync();
-        Assert.Contains("Dashboard menu", html);
+        Assert.Contains("Your shortcuts", html);
         Assert.Contains("What's new", html);
         Assert.True(
-            html.IndexOf("Dashboard menu", StringComparison.Ordinal) < html.IndexOf("What's new", StringComparison.Ordinal),
-            "Dashboard menu should render before the What's new feed.");
+            html.IndexOf("Your shortcuts", StringComparison.Ordinal) < html.IndexOf("What's new", StringComparison.Ordinal),
+            "Dashboard shortcuts should render before the What's new feed.");
         Assert.Contains("Child/player profiles", html);
-        Assert.Contains("finish your parent/guardian setup", html);
+        Assert.Contains("Add each child once", html);
+        Assert.Contains("href=\"/account/registrations\"", html);
         Assert.DoesNotContain("Setup checklist", html);
         Assert.DoesNotContain("Available features", html);
         Assert.DoesNotContain("name=\"playerParentRole\"", html);
         Assert.DoesNotContain("name=\"teamRole\"", html);
-        Assert.Contains("Recommended plan options", html);
+        Assert.Contains("Plans for you", html);
         Assert.Contains("href=\"/account/onboarding/add-player-profile\"", html);
         Assert.Contains("href=\"/account/onboarding/choose-plan\"", html);
-        Assert.Contains("Coach Getting Started Hub", html);
-        Assert.Contains("href=\"/account/onboarding/coach-getting-started\"", html);
+        Assert.Contains("href=\"/account/onboarding/choose-plan?bundle=player_parent\"", html);
+        Assert.DoesNotContain("Coach Getting Started Hub", html);
     }
 
     [Fact]
@@ -456,6 +457,7 @@ public sealed class AccountPageTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("Verify your phone number", html);
+        Assert.Contains("id=\"verify-phone\" open=\"open\"", html);
         Assert.Contains("Send / resend code", html);
         Assert.Contains("name=\"Phone.VerificationCode\"", html);
         Assert.Contains("name=\"Phone.ReturnUrl\" value=\"/account/onboarding#verify-phone\"", html);
@@ -829,9 +831,10 @@ public sealed class AccountPageTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Taylor, manage your TryOutSpot activity.", html);
-        Assert.Contains("Keep team details, listings, favorites, and account settings ready for everyday work.", html);
-        Assert.DoesNotContain("Taylor, finish the pieces that matter.", html);
+        Assert.Contains("Welcome, Taylor", html);
+        Assert.Contains("Post tryouts, manage registrations, and find players.", html);
+        Assert.Contains("Coach Getting Started Hub", html);
+        Assert.Contains("href=\"/account/onboarding/coach-getting-started\"", html);
     }
 
     [Fact]
@@ -1025,8 +1028,8 @@ public sealed class AccountPageTests
         Assert.Contains("activityPage=2", html);
         Assert.Contains("Start fresh from now", html);
         Assert.True(
-            html.IndexOf("Dashboard menu", StringComparison.Ordinal) < html.IndexOf("What's new", StringComparison.Ordinal),
-            "Dashboard menu should render before the What's new feed.");
+            html.IndexOf("Your shortcuts", StringComparison.Ordinal) < html.IndexOf("What's new", StringComparison.Ordinal),
+            "Dashboard shortcuts should render before the What's new feed.");
 
         using (var scope = factory.Services.CreateScope())
         {
@@ -1170,7 +1173,7 @@ public sealed class AccountPageTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Upcoming tryout registrations", html);
+        Assert.Contains("Upcoming tryouts", html);
         Assert.Contains("June Exposure Tryout", html);
         Assert.Contains("Mia Jordan", html);
         Assert.Contains("Pending review", html);
@@ -1618,7 +1621,7 @@ public sealed class AccountPageTests
     }
 
     [Fact]
-    public async Task CreatePlayerListing_SearchableListingRequiresPublicPlayerProfile()
+    public async Task CreatePlayerListing_SearchableListingTurnsOnPlayerProfileVisibility()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();
         var user = await factory.CreateUserAsync("player-listing-public-profile@example.com", [TryOutSpotRoles.Parent]);
@@ -1687,15 +1690,16 @@ public sealed class AccountPageTests
                 new("IsPublished", "true")
             ]));
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
-        Assert.Contains(
-            "Turn on public profile visibility for this player before making the listing searchable.",
-            html);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
 
         using var verifyScope = factory.Services.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Assert.Empty(await verifyDb.PlayerListings.ToArrayAsync());
+        var listing = await verifyDb.PlayerListings.SingleAsync();
+        Assert.True(listing.IsSearchable);
+        Assert.True(await verifyDb.Players
+            .Where(player => player.Id == playerId)
+            .Select(player => player.IsSearchable)
+            .SingleAsync());
     }
 
     [Fact]
@@ -2562,7 +2566,7 @@ public sealed class AccountPageTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("<strong>Choose plan</strong>", html);
-        Assert.Contains("href=\"/account/onboarding/choose-plan\">Open</a>", html);
+        Assert.Contains("href=\"/account/onboarding/choose-plan\">Start</a>", html);
         Assert.DoesNotContain("Available features", html);
     }
 

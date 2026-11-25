@@ -2,18 +2,79 @@
 @using TryOutSpot.Web.Billing
 
 @{
-    ViewData["Title"] = "Plans & Features";
+    ViewData["Title"] = "Plans & Pricing";
+    var isSignedIn = User.Identity?.IsAuthenticated ?? false;
 }
 
 <section class="account-page">
     <div class="account-heading">
-        <p class="account-kicker">Plans and features</p>
-        <h1>Choose the plan that matches how you use TryOutSpot.</h1>
-        <p>This page shows role eligibility, plan coverage, and exactly what each upgrade unlocks.</p>
+        <p class="account-kicker">Plans &amp; pricing</p>
+        <h1>Free to begin. Upgrade when you need more.</h1>
+        <p>Families can find and register for tryouts free. Coaches can post a tryout free, then upgrade for online registration, check-in, and more listings.</p>
     </div>
 
     <section class="form-section">
-        <h2>Account Type To Plan Matrix</h2>
+        <h2>Plans</h2>
+        @foreach (var track in Model.PlanTracks)
+        {
+            <h3 class="plans-track-title">@track.TrackName</h3>
+            <div class="plan-list">
+                @foreach (var plan in track.Plans)
+                {
+                    var isTeamPlan = IsTeamPlanCode(plan.Code);
+                    var bundle = isTeamPlan ? "team" : "player_parent";
+                    var accountType = isTeamPlan ? "TeamRepresentative" : "Parent";
+                    var isFreePlan = plan.Code is TryOutSpotPlanCodes.FreeCoach or TryOutSpotPlanCodes.FreePlayerParent;
+                    var choosePlanUrl = $"/account/onboarding/choose-plan?bundle={bundle}";
+                    var actionUrl = isSignedIn
+                        ? (isFreePlan ? "/account/onboarding" : choosePlanUrl)
+                        : isFreePlan
+                            ? $"/account/register?accountType={accountType}"
+                            : $"/account/register?accountType={accountType}&returnUrl={Uri.EscapeDataString(choosePlanUrl)}";
+                    var actionLabel = isFreePlan
+                        ? (isSignedIn ? "Go to dashboard" : "Create free account")
+                        : $"Choose {plan.Name}";
+                    <article class="plan-row plan-row-stack">
+                        <div>
+                            <strong>@plan.Name</strong>
+                            <span>@plan.Audience</span>
+                            <p>@plan.Description</p>
+                        </div>
+                        <div class="plan-price">
+                            <strong>@plan.PriceLabel</strong>
+                            @if (TryOutSpotBillingCatalog.RequiresAnnualCommitment(plan.Code))
+                            {
+                                <span>Annual only</span>
+                            }
+                            else if (plan.TrialDays is not null)
+                            {
+                                <span>@plan.TrialDays-day trial</span>
+                            }
+                            <a class="btn btn-sm @(isFreePlan ? "btn-outline-primary" : "btn-primary") mt-1" href="@actionUrl">@actionLabel</a>
+                        </div>
+                        @if (plan.AddedFeaturesComparedToPrevious.Count > 0)
+                        {
+                            <div>
+                                <h4>Adds over the plan above</h4>
+                                <ul class="plan-feature-list">
+                                    @foreach (var feature in plan.AddedFeaturesComparedToPrevious)
+                                    {
+                                        <li><strong>@feature.Name</strong>: @feature.Description</li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
+    <details class="form-section plans-detail">
+        <summary><h2 class="d-inline">Compare in detail</h2></summary>
+
+    <section class="form-section">
+        <h2>Who can use each plan</h2>
         <div class="plan-access-mobile" aria-label="Account type plan eligibility">
             @foreach (var row in Model.AccountTypePlanAccess)
             {
@@ -47,11 +108,11 @@
                         }
                         @if (row.TeamBasic)
                         {
-                            <span class="plan-access-pill">Team Basic</span>
+                            <span class="plan-access-pill">Basic Team</span>
                         }
                         @if (row.TeamProfessional)
                         {
-                            <span class="plan-access-pill">Team Professional</span>
+                            <span class="plan-access-pill">Professional Team</span>
                         }
                         @if (row.EnterpriseOrganization)
                         {
@@ -69,8 +130,8 @@
                         <th scope="col">Free Player/Parent</th>
                         <th scope="col">Premium Player</th>
                         <th scope="col">Free Coach</th>
-                        <th scope="col">Team Basic</th>
-                        <th scope="col">Team Professional</th>
+                        <th scope="col">Basic Team</th>
+                        <th scope="col">Professional Team</th>
                         <th scope="col">Enterprise Organization</th>
                     </tr>
                 </thead>
@@ -106,7 +167,7 @@
     </section>
 
     <section class="form-section">
-        <h2>Feature Bundles</h2>
+        <h2>Feature bundles</h2>
         <div class="plan-list">
             @foreach (var bundle in Model.FeatureBundles)
             {
@@ -130,7 +191,7 @@
     </section>
 
     <section class="form-section">
-        <h2>Upgrade Breakdown</h2>
+        <h2>Everything included in each plan</h2>
         @foreach (var track in Model.PlanTracks)
         {
             <h3 class="plans-track-title">@track.TrackName</h3>
@@ -140,54 +201,27 @@
                     <article class="plan-row plan-row-stack">
                         <div>
                             <strong>@plan.Name</strong>
-                            <span>@plan.Audience</span>
-                            <p>@plan.Description</p>
-                        </div>
-                        <div class="plan-price">
-                            <strong>@plan.PriceLabel</strong>
-                            @if (TryOutSpotBillingCatalog.RequiresAnnualCommitment(plan.Code))
-                            {
-                                <span>Annual only</span>
-                            }
-                            else if (plan.TrialDays is not null)
-                            {
-                                <span>@plan.TrialDays-day trial</span>
-                            }
-                        </div>
-                        <div class="plan-diff-grid">
-                            <div>
-                                <h4>What this adds over the lower plan</h4>
-                                @if (plan.AddedFeaturesComparedToPrevious.Count == 0)
+                            <ul class="plan-feature-list">
+                                @foreach (var feature in plan.IncludedFeatures)
                                 {
-                                    <p class="section-help">This is the base plan for this track.</p>
+                                    <li><strong>@feature.Name</strong>: @feature.Description</li>
                                 }
-                                else
-                                {
-                                    <ul class="plan-feature-list">
-                                        @foreach (var feature in plan.AddedFeaturesComparedToPrevious)
-                                        {
-                                            <li>
-                                                <strong>@feature.Name</strong>: @feature.Description
-                                            </li>
-                                        }
-                                    </ul>
-                                }
-                            </div>
-                            <div>
-                                <h4>Everything included in this plan</h4>
-                                <ul class="plan-feature-list">
-                                    @foreach (var feature in plan.IncludedFeatures)
-                                    {
-                                        <li>
-                                            <strong>@feature.Name</strong>: @feature.Description
-                                        </li>
-                                    }
-                                </ul>
-                            </div>
+                            </ul>
                         </div>
                     </article>
                 }
             </div>
         }
     </section>
+    </details>
 </section>
+
+@functions {
+    private static bool IsTeamPlanCode(string planCode)
+    {
+        return planCode is TryOutSpotPlanCodes.FreeCoach
+            or TryOutSpotPlanCodes.TeamBasic
+            or TryOutSpotPlanCodes.TeamProfessional
+            or TryOutSpotPlanCodes.EnterpriseOrganization;
+    }
+}

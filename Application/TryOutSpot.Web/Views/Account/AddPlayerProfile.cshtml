@@ -75,7 +75,8 @@
                     </div>
                     <div class="form-field">
                         <label asp-for="DateOfBirth" class="form-label">Player date of birth <span class="required-marker">*</span></label>
-                        <input asp-for="DateOfBirth" class="form-control" />
+                        <input id="DateOfBirth" name="DateOfBirth" type="date" class="form-control" required
+                               value="@(Model.DateOfBirth == default ? string.Empty : Model.DateOfBirth.ToString("yyyy-MM-dd"))" />
                         <span asp-validation-for="DateOfBirth" class="text-danger"></span>
                     </div>
                     <div class="form-field">

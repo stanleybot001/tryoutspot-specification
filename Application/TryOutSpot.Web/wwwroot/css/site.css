@@ -93,6 +93,25 @@ body.splash-page {
   color: #d9e6fb;
 }
 
+.dashboard-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+details.phone-verification-panel > summary {
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: baseline;
+}
+
+details.phone-verification-panel[open] > summary {
+  margin-bottom: 0.75rem;
+}
+
 .settings-jump-nav {
   display: flex;
   flex-wrap: wrap;
