@@ -18,6 +18,19 @@
         : Url.Action("AddPlayerProfile", "Account");
     var fallbackBackUrl = isEditMode ? "/account/onboarding/player-profiles" : "/account/onboarding";
     var backUrl = string.IsNullOrWhiteSpace(Model.ReturnUrl) ? fallbackBackUrl : Model.ReturnUrl;
+    string[] optionalDetailFields =
+    [
+        nameof(Model.Height), nameof(Model.Weight), nameof(Model.ThrowsHand), nameof(Model.BatsHand),
+        nameof(Model.SixtyYardDash), nameof(Model.HomeToFirstTime), nameof(Model.ExitVelocity),
+        nameof(Model.ThrowingVelocity), nameof(Model.PitchVelocity), nameof(Model.CatcherPopTime),
+        nameof(Model.AdditionalMetrics), nameof(Model.ProfileImageUpload), nameof(Model.HighlightVideoUrl1),
+        nameof(Model.HighlightVideoUrl2), nameof(Model.FacebookPageUrl), nameof(Model.XPageUrl),
+        nameof(Model.InstagramUrl), nameof(Model.YouTubeUrl), nameof(Model.TikTokUrl),
+        nameof(Model.SportsRecruitsProfileUrl), nameof(Model.FieldLevelProfileUrl), nameof(Model.NcsaProfileUrl),
+        nameof(Model.OtherRecruitingProfileUrl)
+    ];
+    var hasOptionalDetailErrors = optionalDetailFields.Any(field =>
+        ViewData.ModelState.TryGetValue(field, out var entry) && entry.Errors.Count > 0);
 
     ViewData["Title"] = isEditMode ? "Edit Player Profile" : "Add Player Profile";
 }
@@ -93,6 +106,68 @@
             </fieldset>
 
             <fieldset class="form-fieldset">
+                <legend>Sports and positions</legend>
+                <p class="section-help">Select each sport, then add ability, positions, experience, and availability for that sport.</p>
+                @if (Model.SportDetails.Count == 0)
+                {
+                    <p class="section-help">Sports options will appear here after the catalog is available.</p>
+                }
+                else
+                {
+                    <div class="sport-detail-list">
+                        @for (var sportIndex = 0; sportIndex < Model.SportDetails.Count; sportIndex++)
+                        {
+                            var sport = Model.SportDetails[sportIndex];
+                            <div class="sport-detail-panel">
+                                <label class="account-type-option sport-select-option" for="sport-@sport.SportId">
+                                    <input asp-for="SportDetails[sportIndex].IsSelected" class="form-check-input" id="sport-@sport.SportId" />
+                                    <input asp-for="SportDetails[sportIndex].SportId" type="hidden" />
+                                    <input asp-for="SportDetails[sportIndex].SportName" type="hidden" />
+                                    <span>
+                                        <strong>@sport.SportName</strong>
+                                        <small>Select this sport if the player participates in it.</small>
+                                    </span>
+                                </label>
+                                <div class="form-grid two-column">
+                                    <div class="form-field">
+                                        <label asp-for="SportDetails[sportIndex].SkillLevel" class="form-label">Ability level</label>
+                                        <input asp-for="SportDetails[sportIndex].SkillLevel" class="form-control" placeholder="Example: A, AA, AAA, Varsity, Club" />
+                                        <span asp-validation-for="SportDetails[sportIndex].SkillLevel" class="text-danger"></span>
+                                    </div>
+                                    <div class="form-field">
+                                        <label asp-for="SportDetails[sportIndex].PrimaryPosition" class="form-label">Primary position</label>
+                                        <input asp-for="SportDetails[sportIndex].PrimaryPosition" class="form-control" placeholder="Example: Pitcher, Shortstop, Midfielder" />
+                                        <span asp-validation-for="SportDetails[sportIndex].PrimaryPosition" class="text-danger"></span>
+                                    </div>
+                                    <div class="form-field">
+                                        <label asp-for="SportDetails[sportIndex].SecondaryPositions" class="form-label">Secondary positions</label>
+                                        <input asp-for="SportDetails[sportIndex].SecondaryPositions" class="form-control" placeholder="Optional additional positions" />
+                                        <span asp-validation-for="SportDetails[sportIndex].SecondaryPositions" class="text-danger"></span>
+                                    </div>
+                                    <div class="form-field">
+                                        <label asp-for="SportDetails[sportIndex].ExperienceLevel" class="form-label">Experience level</label>
+                                        <input asp-for="SportDetails[sportIndex].ExperienceLevel" class="form-control" placeholder="Example: Varsity, travel, club" />
+                                        <span asp-validation-for="SportDetails[sportIndex].ExperienceLevel" class="text-danger"></span>
+                                    </div>
+                                    <div class="form-field">
+                                        <label asp-for="SportDetails[sportIndex].YearsPlaying" class="form-label">Years playing</label>
+                                        <input asp-for="SportDetails[sportIndex].YearsPlaying" class="form-control" inputmode="numeric" />
+                                        <span asp-validation-for="SportDetails[sportIndex].YearsPlaying" class="text-danger"></span>
+                                    </div>
+                                    <div class="form-field form-field-full">
+                                        <label asp-for="SportDetails[sportIndex].Availability" class="form-label">Availability</label>
+                                        <input asp-for="SportDetails[sportIndex].Availability" class="form-control" placeholder="Example: Fall 2026, weekends, pickup tournaments" />
+                                        <span asp-validation-for="SportDetails[sportIndex].Availability" class="text-danger"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                <span asp-validation-for="SportDetails" class="text-danger"></span>
+            </fieldset>
+
+            <fieldset class="form-fieldset">
                 <legend>Contact, location, and public profile</legend>
                 <p class="section-help">Set how teams can contact the player and whether this profile can be shown on profile links and player listings.</p>
                 <div class="form-grid two-column">
@@ -161,6 +236,9 @@
                 </div>
             </fieldset>
 
+            <details class="optional-details" open="@hasOptionalDetailErrors">
+                <summary>More profile details (optional)</summary>
+                <p class="section-help">Build, measurables, photo, highlight videos, social pages, and recruiting links. Teams see more when these are filled in.</p>
             <fieldset class="form-fieldset">
                 <legend>Baseball and softball details</legend>
                 <p class="section-help">Keep basic player build and handedness together.</p>
@@ -320,76 +398,9 @@
                     </div>
                 </div>
             </fieldset>
+            </details>
 
-            <fieldset class="form-fieldset">
-                <legend>Sports and positions</legend>
-                <p class="section-help">Select each sport, then add ability, positions, experience, and availability for that sport.</p>
-                @if (Model.SportDetails.Count == 0)
-                {
-                    <p class="section-help">Sports options will appear here after the catalog is available.</p>
-                }
-                else
-                {
-                    <div class="sport-detail-list">
-                        @for (var sportIndex = 0; sportIndex < Model.SportDetails.Count; sportIndex++)
-                        {
-                            var sport = Model.SportDetails[sportIndex];
-                            <div class="sport-detail-panel">
-                                <label class="account-type-option sport-select-option" for="sport-@sport.SportId">
-                                    <input asp-for="SportDetails[sportIndex].IsSelected" class="form-check-input" id="sport-@sport.SportId" />
-                                    <input asp-for="SportDetails[sportIndex].SportId" type="hidden" />
-                                    <input asp-for="SportDetails[sportIndex].SportName" type="hidden" />
-                                    <span>
-                                        <strong>@sport.SportName</strong>
-                                        <small>Select this sport if the player participates in it.</small>
-                                    </span>
-                                </label>
-                                <div class="form-grid two-column">
-                                    <div class="form-field">
-                                        <label asp-for="SportDetails[sportIndex].SkillLevel" class="form-label">Ability level</label>
-                                        <input asp-for="SportDetails[sportIndex].SkillLevel" class="form-control" placeholder="Example: A, AA, AAA, Varsity, Club" />
-                                        <span asp-validation-for="SportDetails[sportIndex].SkillLevel" class="text-danger"></span>
-                                    </div>
-                                    <div class="form-field">
-                                        <label asp-for="SportDetails[sportIndex].PrimaryPosition" class="form-label">Primary position</label>
-                                        <input asp-for="SportDetails[sportIndex].PrimaryPosition" class="form-control" placeholder="Example: Pitcher, Shortstop, Midfielder" />
-                                        <span asp-validation-for="SportDetails[sportIndex].PrimaryPosition" class="text-danger"></span>
-                                    </div>
-                                    <div class="form-field">
-                                        <label asp-for="SportDetails[sportIndex].SecondaryPositions" class="form-label">Secondary positions</label>
-                                        <input asp-for="SportDetails[sportIndex].SecondaryPositions" class="form-control" placeholder="Optional additional positions" />
-                                        <span asp-validation-for="SportDetails[sportIndex].SecondaryPositions" class="text-danger"></span>
-                                    </div>
-                                    <div class="form-field">
-                                        <label asp-for="SportDetails[sportIndex].ExperienceLevel" class="form-label">Experience level</label>
-                                        <input asp-for="SportDetails[sportIndex].ExperienceLevel" class="form-control" placeholder="Example: Varsity, travel, club" />
-                                        <span asp-validation-for="SportDetails[sportIndex].ExperienceLevel" class="text-danger"></span>
-                                    </div>
-                                    <div class="form-field">
-                                        <label asp-for="SportDetails[sportIndex].YearsPlaying" class="form-label">Years playing</label>
-                                        <input asp-for="SportDetails[sportIndex].YearsPlaying" class="form-control" inputmode="numeric" />
-                                        <span asp-validation-for="SportDetails[sportIndex].YearsPlaying" class="text-danger"></span>
-                                    </div>
-                                    <div class="form-field form-field-full">
-                                        <label asp-for="SportDetails[sportIndex].Availability" class="form-label">Availability</label>
-                                        <input asp-for="SportDetails[sportIndex].Availability" class="form-control" placeholder="Example: Fall 2026, weekends, pickup tournaments" />
-                                        <span asp-validation-for="SportDetails[sportIndex].Availability" class="text-danger"></span>
-                                    </div>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-                <span asp-validation-for="SportDetails" class="text-danger"></span>
-            </fieldset>
-
-            <fieldset class="form-fieldset">
-                <legend>Profile permissions</legend>
-                <label class="sms-consent-option" for="CanManage">
-                    <input asp-for="CanManage" class="form-check-input" />
-                    <span>Allow this account to manage the player profile.</span>
-                </label>
-            </fieldset>
+            <input type="hidden" name="CanManage" value="true" />
 
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">@submitLabel</button>

@@ -172,6 +172,10 @@ details.phone-verification-panel[open] > summary {
   margin-bottom: 0.75rem;
 }
 
+.sport-detail-panel:has(.sport-select-option input[type=checkbox]:not(:checked)) > .form-grid {
+  display: none;
+}
+
 .upgrade-link {
   font-weight: 700;
   white-space: nowrap;

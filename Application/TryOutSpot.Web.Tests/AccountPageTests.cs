@@ -2708,7 +2708,8 @@ public sealed class AccountPageTests
         Assert.Contains("<legend>Social pages</legend>", html);
         Assert.Contains("<legend>Recruiting profiles</legend>", html);
         Assert.Contains("<legend>Sports and positions</legend>", html);
-        Assert.Contains("<legend>Profile permissions</legend>", html);
+        Assert.Contains("<summary>More profile details (optional)</summary>", html);
+        Assert.Contains("name=\"CanManage\" value=\"true\"", html);
     }
 
     private static void AssertPlayerListingSections(string html)

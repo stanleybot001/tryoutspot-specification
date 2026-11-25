@@ -63,6 +63,26 @@ public sealed class TeamOpportunityRegistrationPageTests
     }
 
     [Fact]
+    public async Task RegistrationForm_ForParent_PrefillsGuardianEmailFromAccount()
+    {
+        await using var factory = new TryOutSpotWebApplicationFactory();
+        var parentUser = await factory.CreateUserAsync("parent-guardian-prefill@example.com", [TryOutSpotRoles.Parent]);
+        var seeded = SeedPublishedTryoutOpportunity(factory, parentUser.Id, fillToCapacity: false);
+
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        await LoginWebUserAsync(client, parentUser.Email!);
+
+        var response = await client.GetAsync($"/opportunities/{seeded.OpportunityId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Matches("name=\"RegistrationForm.GuardianEmail\"[^>]*value=\"parent-guardian-prefill@example.com\"", html);
+    }
+
+    [Fact]
     public async Task RegisteringSecondChild_UsesSelectedChildDetailsInsteadOfFirstChildPrefill()
     {
         await using var factory = new TryOutSpotWebApplicationFactory();

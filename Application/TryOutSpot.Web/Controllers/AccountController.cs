@@ -4332,6 +4332,42 @@ public sealed class AccountController(
         }
     }
 
+    private async Task ApplyAccountHolderRegistrationDefaultsAsync(
+        TeamOpportunityRegistrationInputPageModel registrationForm,
+        User user,
+        CancellationToken cancellationToken)
+    {
+        var isGuardian = (await userManager.GetRolesAsync(user))
+            .Contains(TryOutSpotRoles.Parent, StringComparer.OrdinalIgnoreCase);
+        if (isGuardian)
+        {
+            registrationForm.GuardianName ??= NormalizeOptional($"{user.FirstName} {user.LastName}");
+            registrationForm.GuardianEmail ??= user.Email;
+            registrationForm.GuardianPhone ??= user.PhoneNumber;
+        }
+
+        var selectedPlayerId = registrationForm.PlayerId;
+        var previousRegistration = await dbContext.Registrations
+            .AsNoTracking()
+            .Where(registration => registration.RegisteredByUserId == user.Id
+                && registration.EmergencyContactName != null)
+            .OrderBy(registration => registration.PlayerId == selectedPlayerId ? 0 : 1)
+            .ThenByDescending(registration => registration.CreatedAt)
+            .Select(registration => new
+            {
+                registration.EmergencyContactName,
+                registration.EmergencyContactPhone
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (previousRegistration is null)
+        {
+            return;
+        }
+
+        registrationForm.EmergencyContactName ??= previousRegistration.EmergencyContactName;
+        registrationForm.EmergencyContactPhone ??= previousRegistration.EmergencyContactPhone;
+    }
+
     private void ValidateOpportunityRegistrationForm(
         TeamOpportunityRegistrationInputPageModel registrationForm,
         IReadOnlyCollection<string> requiredRegistrationFieldCodes)
@@ -8837,6 +8873,13 @@ public sealed class AccountController(
         var selectedPlayerOption = registrationPlayers.FirstOrDefault(
             player => player.PlayerId == effectiveRegistrationForm.PlayerId);
         ApplySelectedPlayerRegistrationDefaults(effectiveRegistrationForm, selectedPlayerOption);
+        if (registrationForm is null && currentUser is not null && registrationPlayers.Length > 0)
+        {
+            await ApplyAccountHolderRegistrationDefaultsAsync(
+                effectiveRegistrationForm,
+                currentUser,
+                cancellationToken);
+        }
 
         var viewerCanSubmitRegistration = opportunity.RegistrationRequired
             && currentUser is not null
